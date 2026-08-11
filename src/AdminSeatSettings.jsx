@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { ArrowLeft, Upload, Sparkles, Check, RefreshCw, Shield, Video, AlertCircle, Eye, RotateCcw, Tag } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, Upload, Sparkles, Check, RefreshCw, Shield, Video, Eye, RotateCcw, Tag } from 'lucide-react';
+import { supabase } from './supabaseClient'; // ⭐ Supabaseクライアントをインポート
 
 const COLORS = {
   bg: '#faf5ea',
@@ -84,17 +85,65 @@ const INITIAL_PE_BASE_MAP = () => {
   };
 };
 
-export default function AdminSeatSettings({ onBack }) {
+export default function AdminSeatSettings({ productionId, onBack }) {
   const [seatMode, setSeatMode] = useState('movie_style');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isAnalyzed, setIsAnalyzed] = useState(true);
   const [uploadedFileName, setUploadedFileName] = useState('オフィスナイト_布施PEベース客席(案).pdf');
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // 座席マップデータ
   const [seatMap, setSeatMap] = useState(INITIAL_PE_BASE_MAP());
   // 編集ツール: 'available' | 's_seat' | 'a_seat' | 'reserved_staff' | 'equipment'
   const [activeTool, setActiveTool] = useState('s_seat');
   const [showCustomerPreview, setShowCustomerPreview] = useState(false);
+
+  // 1. Supabaseから座席マップ設定を取得
+  const fetchSeatMap = async () => {
+    setLoading(true);
+    let query = supabase.from('seat_maps').select('*');
+
+    if (productionId) {
+      query = query.eq('production_id', productionId);
+    }
+
+    const { data, error } = await query;
+
+    if (!error && data && data.length > 0) {
+      const record = data[0];
+      if (record.seat_data) setSeatMap(record.seat_data);
+      if (record.seat_mode) setSeatMode(record.seat_mode);
+      if (record.file_name) setUploadedFileName(record.file_name);
+    } else {
+      setSeatMap(INITIAL_PE_BASE_MAP());
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchSeatMap();
+  }, [productionId]);
+
+  // 2. Supabaseへ座席マップを保存 (UPSERT)
+  const handleSaveSeatMap = async (newMap, newMode = seatMode) => {
+    setSaving(true);
+    const payload = {
+      production_id: productionId,
+      seat_data: newMap,
+      seat_mode: newMode,
+      file_name: uploadedFileName,
+    };
+
+    const { error } = await supabase
+      .from('seat_maps')
+      .upsert([payload], { onConflict: 'production_id' });
+
+    setSaving(false);
+    if (error) {
+      console.error('座席マップの保存に失敗しました:', error.message);
+    }
+  };
 
   // 全席リセット機能
   const handleResetAllAvailable = () => {
@@ -104,6 +153,7 @@ export default function AdminSeatSettings({ onBack }) {
         newMap[row] = newMap[row].map(seat => ({ ...seat, status: 'available' }));
       });
       setSeatMap(newMap);
+      handleSaveSeatMap(newMap);
     }
   };
 
@@ -111,9 +161,11 @@ export default function AdminSeatSettings({ onBack }) {
   const handleSimulateAIAnalysis = () => {
     setIsAnalyzing(true);
     setTimeout(() => {
-      setSeatMap(INITIAL_PE_BASE_MAP());
+      const defaultMap = INITIAL_PE_BASE_MAP();
+      setSeatMap(defaultMap);
       setIsAnalyzing(false);
       setIsAnalyzed(true);
+      handleSaveSeatMap(defaultMap);
     }, 1200);
   };
 
@@ -125,8 +177,14 @@ export default function AdminSeatSettings({ onBack }) {
       const newMap = { ...prev };
       const currentStatus = newMap[row][index].status;
       newMap[row][index].status = currentStatus === activeTool ? 'available' : activeTool;
+      handleSaveSeatMap(newMap);
       return { ...newMap };
     });
+  };
+
+  const handleModeChange = (mode) => {
+    setSeatMode(mode);
+    handleSaveSeatMap(seatMap, mode);
   };
 
   const getSeatStyle = (status) => {
@@ -248,7 +306,9 @@ export default function AdminSeatSettings({ onBack }) {
           <h1 style={{ fontSize: '18px', margin: 0, flex: 1, textAlign: 'center', fontFamily: "'Shippori Mincho', serif", color: COLORS.text, fontWeight: 700 }}>
             指定席・会場マップ設定
           </h1>
-          <div style={{ width: '80px' }} />
+          <div style={{ width: '80px', textAlign: 'right', fontSize: '12px', color: COLORS.muted }}>
+            {saving ? '保存中...' : '自動保存済'}
+          </div>
         </div>
 
         {/* STEP 1: 運用モードの選択 */}
@@ -258,7 +318,7 @@ export default function AdminSeatSettings({ onBack }) {
             
             <div 
               className={`mode-option ${seatMode === 'movie_style' ? 'active' : ''}`}
-              onClick={() => setSeatMode('movie_style')}
+              onClick={() => handleModeChange('movie_style')}
             >
               <input type="radio" checked={seatMode === 'movie_style'} readOnly style={{ accentColor: COLORS.gold }} />
               <div>
@@ -269,7 +329,7 @@ export default function AdminSeatSettings({ onBack }) {
 
             <div 
               className={`mode-option ${seatMode === 'zone_style' ? 'active' : ''}`}
-              onClick={() => setSeatMode('zone_style')}
+              onClick={() => handleModeChange('zone_style')}
             >
               <input type="radio" checked={seatMode === 'zone_style'} readOnly style={{ accentColor: COLORS.gold }} />
               <div>
@@ -280,7 +340,7 @@ export default function AdminSeatSettings({ onBack }) {
 
             <div 
               className={`mode-option ${seatMode === 'auto_assign' ? 'active' : ''}`}
-              onClick={() => setSeatMode('auto_assign')}
+              onClick={() => handleModeChange('auto_assign')}
             >
               <input type="radio" checked={seatMode === 'auto_assign'} readOnly style={{ accentColor: COLORS.gold }} />
               <div>

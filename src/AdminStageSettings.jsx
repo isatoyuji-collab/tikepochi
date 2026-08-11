@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
-import { ArrowLeft, Plus, Zap, Calendar, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, Plus, Zap, Calendar, X, Trash2 } from 'lucide-react';
+import { supabase } from './supabaseClient'; // ⭐ Supabaseクライアントをインポート
 
 const INITIAL_STAGES = [
-  { id: 1, dateTime: '2026-08-01T15:00', teamTag: 'Aチーム', capacity: 80, reservedCount: 45, status: 'open' },
-  { id: 2, dateTime: '2026-08-01T19:00', teamTag: 'Bチーム', capacity: 80, reservedCount: 80, status: 'sold_out' },
-  { id: 3, dateTime: '2026-08-02T13:00', teamTag: 'Bチーム', capacity: 80, reservedCount: 20, status: 'open' },
-  { id: 4, dateTime: '2026-08-02T17:00', teamTag: 'Aチーム', capacity: 80, reservedCount: 0, status: 'before' },
+  { id: '1', dateTime: '2026-08-01T15:00', teamTag: 'Aチーム', capacity: 80, reservedCount: 45, status: 'open' },
+  { id: '2', dateTime: '2026-08-01T19:00', teamTag: 'Bチーム', capacity: 80, reservedCount: 80, status: 'sold_out' },
+  { id: '3', dateTime: '2026-08-02T13:00', teamTag: 'Bチーム', capacity: 80, reservedCount: 20, status: 'open' },
+  { id: '4', dateTime: '2026-08-02T17:00', teamTag: 'Aチーム', capacity: 80, reservedCount: 0, status: 'before' },
 ];
 
 const COLORS = {
@@ -20,8 +21,9 @@ const COLORS = {
   danger: '#e85a45',
 };
 
-export default function AdminStageSettings({ onBack }) {
-  const [stages, setStages] = useState(INITIAL_STAGES);
+export default function AdminStageSettings({ productionId, onBack }) {
+  const [stages, setStages] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
 
@@ -31,42 +33,91 @@ export default function AdminStageSettings({ onBack }) {
 
   const [bulkCapacity, setBulkCapacity] = useState(80);
 
+  // 1. Supabaseからステージ一覧を取得
+  const fetchStages = async () => {
+    setLoading(true);
+    let query = supabase.from('stages').select('*').order('date_time', { ascending: true });
+
+    if (productionId) {
+      query = query.eq('production_id', productionId);
+    }
+
+    const { data, error } = await query;
+
+    if (!error && data && data.length > 0) {
+      const formatted = data.map(item => ({
+        id: item.id,
+        dateTime: item.date_time || '2026-08-01T15:00',
+        teamTag: item.team_tag || '',
+        capacity: item.capacity || 80,
+        reservedCount: item.reserved_count || 0,
+        status: item.status || 'open',
+      }));
+      setStages(formatted);
+    } else {
+      setStages(INITIAL_STAGES);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchStages();
+  }, [productionId]);
+
+  // DBへキャパ数を更新 (UPDATE)
+  const updateStageCapacity = async (id, nextCap) => {
+    setStages(prev => prev.map(s => s.id === id ? { ...s, capacity: nextCap } : s));
+    await supabase.from('stages').update({ capacity: nextCap }).eq('id', id);
+  };
+
   // 1席ずつの調整
   const handleCapacityChange = (id, delta) => {
-    setStages(prev => prev.map(stage => {
-      if (stage.id === id) {
-        const nextCap = Math.max(0, stage.capacity + delta);
-        return { ...stage, capacity: nextCap };
-      }
-      return stage;
-    }));
+    const target = stages.find(s => s.id === id);
+    if (!target) return;
+    const nextCap = Math.max(0, target.capacity + delta);
+    updateStageCapacity(id, nextCap);
   };
 
   // 直接入力でのキャパ変更
   const handleCapacityDirectInput = (id, value) => {
     const val = Math.max(0, Number(value));
-    setStages(prev => prev.map(stage => stage.id === id ? { ...stage, capacity: val } : stage));
+    updateStageCapacity(id, val);
   };
 
-  const handleStatusChange = (id, newStatus) => {
+  // ステータス変更 (UPDATE)
+  const handleStatusChange = async (id, newStatus) => {
     setStages(prev => prev.map(s => s.id === id ? { ...s, status: newStatus } : s));
+    await supabase.from('stages').update({ status: newStatus }).eq('id', id);
   };
 
-  const handleAddStage = () => {
-    const newStage = {
-      id: Date.now(),
-      dateTime: newDateTime,
-      teamTag: newTeamTag,
+  // ステージ追加 (INSERT)
+  const handleAddStage = async () => {
+    const payload = {
+      production_id: productionId,
+      date_time: newDateTime,
+      team_tag: newTeamTag,
       capacity: Number(newCapacity),
-      reservedCount: 0,
-      status: 'before'
+      status: 'before',
     };
-    setStages([...stages, newStage]);
-    setIsAddModalOpen(false);
+
+    const { error } = await supabase.from('stages').insert([payload]);
+
+    if (error) {
+      alert('ステージ追加に失敗しました: ' + error.message);
+    } else {
+      fetchStages();
+      setIsAddModalOpen(false);
+    }
   };
 
-  const handleApplyBulkCapacity = () => {
-    setStages(prev => prev.map(s => ({ ...s, capacity: Number(bulkCapacity) })));
+  // キャパ一括変更
+  const handleApplyBulkCapacity = async () => {
+    const targetCap = Number(bulkCapacity);
+    setStages(prev => prev.map(s => ({ ...s, capacity: targetCap })));
+
+    if (productionId) {
+      await supabase.from('stages').update({ capacity: targetCap }).eq('production_id', productionId);
+    }
     setIsBulkModalOpen(false);
   };
 
@@ -196,7 +247,7 @@ export default function AdminStageSettings({ onBack }) {
           <div style={{ width: '80px' }} />
         </div>
 
-        {/* 一括操作ショートカット */}
+        {/* ショートカット */}
         <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
           <button onClick={() => setIsBulkModalOpen(true)} className="btn-outline" style={{ flex: 1, justifyContent: 'center' }}>
             <Zap size={15} /> キャパを一括変更
@@ -205,6 +256,8 @@ export default function AdminStageSettings({ onBack }) {
             <Plus size={16} /> ステージを追加
           </button>
         </div>
+
+        {loading && <div style={{ textAlign: 'center', padding: '20px', color: COLORS.muted }}>データを読み込み中...</div>}
 
         {/* ステージカード一覧 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -246,7 +299,7 @@ export default function AdminStageSettings({ onBack }) {
                   </select>
                 </div>
 
-                {/* キャパ調整エリア（シンプル操作UI） */}
+                {/* キャパ調整エリア */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.surfaceAlt, padding: '12px 16px', borderRadius: '10px', border: `1px solid ${COLORS.border}` }}>
                   <div>
                     <div style={{ fontSize: '11px', color: COLORS.muted }}>現在の予約状況</div>
@@ -256,7 +309,6 @@ export default function AdminStageSettings({ onBack }) {
                     </div>
                   </div>
 
-                  {/* 席数調整（− / 直接入力 / ＋） */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '12px', color: COLORS.muted, fontWeight: 700 }}>定員:</span>
                     <button onClick={() => handleCapacityChange(stage.id, -1)} className="step-btn">
@@ -283,7 +335,7 @@ export default function AdminStageSettings({ onBack }) {
 
       </div>
 
-      {/* 追加モーダル（上下左右 完全中央配置） */}
+      {/* 追加モーダル */}
       {isAddModalOpen && (
         <div 
           onClick={() => setIsAddModalOpen(false)}
@@ -340,7 +392,7 @@ export default function AdminStageSettings({ onBack }) {
         </div>
       )}
 
-      {/* キャパ一括変更モーダル（上下左右 完全中央配置） */}
+      {/* キャパ一括変更モーダル */}
       {isBulkModalOpen && (
         <div 
           onClick={() => setIsBulkModalOpen(false)}

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, CreditCard, Ticket, X, Trash2, Layers } from 'lucide-react';
 import { COLORS, FONTS, RADIUS, SHADOW } from './theme';
+import { supabase } from './supabaseClient'; // ⭐ Supabaseクライアントをインポート
 
 const INITIAL_TICKETS = [
   {
-    id: 1,
+    id: '1',
     name: '一般前売り',
     price: 3500,
     startDate: '2026-07-01T10:00',
@@ -16,7 +17,7 @@ const INITIAL_TICKETS = [
     note: ''
   },
   {
-    id: 2,
+    id: '2',
     name: 'U-25割引（要証明書）',
     price: 2500,
     startDate: '2026-07-01T10:00',
@@ -28,7 +29,7 @@ const INITIAL_TICKETS = [
     note: '当日受付にて身分証明書をご提示ください'
   },
   {
-    id: 3,
+    id: '3',
     name: '2公演共通セットチケット',
     price: 6000,
     startDate: '2026-07-01T10:00',
@@ -41,19 +42,55 @@ const INITIAL_TICKETS = [
   }
 ];
 
-export default function AdminTicketSettings({ onBack }) {
-  const [tickets, setTickets] = useState(INITIAL_TICKETS);
+export default function AdminTicketSettings({ productionId, onBack }) {
+  const [tickets, setTickets] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [editingTicket, setEditingTicket] = useState(null);
 
   const [stripeDeadlineType, setStripeDeadlineType] = useState('day_before');
   const [stripeDeadlineHours, setStripeDeadlineHours] = useState(12);
+
+  // 1. Supabaseから券種一覧を取得
+  const fetchTickets = async () => {
+    setLoading(true);
+    let query = supabase.from('tickets').select('*').order('created_at', { ascending: true });
+
+    if (productionId) {
+      query = query.eq('production_id', productionId);
+    }
+
+    const { data, error } = await query;
+
+    if (!error && data && data.length > 0) {
+      const formatted = data.map(item => ({
+        id: item.id,
+        name: item.name || '',
+        price: item.price || 0,
+        startDate: item.start_date || '2026-07-01T10:00',
+        endDate: item.end_date || '2026-07-31T23:59',
+        paymentType: item.payment_type || 'both',
+        isMultiStageDiscount: item.is_multi_stage_discount || false,
+        setGroup: item.set_group || 'none',
+        maxCount: item.max_count || 4,
+        note: item.note || ''
+      }));
+      setTickets(formatted);
+    } else {
+      setTickets(INITIAL_TICKETS);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchTickets();
+  }, [productionId]);
 
   const handleOpenEdit = (ticket) => {
     if (ticket) {
       setEditingTicket({ ...ticket });
     } else {
       setEditingTicket({
-        id: Date.now(),
+        id: null,
         name: '',
         price: 3000,
         startDate: '2026-07-01T10:00',
@@ -67,25 +104,65 @@ export default function AdminTicketSettings({ onBack }) {
     }
   };
 
-  const handleSave = () => {
+  // 2. Supabaseへの保存処理 (INSERT / UPDATE)
+  const handleSave = async () => {
     if (!editingTicket.name.trim()) {
       alert('券種名を入力してください');
       return;
     }
-    setTickets(prev => {
-      const exists = prev.find(t => t.id === editingTicket.id);
-      if (exists) {
-        return prev.map(t => t.id === editingTicket.id ? editingTicket : t);
-      }
-      return [...prev, editingTicket];
-    });
-    setEditingTicket(null);
+
+    const payload = {
+      production_id: productionId,
+      name: editingTicket.name.trim(),
+      price: editingTicket.price,
+      payment_type: editingTicket.paymentType,
+      is_multi_stage_discount: editingTicket.isMultiStageDiscount,
+      set_group: editingTicket.setGroup,
+      max_count: editingTicket.maxCount,
+      note: editingTicket.note,
+    };
+
+    let result;
+    if (editingTicket.id) {
+      // 更新
+      result = await supabase
+        .from('tickets')
+        .update(payload)
+        .eq('id', editingTicket.id);
+    } else {
+      // 新規作成
+      result = await supabase
+        .from('tickets')
+        .insert([payload]);
+    }
+
+    if (result.error) {
+      alert('保存に失敗しました: ' + result.error.message);
+    } else {
+      fetchTickets();
+      setEditingTicket(null);
+    }
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm('この券種を削除してもよろしいですか？')) {
-      setTickets(prev => prev.filter(t => t.id !== id));
+  // 3. Supabaseからの削除 (DELETE)
+  const handleDelete = async (id) => {
+    if (!id) {
       setEditingTicket(null);
+      return;
+    }
+
+    if (window.confirm('この券種を削除してもよろしいですか？')) {
+      const { error } = await supabase
+        .from('tickets')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        alert('削除に失敗しました: ' + error.message);
+      } else {
+        fetchTickets();
+        setEditingTicket(null);
+      }
     }
   };
 
@@ -245,7 +322,7 @@ export default function AdminTicketSettings({ onBack }) {
         <div style={{ marginBottom: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <h2 style={{ fontSize: '16px', margin: 0, fontFamily: FONTS.display, fontWeight: 700 }}>販売券種リスト</h2>
-            <span style={{ fontSize: '12px', color: COLORS.muted }}>{tickets.length}件登録中</span>
+            <span style={{ fontSize: '12px', color: COLORS.muted }}>{tickets.length}件登録中 {loading && '(読み込み中...)'}</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -295,7 +372,7 @@ export default function AdminTicketSettings({ onBack }) {
             ))}
           </div>
 
-          <button onClick={() => handleOpenEdit(null)} className="btn-add-ticket">
+          <button onClick={() => handleOpenEdit(null)} className="btn-add-ticket" style={{ marginTop: '14px' }}>
             <Plus size={18} /> 新しい券種を追加する
           </button>
         </div>
@@ -333,7 +410,7 @@ export default function AdminTicketSettings({ onBack }) {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h3 style={{ margin: 0, fontSize: '18px', color: COLORS.text, fontFamily: FONTS.display, fontWeight: 700 }}>
-                {tickets.some(t => t.id === editingTicket.id) ? '券種の編集' : '新規券種の作成'}
+                {editingTicket.id ? '券種の編集' : '新規券種の作成'}
               </h3>
               <button onClick={() => setEditingTicket(null)} style={{ background: 'rgba(184,100,26,0.1)', border: 'none', color: COLORS.muted, width: '30px', height: '30px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <X size={18} />
@@ -428,7 +505,7 @@ export default function AdminTicketSettings({ onBack }) {
               </div>
 
               <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
-                {tickets.some(t => t.id === editingTicket.id) && (
+                {editingTicket.id && (
                   <button
                     onClick={() => handleDelete(editingTicket.id)}
                     style={{ flex: 1, padding: '14px', backgroundColor: 'rgba(232,90,69,0.1)', color: COLORS.danger, border: 'none', borderRadius: RADIUS.sm, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}

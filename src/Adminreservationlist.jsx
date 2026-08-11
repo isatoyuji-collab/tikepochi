@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Smartphone, Printer, Search, X, Trash2, Check, Send } from 'lucide-react';
-import TabletReception from './TabletReception'; // タブレット受付UIをインポート
+import TabletReception from './TabletReception';
+import { supabase } from './supabaseClient'; // ⭐ Supabaseクライアントをインポート
 
 const COLORS = {
   bg: '#faf5ea',
@@ -25,36 +26,72 @@ const STAGES = [
 ];
 
 const INITIAL_RESERVATIONS = [
-  { id: 1, stageId: 's1', name: '山田 花子', tel: '090-1234-5678', email: 'hanako@example.com', ticketType: '指定席オプション', count: 2, cast: '山田 太郎', price: 8000, isPaid: false, isCheckedIn: false },
-  { id: 2, stageId: 's1', name: '山本 尚子', tel: '080-9876-5432', email: 'naoko@example.com', ticketType: '自由席', count: 1, cast: '鈴木 次郎', price: 3500, isPaid: true, isCheckedIn: false },
-  { id: 3, stageId: 's2', name: '佐藤 健太', tel: '070-1111-2222', email: 'kenta@example.com', ticketType: 'セット券', count: 3, cast: '田中 三郎', price: 21000, isPaid: false, isCheckedIn: false },
-  { id: 4, stageId: 's2', name: '高橋 美咲', tel: '090-2222-3333', email: 'misaki@example.com', ticketType: '自由席', count: 2, cast: '山田 太郎', price: 7000, isPaid: true, isCheckedIn: true },
-  { id: 5, stageId: 's3', name: '中村 一郎', tel: '080-4444-5555', email: 'ichiro@example.com', ticketType: '自由席', count: 4, cast: '鈴木 次郎', price: 14000, isPaid: false, isCheckedIn: false },
+  { id: '1', stageId: 's1', name: '山田 花子', tel: '090-1234-5678', email: 'hanako@example.com', ticketType: '指定席オプション', count: 2, cast: '山田 太郎', price: 8000, isPaid: false, isCheckedIn: false },
+  { id: '2', stageId: 's1', name: '山本 尚子', tel: '080-9876-5432', email: 'naoko@example.com', ticketType: '自由席', count: 1, cast: '鈴木 次郎', price: 3500, isPaid: true, isCheckedIn: false },
+  { id: '3', stageId: 's2', name: '佐藤 健太', tel: '070-1111-2222', email: 'kenta@example.com', ticketType: 'セット券', count: 3, cast: '田中 三郎', price: 21000, isPaid: false, isCheckedIn: false },
+  { id: '4', stageId: 's2', name: '高橋 美咲', tel: '090-2222-3333', email: 'misaki@example.com', ticketType: '自由席', count: 2, cast: '山田 太郎', price: 7000, isPaid: true, isCheckedIn: true },
+  { id: '5', stageId: 's3', name: '中村 一郎', tel: '080-4444-5555', email: 'ichiro@example.com', ticketType: '自由席', count: 4, cast: '鈴木 次郎', price: 14000, isPaid: false, isCheckedIn: false },
 ];
 
 const statusColor = (status) => {
   if (status === '完売') return COLORS.coral;
   if (status === '終了') return COLORS.muted;
   if (status === '受付前') return COLORS.indigo;
-  return COLORS.success; // 販売中
+  return COLORS.success;
 };
 
-export default function AdminReservationList({ onBack }) {
-  // 画面モード管理: 'admin' (予約一覧) | 'tablet' (当日受付タブレット)
+export default function AdminReservationList({ productionId, onBack }) {
   const [viewMode, setViewMode] = useState('admin');
+  const [reservations, setReservations] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const [reservations, setReservations] = useState(INITIAL_RESERVATIONS);
   const [selectedStageId, setSelectedStageId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [castFilter, setCastFilter] = useState('');
   const [ticketTypeFilter, setTicketTypeFilter] = useState('');
-  const [checkinFilter, setCheckinFilter] = useState('all'); // all | done | not
+  const [checkinFilter, setCheckinFilter] = useState('all');
   const [selectedIds, setSelectedIds] = useState([]);
   const [editing, setEditing] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [showThanks, setShowThanks] = useState(false);
 
-  // 当日受付タブレット画面を表示する場合
+  // 1. Supabaseから予約一覧を取得
+  const fetchReservations = async () => {
+    setLoading(true);
+    let query = supabase.from('reservations').select('*').order('created_at', { ascending: false });
+    
+    if (productionId) {
+      query = query.eq('production_id', productionId);
+    }
+
+    const { data, error } = await query;
+
+    if (!error && data && data.length > 0) {
+      const formatted = data.map(item => ({
+        id: item.id,
+        stageId: item.stage_id || 's1',
+        name: item.customer_name || '名称未設定',
+        tel: item.tel || '',
+        email: item.email || '',
+        ticketType: item.ticket_type || '自由席',
+        count: item.ticket_count || 1,
+        cast: item.cast_name || '指定なし',
+        price: item.total_price || 0,
+        isPaid: item.is_paid || false,
+        isCheckedIn: item.is_checked_in || false,
+      }));
+      setReservations(formatted);
+    } else {
+      // Supabaseにデータが無い場合は初期サンプルを使用
+      setReservations(INITIAL_RESERVATIONS);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchReservations();
+  }, [productionId]);
+
   if (viewMode === 'tablet') {
     return <TabletReception onBackToAdmin={() => setViewMode('admin')} />;
   }
@@ -76,15 +113,48 @@ export default function AdminReservationList({ onBack }) {
 
   const toggleSelect = (id) => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
-  const handleSave = (updated) => {
-    setReservations(prev => prev.map(r => r.id === updated.id ? updated : r));
-    setEditing(null);
+  // 2. Supabaseへの更新保存 (UPDATE)
+  const handleSave = async (updated) => {
+    const payload = {
+      stage_id: updated.stageId,
+      customer_name: updated.name,
+      tel: updated.tel,
+      email: updated.email,
+      ticket_type: updated.ticketType,
+      ticket_count: updated.count,
+      cast_name: updated.cast,
+      total_price: updated.price,
+      is_paid: updated.isPaid,
+      is_checked_in: updated.isCheckedIn,
+    };
+
+    const { error } = await supabase
+      .from('reservations')
+      .update(payload)
+      .eq('id', updated.id);
+
+    if (error) {
+      alert('更新に失敗しました: ' + error.message);
+    } else {
+      setReservations(prev => prev.map(r => r.id === updated.id ? updated : r));
+      setEditing(null);
+    }
   };
 
-  const handleDelete = (id) => {
-    setReservations(prev => prev.filter(r => r.id !== id));
-    setConfirmDeleteId(null);
-    setEditing(null);
+  // 3. Supabaseからの削除 (DELETE)
+  const handleDelete = async (id) => {
+    const { error } = await supabase
+      .from('reservations')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      alert('削除に失敗しました: ' + error.message);
+    } else {
+      setReservations(prev => prev.filter(r => r.id !== id));
+      setConfirmDeleteId(null);
+      setEditing(null);
+    }
   };
 
   return (
@@ -137,7 +207,6 @@ export default function AdminReservationList({ onBack }) {
       <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <button onClick={onBack} className="top-btn"><ArrowLeft size={15} /> ホームへ戻る</button>
         <div style={{ display: 'flex', gap: '10px' }}>
-          {/* タブレットUI切り替えボタン */}
           <button onClick={() => setViewMode('tablet')} className="top-btn" style={{ borderColor: COLORS.gold, color: COLORS.gold, fontWeight: 'bold' }}>
             <Smartphone size={15} /> 当日受付タブレットを開く
           </button>
@@ -147,10 +216,11 @@ export default function AdminReservationList({ onBack }) {
 
       {/* 全体サマリー */}
       <div style={{ fontFamily: "'Shippori Mincho', serif", fontSize: '15px', marginBottom: '14px' }}>
-        総動員数 <strong style={{ color: COLORS.gold, fontSize: '18px' }}>{totalReserved}</strong> / {totalCapacity}
+        総動員数 <strong style={{ color: COLORS.gold, fontSize: '18px' }}>{totalReserved}</strong> / {totalCapacity}人
+        {loading && <span style={{ marginLeft: '12px', fontSize: '13px', color: COLORS.muted }}> (同期中...)</span>}
       </div>
 
-      {/* 回カード（全件横並び） */}
+      {/* 回カード */}
       <div className="no-print" style={{ marginBottom: '18px' }}>
         <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
           {STAGES.map(s => (

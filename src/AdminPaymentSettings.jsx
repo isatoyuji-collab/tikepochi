@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { ArrowLeft, CreditCard, Smartphone, Building2, Check, ShieldCheck, HelpCircle, Save } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, CreditCard, Smartphone, Building2, Check, ShieldCheck, Save } from 'lucide-react';
+import { supabase } from './supabaseClient'; // ⭐ Supabaseクライアントをインポート
 
 const COLORS = {
   bg: '#faf5ea',
@@ -13,7 +14,7 @@ const COLORS = {
   paypayRed: '#ff0033'
 };
 
-export default function AdminPaymentSettings({ onBack }) {
+export default function AdminPaymentSettings({ productionId, onBack }) {
   // Stripe設定
   const [stripeEnabled, setStripeEnabled] = useState(true);
   const [stripePublishableKey, setStripePublishableKey] = useState('pk_test_sample123456');
@@ -33,12 +34,87 @@ export default function AdminPaymentSettings({ onBack }) {
   const [accountNumber, setAccountNumber] = useState('1234567');
   const [accountHolder, setAccountHolder] = useState('ゲキダン サンプル');
 
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [savedNotice, setSavedNotice] = useState(false);
 
-  const handleSaveAll = () => {
-    setSavedNotice(true);
-    setTimeout(() => setSavedNotice(false), 2500);
+  // 1. Supabaseから決済設定を取得
+  const fetchPaymentSettings = async () => {
+    setLoading(true);
+    let query = supabase.from('payment_settings').select('*');
+
+    if (productionId) {
+      query = query.eq('production_id', productionId);
+    }
+
+    const { data, error } = await query;
+
+    if (!error && data && data.length > 0) {
+      const s = data[0];
+      setStripeEnabled(s.stripe_enabled ?? true);
+      setStripePublishableKey(s.stripe_publishable_key || '');
+      setStripeSecretKey(s.stripe_secret_key || '');
+
+      setPaypayEnabled(s.paypay_enabled ?? true);
+      setPaypayUrl(s.paypay_url || '');
+      setPaypayId(s.paypay_id || '');
+      setPaypayMessage(s.paypay_message || '');
+
+      setBankEnabled(s.bank_enabled ?? true);
+      setBankName(s.bank_name || '');
+      setBranchName(s.branch_name || '');
+      setAccountType(s.account_type || '普通');
+      setAccountNumber(s.account_number || '');
+      setAccountHolder(s.account_holder || '');
+    }
+    setLoading(false);
   };
+
+  useEffect(() => {
+    fetchPaymentSettings();
+  }, [productionId]);
+
+  // 2. Supabaseへ全決済設定を保存 (UPSERT)
+  const handleSaveAll = async () => {
+    setSaving(true);
+    const payload = {
+      production_id: productionId,
+      stripe_enabled: stripeEnabled,
+      stripe_publishable_key: stripePublishableKey,
+      stripe_secret_key: stripeSecretKey,
+      paypay_enabled: paypayEnabled,
+      paypay_url: paypayUrl,
+      paypay_id: paypayId,
+      paypay_message: paypayMessage,
+      bank_enabled: bankEnabled,
+      bank_name: bankName,
+      branch_name: branchName,
+      account_type: accountType,
+      account_number: accountNumber,
+      account_holder: accountHolder,
+    };
+
+    const { error } = await supabase
+      .from('payment_settings')
+      .upsert([payload], { onConflict: 'production_id' });
+
+    setSaving(false);
+
+    if (error) {
+      alert('決済設定の保存に失敗しました: ' + error.message);
+    } else {
+      setSavedNotice(true);
+      setTimeout(() => setSavedNotice(false), 2500);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        決済設定を読み込み中...
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '24px', boxSizing: 'border-box' }}>
@@ -114,14 +190,14 @@ export default function AdminPaymentSettings({ onBack }) {
           <h1 style={{ fontSize: '18px', margin: 0, flex: 1, textAlign: 'center', fontFamily: "'Shippori Mincho', serif", color: COLORS.text, fontWeight: 700 }}>
             決済アカウント・外部連携設定（劇団共通）
           </h1>
-          <button onClick={handleSaveAll} className="btn-gold" style={{ padding: '8px 16px', fontSize: '13px' }}>
-            <Save size={15} /> 保存する
+          <button onClick={handleSaveAll} disabled={saving} className="btn-gold" style={{ padding: '8px 16px', fontSize: '13px' }}>
+            <Save size={15} /> {saving ? '保存中...' : '保存する'}
           </button>
         </div>
 
         {savedNotice && (
           <div style={{ padding: '12px', backgroundColor: 'rgba(31,154,86,0.15)', border: `1px solid ${COLORS.success}`, borderRadius: '10px', color: COLORS.success, fontWeight: 700, fontSize: '13px', marginBottom: '16px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-            <Check size={16} /> 決済設定を保存しました！
+            <Check size={16} /> 決済設定をSupabaseに保存しました！
           </div>
         )}
 
@@ -192,7 +268,7 @@ export default function AdminPaymentSettings({ onBack }) {
           )}
         </div>
 
-        {/* 銀行振込 */}
+        {/* 🏦 3. 銀行振込 */}
         <div className="form-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

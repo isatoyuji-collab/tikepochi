@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Check, Plus, Search } from 'lucide-react';
+import { supabase } from './supabaseClient'; // ⭐ Supabaseクライアントをインポート
 
 const COLORS = {
   bg: '#faf5ea',
@@ -26,35 +27,67 @@ const STAGES = [
   { id: 's3', date: '8/2', time: '15:00' },
 ];
 
-// groupId が同じ行はセット券の同一予約（A公演分・B公演分）
 const INITIAL_RESERVATIONS = [
-  { id: 1, groupId: 'g1', name: '山田 花子', stageId: 's1', ticketType: '指定席オプション', count: 2, cast: '山田 太郎', isCheckedIn: false },
-  { id: 2, groupId: 'g2', name: '山本 尚子', stageId: 's1', ticketType: '自由席', count: 1, cast: '鈴木 次郎', isCheckedIn: false },
-  { id: 3, groupId: 'g3', name: '高橋 美咲', stageId: 's2', ticketType: '自由席', count: 2, cast: '山田 太郎', isCheckedIn: true },
-  { id: 4, groupId: 'g4', name: '中村 一郎', stageId: 's3', ticketType: '自由席', count: 4, cast: '鈴木 次郎', isCheckedIn: false },
-  { id: 5, groupId: 'g5', leg: 'A公演', name: '佐藤 健太', stageId: 's2', ticketType: 'セット券', count: 3, cast: '山田 太郎', isCheckedIn: false },
-  { id: 6, groupId: 'g5', leg: 'B公演', name: '佐藤 健太', stageId: 's3', ticketType: 'セット券', count: 3, cast: '田中 三郎', isCheckedIn: false },
+  { id: '1', groupId: 'g1', name: '山田 花子', stageId: 's1', ticketType: '指定席オプション', count: 2, cast: '山田 太郎', isCheckedIn: false },
+  { id: '2', groupId: 'g2', name: '山本 尚子', stageId: 's1', ticketType: '自由席', count: 1, cast: '鈴木 次郎', isCheckedIn: false },
+  { id: '3', groupId: 'g3', name: '高橋 美咲', stageId: 's2', ticketType: '自由席', count: 2, cast: '山田 太郎', isCheckedIn: true },
+  { id: '4', groupId: 'g4', name: '中村 一郎', stageId: 's3', ticketType: '自由席', count: 4, cast: '鈴木 次郎', isCheckedIn: false },
+  { id: '5', groupId: 'g5', leg: 'A公演', name: '佐藤 健太', stageId: 's2', ticketType: 'セット券', count: 3, cast: '山田 太郎', isCheckedIn: false },
+  { id: '6', groupId: 'g5', leg: 'B公演', name: '佐藤 健太', stageId: 's3', ticketType: 'セット券', count: 3, cast: '田中 三郎', isCheckedIn: false },
 ];
 
-export default function MyReservationsPage() {
-  const [currentCast, setCurrentCast] = useState('山田 太郎'); // デモ用：ログイン中のキャストを切り替え
+export default function MyReservationsPage({ productionId }) {
+  const [currentCast, setCurrentCast] = useState('山田 太郎');
   const allTabVisible = CASTS.find(c => c.name === currentCast)?.ticketVisibility === 'all_stages';
   const [activeTab, setActiveTab] = useState('mine');
-  const [reservations, setReservations] = useState(INITIAL_RESERVATIONS);
+  const [reservations, setReservations] = useState([]);
+  const [loading, setLoading] = useState(true);
+
   const [selectedStageId, setSelectedStageId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState({ count: 1, stageId: STAGES[0].id });
   const [showAddForm, setShowAddForm] = useState(false);
   const [newEntry, setNewEntry] = useState({ name: '', stageId: STAGES[0].id, ticketType: '自由席', count: 1 });
 
-  // 全体検索用
   const [allSearch, setAllSearch] = useState('');
   const [allStageFilter, setAllStageFilter] = useState('');
+
+  // 1. Supabaseから予約一覧を取得
+  const fetchReservations = async () => {
+    setLoading(true);
+    let query = supabase.from('reservations').select('*').order('created_at', { ascending: false });
+
+    if (productionId) {
+      query = query.eq('production_id', productionId);
+    }
+
+    const { data, error } = await query;
+
+    if (!error && data && data.length > 0) {
+      const formatted = data.map(item => ({
+        id: item.id,
+        groupId: item.group_id || item.id,
+        name: item.customer_name || '',
+        stageId: item.stage_id || 's1',
+        ticketType: item.ticket_type || '自由席',
+        count: item.ticket_count || 1,
+        cast: item.cast_name || '指定なし',
+        isCheckedIn: item.is_checked_in || false,
+      }));
+      setReservations(formatted);
+    } else {
+      setReservations(INITIAL_RESERVATIONS);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchReservations();
+  }, [productionId]);
 
   const stageLabel = (id) => { const s = STAGES.find(x => x.id === id); return s ? `${s.date} ${s.time}` : ''; };
   const reservedCount = (stageId) => reservations.filter(r => r.stageId === stageId).reduce((s, r) => s + r.count, 0);
 
-  // 自分のお客様：どこかのレグが自分の担当なら、そのグループ全体（相方のレグも含む）を表示
   const myGroupIds = new Set(
     reservations.filter(r => r.cast === currentCast).map(r => r.groupId)
   );
@@ -69,8 +102,15 @@ export default function MyReservationsPage() {
   };
   const myRowsByStage = rowsByStage(myRows);
 
-  const toggleCheckIn = (id) => {
-    setReservations(prev => prev.map(r => r.id === id ? { ...r, isCheckedIn: !r.isCheckedIn } : r));
+  // 来場チェックイン切り替え (UPDATE)
+  const toggleCheckIn = async (id) => {
+    const target = reservations.find(r => r.id === id);
+    if (!target) return;
+
+    const nextStatus = !target.isCheckedIn;
+    setReservations(prev => prev.map(r => r.id === id ? { ...r, isCheckedIn: nextStatus } : r));
+
+    await supabase.from('reservations').update({ is_checked_in: nextStatus }).eq('id', id);
   };
 
   const startEdit = (r) => {
@@ -79,20 +119,40 @@ export default function MyReservationsPage() {
     setEditDraft({ count: r.count, stageId: r.stageId });
   };
 
-  const handleInlineSave = (id, patch) => {
+  // 予約変更の保存 (UPDATE)
+  const handleInlineSave = async (id, patch) => {
     setReservations(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r));
     setEditingId(null);
+
+    await supabase.from('reservations').update({
+      ticket_count: patch.count,
+      stage_id: patch.stageId,
+    }).eq('id', id);
   };
 
-  const handleAddEntry = () => {
+  // 代理予約の追加 (INSERT)
+  const handleAddEntry = async () => {
     if (!newEntry.name) return;
-    const id = Math.max(0, ...reservations.map(r => r.id)) + 1;
-    setReservations(prev => [...prev, {
-      id, groupId: `g${id}`, name: newEntry.name, stageId: newEntry.stageId,
-      ticketType: newEntry.ticketType, count: Number(newEntry.count), cast: currentCast, isCheckedIn: false,
-    }]);
-    setNewEntry({ name: '', stageId: STAGES[0].id, ticketType: '自由席', count: 1 });
-    setShowAddForm(false);
+
+    const payload = {
+      production_id: productionId,
+      customer_name: newEntry.name,
+      stage_id: newEntry.stageId,
+      ticket_type: newEntry.ticketType,
+      ticket_count: Number(newEntry.count),
+      cast_name: currentCast,
+      is_checked_in: false,
+    };
+
+    const { error } = await supabase.from('reservations').insert([payload]);
+
+    if (error) {
+      alert('予約追加に失敗しました: ' + error.message);
+    } else {
+      fetchReservations();
+      setNewEntry({ name: '', stageId: STAGES[0].id, ticketType: '自由席', count: 1 });
+      setShowAddForm(false);
+    }
   };
 
   const allFiltered = reservations.filter(r =>
@@ -200,14 +260,14 @@ export default function MyReservationsPage() {
         .stage-card.active { border-color: ${COLORS.gold}; background: #fff6e8; }
 
         .add-proxy-btn {
-          display: flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 9px;
+          display: flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 999px;
           border: 1px solid ${COLORS.border}; background: ${COLORS.surface}; color: ${COLORS.text};
           font-size: 13px; font-weight: 700; cursor: pointer; font-family: 'Zen Kaku Gothic New', sans-serif;
         }
         .add-proxy-btn:hover { background: ${COLORS.surfaceAlt}; }
       `}</style>
 
-      {/* デモ用コントロール（実際は自動でログイン担当者が入る想定） */}
+      {/* デモ用コントロール */}
       <div className="no-print" style={{ display: 'flex', gap: '10px', marginBottom: '14px', fontSize: '12px', color: COLORS.muted, alignItems: 'center' }}>
         <span>デモ設定：</span>
         ログイン中
@@ -215,7 +275,7 @@ export default function MyReservationsPage() {
           {CASTS.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
         </select>
         <span style={{ fontSize: '11px' }}>
-          全体タブ：{allTabVisible ? '表示可' : '非公開'}（管理者が個別設定）
+          全体タブ：{allTabVisible ? '表示可' : '非公開'} {loading && '(同期中...)'}
         </span>
       </div>
 
@@ -223,7 +283,7 @@ export default function MyReservationsPage() {
         <div>
           <h1 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 4px' }}>{currentCast} さんのマイページ</h1>
           <div style={{ fontSize: '13px', color: COLORS.muted }}>
-            自分の動員数　<strong style={{ color: COLORS.gold, fontSize: '16px' }}>{myAttendanceCount}</strong> 人
+            自分の動員数 <strong style={{ color: COLORS.gold, fontSize: '16px' }}>{myAttendanceCount}</strong> 人
           </div>
         </div>
         <button className="add-proxy-btn" onClick={() => setShowAddForm(!showAddForm)}>
@@ -252,7 +312,7 @@ export default function MyReservationsPage() {
         </div>
       )}
 
-      {/* ダッシュボード（回カード・全件横並び） */}
+      {/* ダッシュボード */}
       <div className="no-print" style={{ marginBottom: '18px' }}>
         <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
           {STAGES.map(s => (
@@ -323,7 +383,7 @@ export default function MyReservationsPage() {
 
             <div style={{ backgroundColor: COLORS.surface, borderRadius: '10px', border: `1px solid ${COLORS.border}`, overflow: 'hidden' }}>
               {allFiltered.length === 0 ? (
-                <div style={{ padding: '20px', textAlign: 'center', color: COLORS.muted, fontSize: '13px' }}>該当する予約がありません</div>
+                <div style={{ padding: '20px', textAlign: 'center', color: COLORS.muted, fontSize: '13px' }}>該当する予約はありません</div>
               ) : allFiltered.map(r => (
                 <div key={r.id} className="row-main" style={{ gridTemplateColumns: '1.4fr 1.4fr 1fr', cursor: 'default' }}>
                   <span className="row-name">{r.name}{r.leg && <span className="leg-badge">{r.leg}</span>}</span>

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Eye, EyeOff, Ticket, ChevronDown, ChevronLeft, Check, X, ArrowLeft } from 'lucide-react';
+import { supabase } from './supabaseClient'; // ⭐ Supabaseクライアントをインポート
 
 const INITIAL_RESERVATIONS = [
   {
-    id: 1, name: '山田 花子', kana: 'ヤマダ ハナコ', count: 2, tel: '090-1234-5678', showTime: '8月1日 15:00',
+    id: '1', name: '山田 花子', kana: 'ヤマダ ハナコ', count: 2, tel: '090-1234-5678', showTime: '8月1日 15:00',
     items: [
       { name: '一般前売り', unitPrice: 3500, count: 2 },
       { name: '指定席オプション', unitPrice: 500, count: 2 },
@@ -11,14 +12,14 @@ const INITIAL_RESERVATIONS = [
     isPaid: false, isCheckedIn: false,
   },
   {
-    id: 2, name: '山本 尚子', kana: 'ヤマモト ナオコ', count: 1, tel: '080-9876-5432', showTime: '8月1日 15:00',
+    id: '2', name: '山本 尚子', kana: 'ヤマモト ナオコ', count: 1, tel: '080-9876-5432', showTime: '8月1日 15:00',
     items: [
       { name: '一般前売り', unitPrice: 3500, count: 1 },
     ],
     isPaid: true, isCheckedIn: false,
   },
   {
-    id: 3, name: '佐藤 健太', kana: 'サトウ ケンタ', count: 3, tel: '070-1111-2222', showTime: '8月1日 19:00',
+    id: '3', name: '佐藤 健太', kana: 'サトウ ケンタ', count: 3, tel: '070-1111-2222', showTime: '8月1日 19:00',
     isSet: true,
     items: [
       { name: '一般前売り', unitPrice: 3500, count: 3 },
@@ -54,7 +55,7 @@ const COLORS = {
   muted: '#8a8398',
 };
 
-export default function TabletReception({ onBackToAdmin }) {
+export default function TabletReception({ productionId, onBackToAdmin }) {
   const [screen, setScreen] = useState('search');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
@@ -62,7 +63,44 @@ export default function TabletReception({ onBackToAdmin }) {
   const [otherOpen, setOtherOpen] = useState(false);
   const [browseOpen, setBrowseOpen] = useState(false);
   const [browseOtherOpen, setBrowseOtherOpen] = useState(false);
-  const [reservations, setReservations] = useState(INITIAL_RESERVATIONS);
+  const [reservations, setReservations] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // 1. Supabaseから当日の予約一覧を取得
+  const fetchReservations = async () => {
+    setLoading(true);
+    let query = supabase.from('reservations').select('*').order('customer_name', { ascending: true });
+
+    if (productionId) {
+      query = query.eq('production_id', productionId);
+    }
+
+    const { data, error } = await query;
+
+    if (!error && data && data.length > 0) {
+      const formatted = data.map(item => ({
+        id: item.id,
+        name: item.customer_name || '',
+        kana: item.customer_kana || '',
+        count: item.ticket_count || 1,
+        tel: item.tel || '',
+        showTime: item.show_time || '8月1日 15:00',
+        items: [
+          { name: item.ticket_type || '一般チケット', unitPrice: item.total_price / (item.ticket_count || 1), count: item.ticket_count || 1 }
+        ],
+        isPaid: item.is_paid || false,
+        isCheckedIn: item.is_checked_in || false,
+      }));
+      setReservations(formatted);
+    } else {
+      setReservations(INITIAL_RESERVATIONS);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchReservations();
+  }, [productionId]);
 
   const formatTel = (tel, isRevealed) => {
     if (!tel) return '';
@@ -72,34 +110,20 @@ export default function TabletReception({ onBackToAdmin }) {
     return `${parts[0]}-****-${parts[2]}`;
   };
 
-  const handleTogglePaid = (id) => {
+  // 2. 精算完了 (UPDATE)
+  const handleTogglePaid = async (id) => {
     setReservations(prev => prev.map(r => r.id === id ? { ...r, isPaid: true } : r));
     if (selectedUser) setSelectedUser(prev => ({ ...prev, isPaid: true }));
+
+    await supabase.from('reservations').update({ is_paid: true }).eq('id', id);
   };
 
-  const handlePaySetTogether = (id) => {
-    setReservations(prev => prev.map(r => r.id === id ? { ...r, isPaidCurrent: true, isPaidNext: true } : r));
-    if (selectedUser) setSelectedUser(prev => ({ ...prev, isPaidCurrent: true, isPaidNext: true }));
-  };
-
-  const handlePaySetCurrent = (id) => {
-    setReservations(prev => prev.map(r => r.id === id ? { ...r, isPaidCurrent: true } : r));
-    if (selectedUser) setSelectedUser(prev => ({ ...prev, isPaidCurrent: true }));
-  };
-
-  const handlePaySetNext = (id) => {
-    setReservations(prev => prev.map(r => r.id === id ? { ...r, isPaidNext: true } : r));
-    if (selectedUser) setSelectedUser(prev => ({ ...prev, isPaidNext: true }));
-  };
-
-  const handleSetPaymentMode = (id, mode) => {
-    setReservations(prev => prev.map(r => r.id === id ? { ...r, paymentMode: mode } : r));
-    if (selectedUser) setSelectedUser(prev => ({ ...prev, paymentMode: mode }));
-  };
-
-  const handleCheckIn = (id) => {
+  // 3. チェックイン完了 (UPDATE)
+  const handleCheckIn = async (id) => {
     setReservations(prev => prev.map(r => r.id === id ? { ...r, isCheckedIn: true } : r));
     setSelectedUser(null);
+
+    await supabase.from('reservations').update({ is_checked_in: true }).eq('id', id);
   };
 
   const matchesSearch = (r) => {
@@ -230,12 +254,14 @@ export default function TabletReception({ onBackToAdmin }) {
         .pay-btn:hover:not(:disabled), .checkin-btn:hover { filter: brightness(1.08); }
       `}</style>
 
-      {/* トップヘッダー（予約一覧に戻るボタン） */}
+      {/* トップヘッダー */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <button onClick={onBackToAdmin} className="back-btn" style={{ padding: 0 }}>
           <ArrowLeft size={16} /> 制作・予約一覧へ戻る
         </button>
-        <span style={{ fontSize: '12px', color: COLORS.gold, fontWeight: 700 }}>📱 当日受付タブレットUI</span>
+        <span style={{ fontSize: '12px', color: COLORS.gold, fontWeight: 700 }}>
+          📱 当日受付タブレットUI {loading && '(同期中...)'}
+        </span>
       </div>
 
       {screen === 'search' && (
@@ -382,88 +408,61 @@ export default function TabletReception({ onBackToAdmin }) {
               <h2 style={{ margin: 0, fontFamily: "'Shippori Mincho', serif", fontSize: '24px' }}>{selectedUser.name} 様</h2>
             </div>
             <div style={{ color: COLORS.muted, fontSize: '13px', marginBottom: '18px' }}>
-              {selectedUser.showTime} 回{selectedUser.isSet ? '（セットチケット）' : ''}
+              {selectedUser.showTime} 回
             </div>
 
-            {!selectedUser.isSet ? (
-              <>
-                <div style={{ fontSize: '11px', letterSpacing: '0.1em', color: COLORS.gold, fontWeight: 700, marginBottom: '8px' }}>内訳</div>
-                <div style={{ marginBottom: '10px' }}>
-                  {selectedUser.items && selectedUser.items.map((it, idx) => (
-                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: COLORS.text, padding: '6px 0' }}>
-                      <span>{it.name} × {it.count}枚</span>
-                      <span style={{ color: COLORS.muted }}>{it.unitPrice.toLocaleString()} × {it.count} = {(it.unitPrice * it.count).toLocaleString()}</span>
-                    </div>
-                  ))}
+            <div style={{ fontSize: '11px', letterSpacing: '0.1em', color: COLORS.gold, fontWeight: 700, marginBottom: '8px' }}>内訳</div>
+            <div style={{ marginBottom: '10px' }}>
+              {selectedUser.items && selectedUser.items.map((it, idx) => (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: COLORS.text, padding: '6px 0' }}>
+                  <span>{it.name} × {it.count}枚</span>
+                  <span style={{ color: COLORS.muted }}>{it.unitPrice.toLocaleString()} × {it.count} = {(it.unitPrice * it.count).toLocaleString()}</span>
                 </div>
+              ))}
+            </div>
 
-                <div style={{ borderBottom: `1px dashed ${COLORS.border}`, margin: '10px 0' }} />
+            <div style={{ borderBottom: `1px dashed ${COLORS.border}`, margin: '10px 0' }} />
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '14px', color: COLORS.muted }}>合計</span>
-                  <span style={{ fontSize: '26px', fontWeight: 700, color: COLORS.gold, fontFamily: "'Shippori Mincho', serif" }}>
-                    ¥{itemsTotal(selectedUser.items).toLocaleString()}
-                  </span>
-                </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
+              <span style={{ fontSize: '14px', color: COLORS.muted }}>合計</span>
+              <span style={{ fontSize: '26px', fontWeight: 700, color: COLORS.gold, fontFamily: "'Shippori Mincho', serif" }}>
+                ¥{itemsTotal(selectedUser.items).toLocaleString()}
+              </span>
+            </div>
 
-                {selectedUser.isPaid && (
-                  <div style={{ display: 'inline-block', marginTop: '6px', fontSize: '11px', color: COLORS.success, backgroundColor: 'rgba(31,154,86,0.1)', padding: '3px 10px', borderRadius: '999px', fontWeight: 700 }}>
-                    事前決済完了
-                  </div>
-                )}
-
-                <div style={{ borderBottom: `1px dashed ${COLORS.border}`, margin: '18px 0' }} />
-
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <button
-                    disabled={selectedUser.isPaid}
-                    onClick={() => handleTogglePaid(selectedUser.id)}
-                    className="pay-btn"
-                    style={{
-                      backgroundColor: selectedUser.isPaid ? '#f0ece2' : COLORS.gold,
-                      color: selectedUser.isPaid ? COLORS.muted : '#ffffff',
-                      cursor: selectedUser.isPaid ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {selectedUser.isPaid ? '精算済み' : '精算する'}
-                  </button>
-
-                  <button
-                    onClick={() => handleCheckIn(selectedUser.id)}
-                    className="checkin-btn"
-                    style={{
-                      backgroundColor: selectedUser.isCheckedIn ? COLORS.success : COLORS.indigo,
-                      color: '#ffffff',
-                    }}
-                  >
-                    {selectedUser.isCheckedIn ? '入場済み' : 'チェックイン完了'}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                {/* セットチケット処理 */}
-                <div style={{ fontSize: '11px', letterSpacing: '0.1em', color: COLORS.gold, fontWeight: 700, marginBottom: '8px' }}>今回分の内訳</div>
-                <div style={{ marginBottom: '14px' }}>
-                  {selectedUser.items && selectedUser.items.map((it, idx) => (
-                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', padding: '5px 0' }}>
-                      <span>{it.name} × {it.count}枚</span>
-                      <span style={{ color: COLORS.muted }}>{it.unitPrice.toLocaleString()} × {it.count} = {(it.unitPrice * it.count).toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-                  <button
-                    onClick={() => handleCheckIn(selectedUser.id)}
-                    className="checkin-btn"
-                    style={{ width: '100%', backgroundColor: selectedUser.isCheckedIn ? COLORS.success : COLORS.indigo, color: '#ffffff' }}
-                  >
-                    {selectedUser.isCheckedIn ? '入場済み' : 'チェックイン完了（今回来場分）'}
-                  </button>
-                </div>
-              </>
+            {selectedUser.isPaid && (
+              <div style={{ display: 'inline-block', marginTop: '6px', fontSize: '11px', color: COLORS.success, backgroundColor: 'rgba(31,154,86,0.1)', padding: '3px 10px', borderRadius: '999px', fontWeight: 700 }}>
+                事前決済完了
+              </div>
             )}
+
+            <div style={{ borderBottom: `1px dashed ${COLORS.border}`, margin: '18px 0' }} />
+
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                disabled={selectedUser.isPaid}
+                onClick={() => handleTogglePaid(selectedUser.id)}
+                className="pay-btn"
+                style={{
+                  backgroundColor: selectedUser.isPaid ? '#f0ece2' : COLORS.gold,
+                  color: selectedUser.isPaid ? COLORS.muted : '#ffffff',
+                  cursor: selectedUser.isPaid ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {selectedUser.isPaid ? '精算済み' : '精算する'}
+              </button>
+
+              <button
+                onClick={() => handleCheckIn(selectedUser.id)}
+                className="checkin-btn"
+                style={{
+                  backgroundColor: selectedUser.isCheckedIn ? COLORS.success : COLORS.indigo,
+                  color: '#ffffff',
+                }}
+              >
+                {selectedUser.isCheckedIn ? '入場済み' : 'チェックイン完了'}
+              </button>
+            </div>
           </div>
         </div>
       )}

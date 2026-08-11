@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Mail, MessageSquare, Send, Plus, Save, Trash2, Users, CheckCircle } from 'lucide-react';
+import { supabase } from './supabaseClient'; // ⭐ Supabaseクライアントをインポート
 
 const COLORS = {
   bg: '#faf5ea',
@@ -14,9 +15,11 @@ const COLORS = {
   indigo: '#5457d6'
 };
 
-export default function AdminMessageSettings({ onBack }) {
+export default function AdminMessageSettings({ productionId, onBack }) {
   const [notificationEmail, setNotificationEmail] = useState('info@office-knight.com');
   const [mode, setMode] = useState('auto'); // 'auto' (自動送信) | 'broadcast' (一斉送信)
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // 1. 自動通知テンプレート（自由に追加・削除可能）
   const [autoTemplates, setAutoTemplates] = useState([
@@ -43,10 +46,33 @@ export default function AdminMessageSettings({ onBack }) {
   const [activeTabId, setActiveTabId] = useState('completion');
 
   // 2. 自由な一斉送信用のstate
-  const [broadcastTarget, setBroadcastTarget] = useState('all'); // 'all' | '2026-08-01_1500' | 'unpaid'
+  const [broadcastTarget, setBroadcastTarget] = useState('all');
   const [broadcastTitle, setBroadcastTitle] = useState('');
   const [broadcastMessage, setBroadcastMessage] = useState('');
   const [broadcastSent, setBroadcastSent] = useState(false);
+
+  // Supabaseから通知設定を取得
+  const fetchSettings = async () => {
+    setLoading(true);
+    let query = supabase.from('notification_settings').select('*');
+
+    if (productionId) {
+      query = query.eq('production_id', productionId);
+    }
+
+    const { data, error } = await query;
+
+    if (!error && data && data.length > 0) {
+      const s = data[0];
+      if (s.notification_email) setNotificationEmail(s.notification_email);
+      if (s.templates && Array.isArray(s.templates)) setAutoTemplates(s.templates);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchSettings();
+  }, [productionId]);
 
   // 現在選択中の自動テンプレート
   const currentTemplate = autoTemplates.find(t => t.id === activeTabId) || autoTemplates[0];
@@ -54,6 +80,28 @@ export default function AdminMessageSettings({ onBack }) {
   // 自動テンプレートの更新
   const handleUpdateTemplateContent = (text) => {
     setAutoTemplates(prev => prev.map(t => t.id === activeTabId ? { ...t, content: text } : t));
+  };
+
+  // Supabaseへ設定を保存 (UPSERT)
+  const handleSaveSettings = async () => {
+    setSaving(true);
+    const payload = {
+      production_id: productionId,
+      notification_email: notificationEmail,
+      templates: autoTemplates,
+    };
+
+    const { error } = await supabase
+      .from('notification_settings')
+      .upsert([payload], { onConflict: 'production_id' });
+
+    setSaving(false);
+
+    if (error) {
+      alert('保存に失敗しました: ' + error.message);
+    } else {
+      alert('通知設定をSupabaseに保存しました！');
+    }
   };
 
   // 自動テンプレートの追加
@@ -85,32 +133,48 @@ export default function AdminMessageSettings({ onBack }) {
     }
   };
 
-  // 変数タグ挿入（自動通知用）
   const handleInsertTagAuto = (tag) => {
     handleUpdateTemplateContent(currentTemplate.content + ` ${tag} `);
   };
 
-  // 変数タグ挿入（一斉送信用）
   const handleInsertTagBroadcast = (tag) => {
     setBroadcastMessage(prev => prev + ` ${tag} `);
   };
 
   // 一斉送信実行処理
-  const handleSendBroadcast = () => {
+  const handleSendBroadcast = async () => {
     if (!broadcastTitle.trim() || !broadcastMessage.trim()) {
       alert('件名と本文の両方を入力してください');
       return;
     }
     if (window.confirm('選択したお客様全員へメッセージを一斉送信します。よろしいですか？')) {
       setBroadcastSent(true);
+
+      // 一斉送信の送信ログをSupabaseに記録
+      await supabase.from('broadcast_logs').insert([{
+        production_id: productionId,
+        target: broadcastTarget,
+        title: broadcastTitle,
+        message: broadcastMessage,
+        created_at: new Date().toISOString()
+      }]);
+
       setTimeout(() => {
         setBroadcastSent(false);
         setBroadcastTitle('');
         setBroadcastMessage('');
         alert('一斉送信が完了しました！');
-      }, 1500);
+      }, 1200);
     }
   };
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        通知設定を読み込み中...
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '24px', boxSizing: 'border-box' }}>
@@ -239,7 +303,7 @@ export default function AdminMessageSettings({ onBack }) {
           <div style={{ width: '80px' }} />
         </div>
 
-        {/* モード切替（①自動送信設定 ⇄ ②自由な一斉送信） */}
+        {/* モード切替 */}
         <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
           <button 
             onClick={() => setMode('auto')} 
@@ -255,7 +319,7 @@ export default function AdminMessageSettings({ onBack }) {
           </button>
         </div>
 
-        {/* 制作通知用メールアドレス（共通設定） */}
+        {/* 制作通知用メールアドレス */}
         <div className="form-card">
           <h3 style={{ margin: '0 0 6px 0', fontSize: '15px', color: COLORS.gold, fontFamily: "'Shippori Mincho', serif", display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700 }}>
             <Mail size={18} /> 制作通知用メールアドレス
@@ -286,7 +350,7 @@ export default function AdminMessageSettings({ onBack }) {
               </button>
             </div>
 
-            {/* タブ切り替え（横スクロール対応） */}
+            {/* タブ切り替え */}
             <div style={{ display: 'flex', borderBottom: `1px solid ${COLORS.border}`, marginBottom: '18px', overflowX: 'auto' }}>
               {autoTemplates.map(t => (
                 <button
@@ -349,8 +413,8 @@ export default function AdminMessageSettings({ onBack }) {
                   <Trash2 size={16} />
                 </button>
               )}
-              <button onClick={() => alert('通知設定を保存しました')} className="btn-gold" style={{ flex: 1 }}>
-                <Save size={16} /> 設定を保存する
+              <button onClick={handleSaveSettings} disabled={saving} className="btn-gold" style={{ flex: 1 }}>
+                <Save size={16} /> {saving ? '保存中...' : '設定を保存する'}
               </button>
             </div>
 
@@ -367,7 +431,7 @@ export default function AdminMessageSettings({ onBack }) {
               公演直前のお知らせ（開場時間変更や悪天候案内）、終演後のお礼メールなどを一括送信できます。
             </p>
 
-            {/* 送信対象の絞り込み */}
+            {/* 送信対象 */}
             <div style={{ marginBottom: '16px' }}>
               <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <Users size={14} /> 送信対象エリアの選択
