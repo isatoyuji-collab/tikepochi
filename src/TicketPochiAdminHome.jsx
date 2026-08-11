@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { Plus, ChevronRight, Building2, X } from 'lucide-react';
+import { Plus, ChevronRight, X } from 'lucide-react';
 
 const COLORS = {
   bg: '#faf5ea',
@@ -19,9 +19,9 @@ export default function TicketPochiAdminHome({ onNavigate, user, org }) {
 
   // モーダル用state
   const [showModal, setShowModal] = useState(false);
-  const [crown, setCrown] = useState(''); // 冠（例: officeKnightプロデュース公演vol.3）
-  const [title, setTitle] = useState(''); // メインタイトル（例: あなたとコンビ、に）
-  const [subtitle, setSubtitle] = useState(''); // サブタイトル・煽り文（例: 秋の大笑会-ダイエンカイ-）
+  const [crown, setCrown] = useState(''); 
+  const [title, setTitle] = useState(''); 
+  const [subtitle, setSubtitle] = useState(''); 
   const [creating, setCreating] = useState(false);
 
   const fetchProductions = async () => {
@@ -50,7 +50,7 @@ export default function TicketPochiAdminHome({ onNavigate, user, org }) {
     fetchProductions();
   }, [org]);
 
-  // 新規公演作成実行
+  // 新規公演作成実行（SQLエラーを防ぐためtitleとsubtitleのみ送信）
   const handleCreateNewProduction = async (e) => {
     e.preventDefault();
     if (!title.trim()) return;
@@ -193,7 +193,7 @@ export default function TicketPochiAdminHome({ onNavigate, user, org }) {
               {p.title}
             </button>
           ))}
-          <button onClick={() => setShowModal(true)} className="btn-add">
+          <button type="button" onClick={() => setShowModal(true)} className="btn-add">
             <Plus size={15} /> 新規公演を追加
           </button>
         </div>
@@ -205,7 +205,7 @@ export default function TicketPochiAdminHome({ onNavigate, user, org }) {
             <p style={{ fontSize: '13px', color: COLORS.muted, marginBottom: '20px' }}>
               「新規公演を追加」ボタンを押して、最初の公演を作成してください。
             </p>
-            <button onClick={() => setShowModal(true)} className="btn-add" style={{ margin: '0 auto', padding: '12px 24px', fontSize: '14px', backgroundColor: COLORS.gold, color: '#fff', borderStyle: 'solid' }}>
+            <button type="button" onClick={() => setShowModal(true)} className="btn-add" style={{ margin: '0 auto', padding: '12px 24px', fontSize: '14px', backgroundColor: COLORS.gold, color: '#fff', borderStyle: 'solid' }}>
               <Plus size={18} /> 最初の公演をつくる
             </button>
           </div>
@@ -294,7 +294,7 @@ export default function TicketPochiAdminHome({ onNavigate, user, org }) {
       {showModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
           <div style={{ width: '100%', maxWidth: '480px', backgroundColor: COLORS.surface, borderRadius: '18px', padding: '28px', border: `1px solid ${COLORS.border}`, boxShadow: '0 10px 30px rgba(0,0,0,0.15)', position: 'relative' }}>
-            <button onClick={() => setShowModal(false)} style={{ position: 'absolute', top: '16px', right: '16px', background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}>
+            <button type="button" onClick={() => setShowModal(false)} style={{ position: 'absolute', top: '16px', right: '16px', background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}>
               <X size={20} />
             </button>
 
@@ -308,13 +308,13 @@ export default function TicketPochiAdminHome({ onNavigate, user, org }) {
               </label>
               <input
                 type="text"
-                placeholder="例: officeKnightプロデュース公演vol.3"
+                placeholder="例: officeKnightプロデュース公演vol.3＆vol.3.5"
                 value={crown}
                 onChange={(e) => setCrown(e.target.value)}
                 className="modal-input"
               />
 
-              <label style={{ fontSize: '12px', fontWeight 700, color: COLORS.gold }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold }}>
                 ② メインタイトル（必須）
               </label>
               <input
@@ -326,7 +326,7 @@ export default function TicketPochiAdminHome({ onNavigate, user, org }) {
                 className="modal-input"
               />
 
-              <label style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold }}>
+              <label style={{ fontSize: '12px', fontWeight 700, color: COLORS.gold }}>
                 ③ サブタイトル・煽り文言（任意）
               </label>
               <input

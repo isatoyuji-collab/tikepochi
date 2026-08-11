@@ -23,19 +23,16 @@ export default function App() {
   const [currentView, setCurrentView] = useState('home');
   const [selectedProductionId, setSelectedProductionId] = useState(null);
 
-  // 所属劇団の取得（エラーで止まらない安全な記述）
   const fetchUserOrganization = async (userId) => {
     setCheckingOrg(true);
     try {
-      // 1. まずメンバー情報を取得
-      const { data: memberData, error: memberError } = await supabase
+      const { data: memberData } = await supabase
         .from('organization_members')
         .select('organization_id, role')
         .eq('user_id', userId)
         .maybeSingle();
 
       if (memberData && memberData.organization_id) {
-        // 2. 劇団名を取得
         const { data: orgData } = await supabase
           .from('organizations')
           .select('id, name')
@@ -105,12 +102,10 @@ export default function App() {
     );
   }
 
-  // 1. 未ログインの場合 ➔ ログイン画面
   if (!session) {
     return <Login onLoginSuccess={() => setLoading(true)} />;
   }
 
-  // 2. 劇団未登録の場合 ➔ 初回オンボーディング（劇団名入力画面）
   if (!currentOrg) {
     return (
       <Onboarding
@@ -123,7 +118,6 @@ export default function App() {
     );
   }
 
-  // 3. ログイン＆劇団登録済み ➔ 管理画面
   const renderView = () => {
     switch (currentView) {
       case 'home':
