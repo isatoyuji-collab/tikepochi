@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from './supabaseClient';
-import { LogIn, UserPlus, Mail, Lock, Sparkles } from 'lucide-react';
+import { LogIn, UserPlus, Mail, Lock, Eye, EyeOff, Sparkles } from 'lucide-react';
 
 const COLORS = {
   bg: '#faf5ea',
@@ -17,6 +17,8 @@ export default function Login({ onLoginSuccess }) {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState(''); // パスワード再入力用
+  const [showPassword, setShowPassword] = useState(false); // パスワード表示トグル
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [infoMsg, setInfoMsg] = useState('');
@@ -28,6 +30,13 @@ export default function Login({ onLoginSuccess }) {
     setInfoMsg('');
 
     if (isSignUp) {
+      // パスワードの一致チェック
+      if (password !== confirmPassword) {
+        setErrorMsg('パスワードと確認用パスワードが一致していません。');
+        setLoading(false);
+        return;
+      }
+
       // 新規ユーザー登録
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -36,8 +45,11 @@ export default function Login({ onLoginSuccess }) {
 
       if (error) {
         setErrorMsg(error.message);
+      } else if (data.session) {
+        onLoginSuccess(data.session.user);
       } else {
-        setInfoMsg('確認メールを送信しました。メール内のリンクをクリックして登録を完了してください。');
+        setInfoMsg('登録が完了しました！ログインしてください。');
+        setIsSignUp(false);
       }
     } else {
       // ログイン
@@ -58,7 +70,7 @@ export default function Login({ onLoginSuccess }) {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', boxSizing: 'border-box' }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku Gothic New:wght@400;500;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap');
 
         .auth-card {
           width: 100%;
@@ -78,7 +90,7 @@ export default function Login({ onLoginSuccess }) {
 
         .auth-input {
           width: 100%;
-          padding: 12px 14px 12px 42px;
+          padding: 12px 42px 12px 42px;
           border-radius: 10px;
           border: 1px solid ${COLORS.border};
           background-color: ${COLORS.surface};
@@ -88,6 +100,21 @@ export default function Login({ onLoginSuccess }) {
           box-sizing: border-box;
         }
         .auth-input:focus { outline: none; border-color: ${COLORS.gold}; }
+
+        .eye-toggle-btn {
+          position: absolute;
+          right: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: none;
+          border: none;
+          color: ${COLORS.muted};
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          padding: 4px;
+        }
+        .eye-toggle-btn:hover { color: ${COLORS.gold}; }
 
         .btn-gold {
           width: 100%;
@@ -112,7 +139,6 @@ export default function Login({ onLoginSuccess }) {
         .toggle-btn {
           background: none;
           border: none;
-          color: COLORS.gold;
           color: ${COLORS.gold};
           font-size: 13px;
           font-weight: 700;
@@ -159,10 +185,11 @@ export default function Login({ onLoginSuccess }) {
             />
           </div>
 
+          {/* パスワード入力欄（目のマークで伏せ字切替） */}
           <div className="input-group">
             <Lock size={18} color={COLORS.gold} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
             <input
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               required
               minLength={6}
               placeholder="パスワード（6文字以上）"
@@ -170,7 +197,31 @@ export default function Login({ onLoginSuccess }) {
               onChange={(e) => setPassword(e.target.value)}
               className="auth-input"
             />
+            <button
+              type="button"
+              className="eye-toggle-btn"
+              onClick={() => setShowPassword(!showPassword)}
+              title={showPassword ? 'パスワードを隠す' : 'パスワードを表示する'}
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
           </div>
+
+          {/* 新規登録時のみ：パスワード確認用入力欄 */}
+          {isSignUp && (
+            <div className="input-group">
+              <Lock size={18} color={COLORS.gold} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                minLength={6}
+                placeholder="パスワード（確認のためもう一度入力）"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="auth-input"
+              />
+            </div>
+          )}
 
           <button type="submit" disabled={loading} className="btn-gold" style={{ marginTop: '8px' }}>
             {isSignUp ? <UserPlus size={18} /> : <LogIn size={18} />}
@@ -178,7 +229,7 @@ export default function Login({ onLoginSuccess }) {
           </button>
         </form>
 
-        <button onClick={() => { setIsSignUp(!isSignUp); setErrorMsg(''); setInfoMsg(''); }} className="toggle-btn">
+        <button onClick={() => { setIsSignUp(!isSignUp); setErrorMsg(''); setInfoMsg(''); setPassword(''); setConfirmPassword(''); }} className="toggle-btn">
           {isSignUp ? 'すでに登録済みの方はこちら（ログイン）' : '新規登録（初めての方はこちら）'}
         </button>
       </div>
