@@ -17,35 +17,52 @@ import { LogOut, Building2 } from 'lucide-react';
 export default function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [currentOrg, setCurrentOrg] = useState(null); // 所属劇団データ
+  const [currentOrg, setCurrentOrg] = useState(null);
   const [checkingOrg, setCheckingOrg] = useState(true);
 
   const [currentView, setCurrentView] = useState('home');
   const [selectedProductionId, setSelectedProductionId] = useState(null);
 
-  // 所属劇団の取得
+  // 所属劇団の取得（エラーで止まらない安全な記述）
   const fetchUserOrganization = async (userId) => {
     setCheckingOrg(true);
-    const { data, error } = await supabase
-      .from('organization_members')
-      .select('organization_id, role, organizations(id, name)')
-      .eq('user_id', userId)
-      .single();
+    try {
+      // 1. まずメンバー情報を取得
+      const { data: memberData, error: memberError } = await supabase
+        .from('organization_members')
+        .select('organization_id, role')
+        .eq('user_id', userId)
+        .maybeSingle();
 
-    if (!error && data && data.organizations) {
-      setCurrentOrg({
-        id: data.organizations.id,
-        name: data.organizations.name,
-        role: data.role,
-      });
-    } else {
+      if (memberData && memberData.organization_id) {
+        // 2. 劇団名を取得
+        const { data: orgData } = await supabase
+          .from('organizations')
+          .select('id, name')
+          .eq('id', memberData.organization_id)
+          .maybeSingle();
+
+        if (orgData) {
+          setCurrentOrg({
+            id: orgData.id,
+            name: orgData.name,
+            role: memberData.role,
+          });
+        } else {
+          setCurrentOrg(null);
+        }
+      } else {
+        setCurrentOrg(null);
+      }
+    } catch (e) {
+      console.error('Organization fetch error:', e);
       setCurrentOrg(null);
+    } finally {
+      setCheckingOrg(false);
     }
-    setCheckingOrg(false);
   };
 
   useEffect(() => {
-    // セッション監視
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) {
@@ -143,7 +160,6 @@ export default function App() {
 
   return (
     <div style={{ position: 'relative' }}>
-      {/* 画面右下のログイン・所属劇団ステータスバー */}
       <div style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 9999, backgroundColor: '#ffffff', border: '1px solid rgba(201,121,31,0.22)', padding: '8px 14px', borderRadius: '30px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12px' }}>
         <span style={{ color: '#c9791f', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
           <Building2 size={13} /> {currentOrg.name} ({currentOrg.role === 'owner' ? '所有者' : 'メンバー'})
