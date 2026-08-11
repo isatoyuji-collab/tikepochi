@@ -4,17 +4,17 @@ import {
   ChevronRight, ChevronDown, Tablet, ClipboardList, CreditCard, Plus,
 } from 'lucide-react';
 import { COLORS, PRODUCTION_ACCENTS, FONTS, RADIUS } from './theme';
+import { supabase } from './supabaseClient'; // ⭐ Supabaseクライアントを読み込み
 
-// production ごとの識別色（office Knight 公演アプリ側の A=オレンジ／B=インディゴ と揃えてある）
-const PRODUCTIONS = [
+// 初期フォールバック用（DB未接続時・データ作成前）
+const DEFAULT_PRODUCTIONS = [
   {
     id: 'a',
     accent: PRODUCTION_ACCENTS.a,
     title: 'あなたと、コンビに',
     venue: '布施PEベース',
     dateLabel: '10/17（土）- 18（日）',
-    daysUntil: 12,
-    stats: { reserved: 214, goal: 400, todayCount: 18 },
+    goal: 400,
   },
   {
     id: 'b',
@@ -22,8 +22,7 @@ const PRODUCTIONS = [
     title: '形見',
     venue: 'ステージプラス天王寺',
     dateLabel: '10/31（金）- 11/1（土）',
-    daysUntil: 26,
-    stats: { reserved: 96, goal: 400, todayCount: 5 },
+    goal: 400,
   },
 ];
 
@@ -57,7 +56,11 @@ const NAV_SECTIONS = [
 const HERO_STORAGE_KEY = 'tp_hero_open';
 
 export default function TicketPochiAdminHome({ onNavigate = (view) => console.log('navigate:', view) }) {
-  const [productionId, setProductionId] = useState(PRODUCTIONS[0].id);
+  const [productions, setProductions] = useState(DEFAULT_PRODUCTIONS);
+  const [selectedProdId, setSelectedProdId] = useState(DEFAULT_PRODUCTIONS[0].id);
+  const [stats, setStats] = useState({ reserved: 0, todayCount: 0 });
+  const [loading, setLoading] = useState(true);
+
   const [heroOpen, setHeroOpen] = useState(() => {
     try {
       return localStorage.getItem(HERO_STORAGE_KEY) === 'true';
@@ -70,13 +73,65 @@ export default function TicketPochiAdminHome({ onNavigate = (view) => console.lo
     try {
       localStorage.setItem(HERO_STORAGE_KEY, String(heroOpen));
     } catch {
-      // ローカルストレージが使えない環境では黙って諦める（開閉自体は動く）
+      // ローカルストレージが使えない環境のフォールバック
     }
   }, [heroOpen]);
 
-  const production = PRODUCTIONS.find((p) => p.id === productionId);
-  const { reserved, goal, todayCount } = production.stats;
-  const pct = Math.min(100, Math.round((reserved / goal) * 100));
+  // 1. Supabaseから公演一覧を取得
+  useEffect(() => {
+    async function loadProductions() {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('productions')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (!error && data && data.length > 0) {
+        const formatted = data.map((item, idx) => ({
+          id: item.id,
+          accent: idx % 2 === 0 ? PRODUCTION_ACCENTS.a : PRODUCTION_ACCENTS.b,
+          title: item.title,
+          venue: item.venue_name || '未定',
+          dateLabel: '日程設定中',
+          goal: 400,
+        }));
+        setProductions(formatted);
+        setSelectedProdId(formatted[0].id);
+      }
+      setLoading(false);
+    }
+    loadProductions();
+  }, []);
+
+  // 2. 選択された公演のリアルタイム動員数をSupabaseから集計
+  useEffect(() => {
+    async function loadStats() {
+      if (!selectedProdId) return;
+
+      // 予約テーブル（reservations）から該当公演のデータを取得
+      const { data, error } = await supabase
+        .from('reservations')
+        .select('ticket_count, created_at')
+        .eq('production_id', selectedProdId);
+
+      if (!error && data) {
+        const totalReserved = data.reduce((sum, item) => sum + (item.ticket_count || 1), 0);
+        
+        // 今日の新規予約件数をカウント
+        const todayStr = new Date().toISOString().split('T')[0];
+        const todayCount = data.filter((item) => item.created_at && item.created_at.startsWith(todayStr)).length;
+
+        setStats({ reserved: totalReserved, todayCount });
+      } else {
+        setStats({ reserved: 0, todayCount: 0 });
+      }
+    }
+    loadStats();
+  }, [selectedProdId]);
+
+  const currentProduction = productions.find((p) => p.id === selectedProdId) || productions[0];
+  const goal = currentProduction.goal || 400;
+  const pct = Math.min(100, Math.round((stats.reserved / goal) * 100));
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: FONTS.body }}>
@@ -92,7 +147,7 @@ export default function TicketPochiAdminHome({ onNavigate = (view) => console.lo
           font-size: clamp(24px, 5vw, 34px); margin: 6px 0 4px; line-height: 1.3; }
         .tp-meta { font-size: 13px; color: ${COLORS.muted}; }
 
-        /* 公演切替タブ（背景色なしのヘッダー用） */
+        /* 公演切替タブ */
         .tp-switcher { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
         .tp-tab {
           display: inline-flex; align-items: center; gap: 8px;
@@ -195,18 +250,18 @@ export default function TicketPochiAdminHome({ onNavigate = (view) => console.lo
 
         <div className="tp-header">
           <span className="tp-eyebrow">OFFICE KNIGHT</span>
-          <h1 className="tp-title">{production.title}</h1>
-          <div className="tp-meta">{production.venue}・{production.dateLabel}</div>
+          <h1 className="tp-title">{currentProduction.title}</h1>
+          <div className="tp-meta">{currentProduction.venue}・{currentProduction.dateLabel}</div>
 
           <div className="tp-switcher">
-            {PRODUCTIONS.map((p, i) => (
+            {productions.map((p, i) => (
               <div
                 key={p.id}
-                className={`tp-tab ${p.id === productionId ? 'active' : ''}`}
+                className={`tp-tab ${p.id === selectedProdId ? 'active' : ''}`}
                 role="button"
                 tabIndex={0}
-                onClick={() => setProductionId(p.id)}
-                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setProductionId(p.id)}
+                onClick={() => setSelectedProdId(p.id)}
+                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setSelectedProdId(p.id)}
               >
                 <span className="tp-tab-dot" style={{ background: p.accent }} />
                 {String.fromCharCode(65 + i)}公演・{p.title}
@@ -216,8 +271,8 @@ export default function TicketPochiAdminHome({ onNavigate = (view) => console.lo
               className="tp-tab tp-tab-add"
               role="button"
               tabIndex={0}
-              onClick={() => onNavigate('new-production')}
-              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onNavigate('new-production')}
+              onClick={() => onNavigate('info')}
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onNavigate('info')}
             >
               <Plus size={14} />
               新規公演を追加
@@ -236,19 +291,16 @@ export default function TicketPochiAdminHome({ onNavigate = (view) => console.lo
           >
             <div className="tp-hero-bar-left">
               <span className="tp-hero-label">予約状況</span>
-              <span className="tp-hero-num-compact">{reserved}<span>/ {goal}人</span></span>
+              <span className="tp-hero-num-compact">{stats.reserved}<span>/ {goal}人</span></span>
             </div>
             <ChevronDown size={20} className={`tp-chevron ${heroOpen ? 'open' : ''}`} />
           </div>
 
           {heroOpen && (
             <div className="tp-hero-detail">
-              <div className="tp-hero-row">
-                <div className="tp-hero-badge">初日まで あと{production.daysUntil}日</div>
-              </div>
               <div className="tp-gauge-track"><div className="tp-gauge-fill" style={{ width: `${pct}%` }} /></div>
               <div className="tp-hero-foot">
-                <span>動員 {pct}%・今日の新規予約 {todayCount}件</span>
+                <span>動員 {pct}%・今日の新規予約 {stats.todayCount}件</span>
                 <button className="tp-hero-link" onClick={() => onNavigate('reservations')}>
                   予約一覧を見る →
                 </button>
