@@ -50,7 +50,7 @@ export default function TicketPochiAdminHome({ onNavigate, user, org }) {
     fetchProductions();
   }, [org]);
 
-  // 新規公演作成実行（SQLエラーを防ぐためtitleとsubtitleのみ送信）
+  // 新規公演作成実行
   const handleCreateNewProduction = async (e) => {
     e.preventDefault();
     if (!title.trim()) return;
@@ -326,7 +326,7 @@ export default function TicketPochiAdminHome({ onNavigate, user, org }) {
                 className="modal-input"
               />
 
-              <label style={{ fontSize: '12px', fontWeight 700, color: COLORS.gold }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold }}>
                 ③ サブタイトル・煽り文言（任意）
               </label>
               <input
