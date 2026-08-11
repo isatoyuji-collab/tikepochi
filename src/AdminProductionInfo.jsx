@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, X, ChevronDown, ChevronUp, MapPin, Copy, Check } from 'lucide-react';
+import { supabase } from './supabaseClient'; // ⭐ Supabaseクライアントをインポート
 
-// 会場マスタの初期サンプル（Supabase venuesテーブル想定）
 const INITIAL_VENUES = [
   { id: 1, name: '近鉄アート館', address: '大阪府大阪市阿倍野区阿倍野筋1-1-43' },
   { id: 2, name: 'HEP HALL', address: '大阪府大阪市北区角田町5-15' },
   { id: 3, name: '扇町ミュージアムキューブ', address: '大阪府大阪市北区南扇町6-26' },
+  { id: 4, name: '布施PEベース', address: '大阪府東大阪市足代新町4-12' },
 ];
 
 const COLORS = {
@@ -19,21 +20,98 @@ const COLORS = {
   success: '#1f9a56',
 };
 
-export default function AdminProductionInfo({ onBack }) {
-  const [title, setTitle] = useState('office Knight 第12回本公演「タイトル」');
-  const [mainTitle, setMainTitle] = useState('熱き想いが交差する、小劇場サスペンスの最高峰。');
+export default function AdminProductionInfo({ productionId, onBack }) {
+  const [currentProdId, setCurrentProdId] = useState(productionId);
+  const [title, setTitle] = useState('');
+  const [mainTitle, setMainTitle] = useState('');
   const [teamTags, setTeamTags] = useState(['Aチーム', 'Bチーム']);
   const [newTagInput, setNewTagInput] = useState('');
 
   const [venues, setVenues] = useState(INITIAL_VENUES);
-  const [selectedVenueId, setSelectedVenueId] = useState(1);
-  const [venueInput, setVenueInput] = useState('近鉄アート館');
+  const [venueInput, setVenueInput] = useState('');
   const [showVenueDropdown, setShowVenueDropdown] = useState(false);
   const [isEditingVenue, setIsEditingVenue] = useState(false);
 
-  const [formUrl] = useState('https://tikepochi.com/r/office-knight-12');
+  const [formUrl, setFormUrl] = useState('');
   const [copied, setCopied] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // 1. Supabaseから現在の公演情報を取得
+  useEffect(() => {
+    async function fetchProduction() {
+      setLoading(true);
+      
+      let query = supabase.from('productions').select('*');
+      if (currentProdId) {
+        query = query.eq('id', currentProdId);
+      } else {
+        query = query.order('created_at', { ascending: true }).limit(1);
+      }
+
+      const { data, error } = await query;
+
+      if (!error && data && data.length > 0) {
+        const prod = data[0];
+        setCurrentProdId(prod.id);
+        setTitle(prod.title || '');
+        setMainTitle(prod.subtitle || '');
+        setVenueInput(prod.venue_name || '');
+        setFormUrl(`https://tikepochi.vercel.app/r/${prod.id}`);
+      } else {
+        // DBに未登録の場合の初期表示データ
+        setTitle('office Knight 第12回本公演「タイトル」');
+        setMainTitle('熱き想いが交差する、小劇場サスペンスの最高峰。');
+        setVenueInput('布施PEベース');
+      }
+      setLoading(false);
+    }
+
+    fetchProduction();
+  }, [currentProdId]);
+
+  // 2. Supabaseへの保存処理（UPDATE または INSERT）
+  const handleSave = async () => {
+    if (!title.trim()) {
+      alert('公演名を入力してください。');
+      return;
+    }
+
+    setSaving(true);
+    const payload = {
+      title: title.trim(),
+      subtitle: mainTitle.trim(),
+      venue_name: venueInput.trim(),
+    };
+
+    let result;
+    if (currentProdId) {
+      // 既存の公演を更新
+      result = await supabase
+        .from('productions')
+        .update(payload)
+        .eq('id', currentProdId);
+    } else {
+      // 新規公演を作成
+      result = await supabase
+        .from('productions')
+        .insert([payload])
+        .select();
+
+      if (result.data && result.data[0]) {
+        setCurrentProdId(result.data[0].id);
+      }
+    }
+
+    setSaving(false);
+
+    if (result.error) {
+      alert('保存に失敗しました: ' + result.error.message);
+    } else {
+      alert('公演基本情報をSupabaseに保存しました！');
+    }
+  };
 
   const handleAddTag = () => {
     if (newTagInput.trim() && !teamTags.includes(newTagInput.trim())) {
@@ -47,7 +125,6 @@ export default function AdminProductionInfo({ onBack }) {
   };
 
   const handleSelectVenue = (venue) => {
-    setSelectedVenueId(venue.id);
     setVenueInput(venue.name);
     setShowVenueDropdown(false);
     setIsEditingVenue(false);
@@ -56,12 +133,9 @@ export default function AdminProductionInfo({ onBack }) {
   const handleSaveVenue = () => {
     if (!venueInput.trim()) return;
     const existing = venues.find(v => v.name === venueInput.trim());
-    if (existing) {
-      setSelectedVenueId(existing.id);
-    } else {
+    if (!existing) {
       const newVenue = { id: Date.now(), name: venueInput.trim(), address: '' };
       setVenues([...venues, newVenue]);
-      setSelectedVenueId(newVenue.id);
     }
     setIsEditingVenue(false);
     setShowVenueDropdown(false);
@@ -72,6 +146,14 @@ export default function AdminProductionInfo({ onBack }) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        データを読み込み中...
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '24px', boxSizing: 'border-box' }}>
@@ -128,6 +210,7 @@ export default function AdminProductionInfo({ onBack }) {
         }
         .btn-gold:hover { filter: brightness(1.08); }
         .btn-gold:active { transform: scale(0.98); }
+        .btn-gold:disabled { opacity: 0.6; cursor: not-allowed; }
 
         .btn-outline {
           background-color: ${COLORS.surface};
@@ -168,13 +251,11 @@ export default function AdminProductionInfo({ onBack }) {
           <h1 style={{ fontSize: '18px', margin: 0, flex: 1, textAlign: 'center', fontFamily: "'Shippori Mincho', serif", color: COLORS.text, fontWeight: 700 }}>
             公演基本情報
           </h1>
-          <div style={{ width: '80px' }} /> {/* 中央寄せ用のダミー余白 */}
+          <div style={{ width: '80px' }} />
         </div>
 
-        {/* 常時表示エリア（基本情報） */}
+        {/* 基本情報入力カード */}
         <div className="form-card" style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          
-          {/* 公演名 */}
           <div>
             <label className="input-label">公演名（必須）</label>
             <input 
@@ -185,7 +266,6 @@ export default function AdminProductionInfo({ onBack }) {
             />
           </div>
 
-          {/* キャッチコピー */}
           <div>
             <label className="input-label" style={{ color: COLORS.text }}>メインタイトル・キャッチコピー（任意）</label>
             <textarea 
@@ -197,7 +277,6 @@ export default function AdminProductionInfo({ onBack }) {
             />
           </div>
 
-          {/* チームタグ */}
           <div>
             <label className="input-label" style={{ color: COLORS.text }}>チームタグ（Wキャスト・班設定）</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
@@ -228,10 +307,9 @@ export default function AdminProductionInfo({ onBack }) {
               </button>
             </div>
           </div>
-
         </div>
 
-        {/* 詳細設定エリア（アコーディオン） */}
+        {/* 詳細設定（アコーディオン） */}
         <div className="form-card" style={{ padding: 0, overflow: 'hidden' }}>
           <button
             onClick={() => setShowDetails(!showDetails)}
@@ -245,8 +323,6 @@ export default function AdminProductionInfo({ onBack }) {
 
           {showDetails && (
             <div style={{ padding: '20px', borderTop: `1px solid ${COLORS.border}`, display: 'flex', flexDirection: 'column', gap: '18px', backgroundColor: COLORS.surfaceAlt }}>
-              
-              {/* 会場選択 */}
               <div style={{ position: 'relative' }}>
                 <label className="input-label">会場名（オートコンプリート選択）</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -268,7 +344,6 @@ export default function AdminProductionInfo({ onBack }) {
                   )}
                 </div>
 
-                {/* 候補ドロップダウン */}
                 {showVenueDropdown && (
                   <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '10px', marginTop: '4px', zIndex: 100, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: '160px', overflowY: 'auto' }}>
                     {venues
@@ -295,31 +370,29 @@ export default function AdminProductionInfo({ onBack }) {
                 )}
               </div>
 
-              {/* 予約フォームURL */}
               <div>
                 <label className="input-label">専用予約フォームURL</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input 
                     type="text" 
                     readOnly 
-                    value={formUrl} 
+                    value={formUrl || '公演保存後にURLが生成されます'} 
                     className="text-input"
                     style={{ flex: 1, backgroundColor: COLORS.surface, color: COLORS.muted, fontSize: '13px' }}
                   />
-                  <button onClick={handleCopyUrl} className="btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <button onClick={handleCopyUrl} disabled={!formUrl} className="btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     {copied ? <Check size={14} color={COLORS.success} /> : <Copy size={14} />}
                     {copied ? '完了' : 'コピー'}
                   </button>
                 </div>
               </div>
-
             </div>
           )}
         </div>
 
         {/* 保存ボタン */}
-        <button onClick={() => alert('公演基本情報を保存しました')} className="btn-gold">
-          変更を保存する
+        <button onClick={handleSave} disabled={saving} className="btn-gold">
+          {saving ? 'Supabaseへ保存中...' : '変更を保存する'}
         </button>
 
       </div>
