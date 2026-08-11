@@ -1,340 +1,254 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Drama, Ticket, CalendarDays, Users, Mail, Armchair,
-  ChevronRight, ChevronDown, Tablet, ClipboardList, CreditCard, Plus,
-} from 'lucide-react';
-import { COLORS, PRODUCTION_ACCENTS, FONTS, RADIUS } from './theme';
-import { supabase } from './supabaseClient'; // ⭐ Supabaseクライアントを読み込み
+import { supabase } from './supabaseClient';
+import { Plus, Users, Ticket, Calendar, MapPin, Mail, Settings, ChevronRight, LogOut, Building2, CreditCard } from 'lucide-react';
 
-// 初期フォールバック用（DB未接続時・データ作成前）
-const DEFAULT_PRODUCTIONS = [
-  {
-    id: 'a',
-    accent: PRODUCTION_ACCENTS.a,
-    title: 'あなたと、コンビに',
-    venue: '布施PEベース',
-    dateLabel: '10/17（土）- 18（日）',
-    goal: 400,
-  },
-  {
-    id: 'b',
-    accent: PRODUCTION_ACCENTS.b,
-    title: '形見',
-    venue: 'ステージプラス天王寺',
-    dateLabel: '10/31（金）- 11/1（土）',
-    goal: 400,
-  },
-];
+const COLORS = {
+  bg: '#faf5ea',
+  surface: '#ffffff',
+  surfaceAlt: '#f7efe0',
+  border: 'rgba(201,121,31,0.22)',
+  gold: '#c9791f',
+  text: '#2b2438',
+  muted: '#8a8398',
+};
 
-const NAV_SECTIONS = [
-  {
-    label: '予約・当日運用',
-    items: [
-      { view: 'reservations', icon: ClipboardList, title: '予約一覧・動員状況', desc: '予約データの閲覧・編集・お礼メール' },
-      { view: 'tablet', icon: Tablet, title: '当日受付', desc: '50音検索・チェックイン・精算' },
-    ],
-  },
-  {
-    label: '公演の準備',
-    items: [
-      { view: 'info', icon: Drama, title: '公演基本情報', desc: '公演名・煽り文・会場設定' },
-      { view: 'tickets', icon: Ticket, title: '券種設定', desc: '券種・金額・セット割' },
-      { view: 'dates', icon: CalendarDays, title: '日程・キャパ管理', desc: 'ステージ増設・回ごとの定員' },
-      { view: 'seats', icon: Armchair, title: '指定席・会場マップ', desc: 'AI座席表解析・座席割当' },
-    ],
-  },
-  {
-    label: '人とお金',
-    items: [
-      { view: 'staff', icon: Users, title: 'スタッフ・キャスト', desc: 'メンバー招待・個別URL発行' },
-      { view: 'messages', icon: Mail, title: 'メール・LINE通知', desc: '予約完了文言・通知先設定' },
-      { view: 'payments', icon: CreditCard, title: '決済連携', desc: 'Stripe・PayPay・振込先' },
-    ],
-  },
-];
-
-const HERO_STORAGE_KEY = 'tp_hero_open';
-
-export default function TicketPochiAdminHome({ onNavigate = (view) => console.log('navigate:', view) }) {
-  const [productions, setProductions] = useState(DEFAULT_PRODUCTIONS);
-  const [selectedProdId, setSelectedProdId] = useState(DEFAULT_PRODUCTIONS[0].id);
-  const [stats, setStats] = useState({ reserved: 0, todayCount: 0 });
+export default function TicketPochiAdminHome({ onNavigate, user, org }) {
+  const [productions, setProductions] = useState([]);
+  const [selectedProdId, setSelectedProdId] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const [heroOpen, setHeroOpen] = useState(() => {
-    try {
-      return localStorage.getItem(HERO_STORAGE_KEY) === 'true';
-    } catch {
-      return false;
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(HERO_STORAGE_KEY, String(heroOpen));
-    } catch {
-      // ローカルストレージが使えない環境のフォールバック
-    }
-  }, [heroOpen]);
-
-  // 1. Supabaseから公演一覧を取得
-  useEffect(() => {
-    async function loadProductions() {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('productions')
-        .select('*')
-        .order('created_at', { ascending: true });
-
-      if (!error && data && data.length > 0) {
-        const formatted = data.map((item, idx) => ({
-          id: item.id,
-          accent: idx % 2 === 0 ? PRODUCTION_ACCENTS.a : PRODUCTION_ACCENTS.b,
-          title: item.title,
-          venue: item.venue_name || '未定',
-          dateLabel: '日程設定中',
-          goal: 400,
-        }));
-        setProductions(formatted);
-        setSelectedProdId(formatted[0].id);
-      }
+  // DBから所属劇団の公演一覧を取得
+  const fetchProductions = async () => {
+    setLoading(true);
+    if (!org?.id) {
       setLoading(false);
+      return;
     }
-    loadProductions();
-  }, []);
 
-  // 2. 選択された公演のリアルタイム動員数をSupabaseから集計
-  useEffect(() => {
-    async function loadStats() {
-      if (!selectedProdId) return;
+    const { data, error } = await supabase
+      .from('productions')
+      .select('*')
+      .eq('organization_id', org.id)
+      .order('created_at', { ascending: false });
 
-      // 予約テーブル（reservations）から該当公演のデータを取得
-      const { data, error } = await supabase
-        .from('reservations')
-        .select('ticket_count, created_at')
-        .eq('production_id', selectedProdId);
-
-      if (!error && data) {
-        const totalReserved = data.reduce((sum, item) => sum + (item.ticket_count || 1), 0);
-        
-        // 今日の新規予約件数をカウント
-        const todayStr = new Date().toISOString().split('T')[0];
-        const todayCount = data.filter((item) => item.created_at && item.created_at.startsWith(todayStr)).length;
-
-        setStats({ reserved: totalReserved, todayCount });
-      } else {
-        setStats({ reserved: 0, todayCount: 0 });
+    if (!error && data) {
+      setProductions(data);
+      if (data.length > 0) {
+        setSelectedProdId(data[0].id);
       }
     }
-    loadStats();
-  }, [selectedProdId]);
+    setLoading(false);
+  };
 
-  const currentProduction = productions.find((p) => p.id === selectedProdId) || productions[0];
-  const goal = currentProduction.goal || 400;
-  const pct = Math.min(100, Math.round((stats.reserved / goal) * 100));
+  useEffect(() => {
+    fetchProductions();
+  }, [org]);
+
+  // 新規公演の追加処理
+  const handleCreateNewProduction = async () => {
+    const title = prompt('新規公演のタイトルを入力してください（例: 第1回本公演『タイトル』）');
+    if (!title || !title.trim()) return;
+
+    const { data, error } = await supabase
+      .from('productions')
+      .insert([{
+        title: title.trim(),
+        organization_id: org.id
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      alert('公演の作成に失敗しました: ' + error.message);
+    } else {
+      fetchProductions();
+    }
+  };
+
+  const currentProd = productions.find(p => p.id === selectedProdId);
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        公演データを読み込み中...
+      </div>
+    );
+  }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: FONTS.body }}>
+    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '24px', boxSizing: 'border-box' }}>
       <style>{`
-        @import url('${FONTS.importUrl}');
+        @import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap');
 
-        .tp-wrap { max-width: 1080px; margin: 0 auto; padding: 20px 16px 56px; box-sizing: border-box; }
-        @media (min-width: 640px) { .tp-wrap { padding: 32px 24px 64px; } }
-
-        .tp-header { margin-bottom: 20px; border-bottom: 1px solid ${COLORS.border}; padding-bottom: 18px; }
-        .tp-eyebrow { font-size: 11px; color: ${COLORS.gold}; letter-spacing: 0.16em; font-weight: 700; }
-        .tp-title { font-family: ${FONTS.display}; font-weight: 700; color: ${COLORS.text};
-          font-size: clamp(24px, 5vw, 34px); margin: 6px 0 4px; line-height: 1.3; }
-        .tp-meta { font-size: 13px; color: ${COLORS.muted}; }
-
-        /* 公演切替タブ */
-        .tp-switcher { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
-        .tp-tab {
-          display: inline-flex; align-items: center; gap: 8px;
-          padding: 9px 16px; border-radius: ${RADIUS.pill}; font-size: 13px; font-weight: 700;
-          cursor: pointer; border: 1.5px solid ${COLORS.border};
-          background: ${COLORS.surface}; color: ${COLORS.muted};
-          transition: all 0.15s ease; -webkit-tap-highlight-color: transparent;
-        }
-        .tp-tab:active { transform: scale(0.96); }
-        .tp-tab.active { background: ${COLORS.goldDeep}; color: #fff; border-color: ${COLORS.goldDeep}; }
-        .tp-tab-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-        .tp-tab-add {
-          border-style: dashed;
-          background: transparent;
-          color: ${COLORS.gold};
-        }
-        .tp-tab-add:hover, .tp-tab-add:focus-visible { background: ${COLORS.surfaceAlt}; }
-
-        /* 予約状況：開閉パネル */
-        .tp-hero {
-          background: ${COLORS.surface};
-          border: 1.5px solid ${COLORS.border};
-          border-radius: ${RADIUS.lg};
-          margin: 18px 0 30px;
-          overflow: hidden;
-        }
-        .tp-hero-bar {
-          display: flex; align-items: center; justify-content: space-between;
-          padding: 16px 20px; cursor: pointer; gap: 12px;
-          -webkit-tap-highlight-color: transparent;
-        }
-        .tp-hero-bar:active { background: ${COLORS.surfaceAlt}; }
-        .tp-hero-bar-left { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-        .tp-hero-label { font-size: 13px; font-weight: 700; color: ${COLORS.muted}; white-space: nowrap; }
-        .tp-hero-num-compact { font-family: ${FONTS.display}; font-weight: 700; font-size: 20px; color: ${COLORS.goldDeep}; }
-        .tp-hero-num-compact span { font-size: 13px; font-weight: 500; color: ${COLORS.muted}; margin-left: 4px; }
-        .tp-chevron { flex-shrink: 0; transition: transform 0.2s ease; color: ${COLORS.gold}; }
-        .tp-chevron.open { transform: rotate(180deg); }
-
-        .tp-hero-detail { padding: 0 20px 20px; }
-        .tp-hero-row { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 4px; }
-        .tp-hero-badge {
-          font-size: 12px; font-weight: 700; color: #fff; background: ${COLORS.text};
-          padding: 6px 12px; border-radius: ${RADIUS.pill}; white-space: nowrap;
-        }
-        .tp-gauge-track { height: 11px; border-radius: ${RADIUS.pill}; background: rgba(33,26,44,0.10); margin-top: 10px; overflow: hidden; }
-        .tp-gauge-fill {
-          height: 100%; border-radius: ${RADIUS.pill};
-          background: repeating-linear-gradient(115deg,
-            ${COLORS.curtain1} 0px, ${COLORS.curtain1} 10px,
-            ${COLORS.curtain2} 10px, ${COLORS.curtain2} 20px,
-            ${COLORS.curtain3} 20px, ${COLORS.curtain3} 30px);
-          transition: width 0.4s ease;
-        }
-        .tp-hero-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 12px; color: ${COLORS.muted}; font-weight: 600; }
-        .tp-hero-link {
-          font-weight: 700; color: ${COLORS.goldDeep}; background: none; border: none;
-          cursor: pointer; font-size: 12px; font-family: inherit; padding: 6px 0;
-        }
-
-        .tp-section { margin-bottom: 30px; }
-        .tp-section-label {
-          font-size: 12px; font-weight: 700; letter-spacing: 0.08em; color: #fff;
-          margin: 0 0 12px 2px; display: inline-block;
-          background: ${COLORS.goldDeep}; padding: 4px 12px; border-radius: ${RADIUS.pill};
-        }
-
-        .tp-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
-        @media (min-width: 640px) { .tp-grid { grid-template-columns: repeat(2, 1fr); } }
-        @media (min-width: 1024px) { .tp-grid { grid-template-columns: repeat(3, 1fr); } }
-
-        .tp-card {
+        .menu-card {
           background-color: ${COLORS.surface};
-          border: 1.5px solid ${COLORS.border};
-          border-radius: ${RADIUS.md};
-          padding: 16px;
-          min-height: 76px;
+          border: 1px solid ${COLORS.border};
+          border-radius: 14px;
+          padding: 18px 20px;
+          margin-bottom: 12px;
+          cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 12px;
-          cursor: pointer;
-          transition: transform 0.12s ease, box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
-          -webkit-tap-highlight-color: transparent;
+          transition: all 0.15s ease;
+          box-shadow: 0 2px 4px rgba(43, 36, 56, 0.04);
         }
-        .tp-card:hover { background-color: ${COLORS.surfaceAlt}; border-color: ${COLORS.gold}; box-shadow: 0 5px 14px rgba(184,100,26,0.14); }
-        .tp-card:active { transform: scale(0.97); background-color: ${COLORS.surfaceAlt}; }
+        .menu-card:hover {
+          background-color: #fff6e8;
+          border-color: ${COLORS.gold};
+          transform: translateY(-1px);
+        }
 
-        .tp-icon-box {
-          width: 42px; height: 42px; border-radius: ${RADIUS.sm}; flex-shrink: 0;
-          background-color: ${COLORS.goldDeep}; color: #fff;
-          display: flex; align-items: center; justify-content: center;
+        .prod-tab {
+          padding: 8px 16px;
+          border-radius: 20px;
+          border: 1px solid ${COLORS.border};
+          background-color: ${COLORS.surface};
+          color: ${COLORS.text};
+          font-weight: 700;
+          font-size: 13px;
+          cursor: pointer;
+          white-space: nowrap;
         }
-        .tp-card-title { margin: 0; font-size: 15px; font-weight: 700; color: ${COLORS.text}; }
-        .tp-card-desc { margin: 2px 0 0; font-size: 12px; color: ${COLORS.muted};
-          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .prod-tab.active {
+          background-color: ${COLORS.gold};
+          color: #ffffff;
+          border-color: ${COLORS.gold};
+        }
+
+        .btn-add {
+          padding: 8px 16px;
+          border-radius: 20px;
+          border: 1px dashed ${COLORS.gold};
+          background-color: transparent;
+          color: ${COLORS.gold};
+          font-weight: 700;
+          font-size: 13px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .btn-add:hover { background-color: #fff6e8; }
       `}</style>
 
-      <div className="tp-wrap">
+      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+        
+        {/* ヘッダー・劇団名 */}
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ fontSize: '12px', color: COLORS.gold, fontWeight: 700, letterSpacing: '0.05em' }}>
+            {org?.name || '劇団ポータル'}
+          </div>
+          <h1 style={{ margin: '4px 0 0 0', fontFamily: "'Shippori Mincho', serif", fontSize: '24px', fontWeight: 700 }}>
+            {currentProd ? currentProd.title : '登録済みの公演はありません'}
+          </h1>
+        </div>
 
-        <div className="tp-header">
-          <span className="tp-eyebrow">OFFICE KNIGHT</span>
-          <h1 className="tp-title">{currentProduction.title}</h1>
-          <div className="tp-meta">{currentProduction.venue}・{currentProduction.dateLabel}</div>
-
-          <div className="tp-switcher">
-            {productions.map((p, i) => (
-              <div
-                key={p.id}
-                className={`tp-tab ${p.id === selectedProdId ? 'active' : ''}`}
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedProdId(p.id)}
-                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setSelectedProdId(p.id)}
-              >
-                <span className="tp-tab-dot" style={{ background: p.accent }} />
-                {String.fromCharCode(65 + i)}公演・{p.title}
-              </div>
-            ))}
-            <div
-              className="tp-tab tp-tab-add"
-              role="button"
-              tabIndex={0}
-              onClick={() => onNavigate('info')}
-              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onNavigate('info')}
+        {/* 公演タブ切り替え & 新規作成ボタン */}
+        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '24px', alignItems: 'center' }}>
+          {productions.map(p => (
+            <button
+              key={p.id}
+              onClick={() => setSelectedProdId(p.id)}
+              className={`prod-tab ${selectedProdId === p.id ? 'active' : ''}`}
             >
-              <Plus size={14} />
-              新規公演を追加
-            </div>
-          </div>
+              {p.title}
+            </button>
+          ))}
+          <button onClick={handleCreateNewProduction} className="btn-add">
+            <Plus size={15} /> 新規公演を追加
+          </button>
         </div>
 
-        <div className="tp-hero">
-          <div
-            className="tp-hero-bar"
-            role="button"
-            tabIndex={0}
-            aria-expanded={heroOpen}
-            onClick={() => setHeroOpen((v) => !v)}
-            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setHeroOpen((v) => !v)}
-          >
-            <div className="tp-hero-bar-left">
-              <span className="tp-hero-label">予約状況</span>
-              <span className="tp-hero-num-compact">{stats.reserved}<span>/ {goal}人</span></span>
-            </div>
-            <ChevronDown size={20} className={`tp-chevron ${heroOpen ? 'open' : ''}`} />
+        {/* 公演がまだ1つもない場合の案内案内表示 */}
+        {productions.length === 0 ? (
+          <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '16px', padding: '40px 20px', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 8px 0', fontFamily: "'Shippori Mincho', serif", color: COLORS.gold }}>まだ公演が登録されていません</h3>
+            <p style={{ fontSize: '13px', color: COLORS.muted, marginBottom: '20px' }}>
+              上の「＋ 新規公演を追加」ボタンを押して、最初の公演を作成してください。
+            </p>
+            <button onClick={handleCreateNewProduction} className="btn-add" style={{ margin: '0 auto', padding: '12px 24px', fontSize: '14px', backgroundColor: COLORS.gold, color: '#fff', borderStyle: 'solid' }}>
+              <Plus size={18} /> 最初の公演をつくる
+            </button>
           </div>
-
-          {heroOpen && (
-            <div className="tp-hero-detail">
-              <div className="tp-gauge-track"><div className="tp-gauge-fill" style={{ width: `${pct}%` }} /></div>
-              <div className="tp-hero-foot">
-                <span>動員 {pct}%・今日の新規予約 {stats.todayCount}件</span>
-                <button className="tp-hero-link" onClick={() => onNavigate('reservations')}>
-                  予約一覧を見る →
-                </button>
+        ) : (
+          /* 公演が存在する場合の機能メニュー */
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold, marginBottom: '8px' }}>予約・当日運用</div>
+            <div className="menu-card" onClick={() => onNavigate('reservations', selectedProdId)}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '15px' }}>予約一覧・動員状況</div>
+                <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '2px' }}>予約データの閲覧・編集・お礼メール</div>
               </div>
+              <ChevronRight size={18} color={COLORS.muted} />
             </div>
-          )}
-        </div>
 
-        {NAV_SECTIONS.map((section) => (
-          <div className="tp-section" key={section.label}>
-            <div className="tp-section-label">{section.label}</div>
-            <div className="tp-grid">
-              {section.items.map(({ view, icon: Icon, title, desc }) => (
-                <div
-                  key={view}
-                  className="tp-card"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => onNavigate(view)}
-                  onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onNavigate(view)}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                    <div className="tp-icon-box"><Icon size={20} /></div>
-                    <div style={{ minWidth: 0 }}>
-                      <h2 className="tp-card-title">{title}</h2>
-                      <p className="tp-card-desc">{desc}</p>
-                    </div>
-                  </div>
-                  <ChevronRight size={18} color={COLORS.gold} style={{ flexShrink: 0 }} />
-                </div>
-              ))}
+            <div className="menu-card" onClick={() => onNavigate('tablet', selectedProdId)}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '15px' }}>当日受付</div>
+                <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '2px' }}>50音検索・チェックイン・精算</div>
+              </div>
+              <ChevronRight size={18} color={COLORS.muted} />
+            </div>
+
+            <div style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold, margin: '20px 0 8px 0' }}>公演の準備</div>
+            <div className="menu-card" onClick={() => onNavigate('info', selectedProdId)}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '15px' }}>公演基本情報</div>
+                <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '2px' }}>公演名・煽り文・会場設定</div>
+              </div>
+              <ChevronRight size={18} color={COLORS.muted} />
+            </div>
+
+            <div className="menu-card" onClick={() => onNavigate('tickets', selectedProdId)}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '15px' }}>券種設定</div>
+                <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '2px' }}>券種・金額・セット割</div>
+              </div>
+              <ChevronRight size={18} color={COLORS.muted} />
+            </div>
+
+            <div className="menu-card" onClick={() => onNavigate('dates', selectedProdId)}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '15px' }}>日程・キャパ設定</div>
+                <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '2px' }}>ステージ日時・席数上限</div>
+              </div>
+              <ChevronRight size={18} color={COLORS.muted} />
+            </div>
+
+            <div className="menu-card" onClick={() => onNavigate('seats', selectedProdId)}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '15px' }}>指定席・会場マップ設定</div>
+                <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '2px' }}>座席配置図・ゾーン分け</div>
+              </div>
+              <ChevronRight size={18} color={COLORS.muted} />
+            </div>
+
+            <div className="menu-card" onClick={() => onNavigate('staff', selectedProdId)}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '15px' }}>キャスト・スタッフ管理</div>
+                <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '2px' }}>メンバー登録・個人予約URL発行</div>
+              </div>
+              <ChevronRight size={18} color={COLORS.muted} />
+            </div>
+
+            <div className="menu-card" onClick={() => onNavigate('payments', selectedProdId)}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '15px' }}>決済連携設定</div>
+                <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '2px' }}>Stripe / PayPay / 銀行振込</div>
+              </div>
+              <ChevronRight size={18} color={COLORS.muted} />
+            </div>
+
+            <div className="menu-card" onClick={() => onNavigate('messages', selectedProdId)}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '15px' }}>メール・LINE通知設定</div>
+                <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '2px' }}>自動返信・一斉送信文言</div>
+              </div>
+              <ChevronRight size={18} color={COLORS.muted} />
             </div>
           </div>
-        ))}
+        )}
 
       </div>
     </div>
