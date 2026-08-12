@@ -1,13 +1,9 @@
-import React, { useState } from 'react';
-import { ArrowLeft, UserPlus, Trash2, X, Copy, Check, Edit2, Shield, Layers, Tag, Link2, Sparkles, FileText, Upload, Sparkle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from './supabaseClient';
+import { ArrowLeft, UserPlus, Trash2, X, Copy, Check, Edit2, Shield, Tag, Link2, Sparkles, FileText, Users } from 'lucide-react';
 import { COLORS, FONTS, RADIUS } from './theme';
 
 const PRODUCTION_TEAMS = ['Aチーム', 'Bチーム', 'シングルキャスト', 'スタッフ・共通'];
-
-const RELATED_PRODUCTION = {
-  id: 'prod_next_2026',
-  title: '【次回】2026年 秋の特別公演'
-};
 
 const INITIAL_STAFF = [
   {
@@ -40,8 +36,12 @@ const INITIAL_STAFF = [
   },
 ];
 
-export default function AdminStaffSettings({ onBack }) {
+export default function AdminStaffSettings({ productionId, org, onBack }) {
   const [staffList, setStaffList] = useState(INITIAL_STAFF);
+
+  // 共同管理者招待リンク用state
+  const [copiedInvite, setCopiedInvite] = useState(false);
+  const inviteUrl = `${window.location.origin}?invite_org_id=${org?.id || ''}`;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
@@ -61,6 +61,13 @@ export default function AdminStaffSettings({ onBack }) {
 
   const [copiedId, setCopiedId] = useState(null);
   const [copiedAll, setCopiedAll] = useState(false);
+
+  // 招待URLコピー処理
+  const handleCopyInviteUrl = () => {
+    navigator.clipboard.writeText(inviteUrl);
+    setCopiedInvite(true);
+    setTimeout(() => setCopiedInvite(false), 2000);
+  };
 
   const handleRunAiAnalysis = () => {
     setIsAiAnalyzing(true);
@@ -322,11 +329,36 @@ export default function AdminStaffSettings({ onBack }) {
             <ArrowLeft size={16} /> ホームへ戻る
           </button>
           <h1 style={{ fontSize: '18px', margin: 0, flex: 1, textAlign: 'center', fontFamily: FONTS.display, color: COLORS.text, fontWeight: 700 }}>
-            スタッフ・キャスト権限 ＆ 個別URL管理
+            キャスト・スタッフ権限 ＆ 個別URL管理
           </h1>
           <div style={{ width: '80px' }} />
         </div>
 
+        {/* 🎪 追加：共同管理者・スタッフ招待用カード */}
+        <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: RADIUS.md, padding: '20px', marginBottom: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: COLORS.gold, fontWeight: 700, fontSize: '15px', marginBottom: '6px' }}>
+            <UserPlus size={18} /> 共同管理者・制作スタッフの招待
+          </div>
+          <p style={{ fontSize: '12px', color: COLORS.muted, margin: '0 0 14px 0', lineHeight: '1.5' }}>
+            同じ劇団の管理画面（予約状況の確認・受付運用など）を共有したいスタッフに、以下の招待URLを送ってください。
+          </p>
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input
+              type="text"
+              readOnly
+              value={inviteUrl}
+              className="text-input"
+              style={{ flex: 1, backgroundColor: COLORS.surfaceAlt, fontSize: '13px' }}
+            />
+            <button onClick={handleCopyInviteUrl} className="btn-gold" style={{ padding: '10px 16px', fontSize: '13px', whiteSpace: 'nowrap' }}>
+              {copiedInvite ? <Check size={16} /> : <Copy size={16} />}
+              {copiedInvite ? 'コピー完了' : '招待URLをコピー'}
+            </button>
+          </div>
+        </div>
+
+        {/* ボタン群 */}
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px' }}>
           <button onClick={() => setIsAiModalOpen(true)} className="btn-gold" style={{ flex: 1, minWidth: '220px' }}>
             <Sparkles size={16} /> AIでキャスト/スタッフを一括抽出
@@ -346,9 +378,10 @@ export default function AdminStaffSettings({ onBack }) {
           </button>
         </div>
 
+        {/* メンバー一覧 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-            <h2 style={{ fontSize: '16px', margin: 0, fontFamily: FONTS.display, fontWeight: 700 }}>メンバー一覧 ＆ 扱い予約URL</h2>
+            <h2 style={{ fontSize: '16px', margin: 0, fontFamily: FONTS.display, fontWeight: 700 }}>キャスト・スタッフ一覧 ＆ 扱い予約URL</h2>
             <span style={{ fontSize: '12px', color: COLORS.muted }}>全 {staffList.length} 名</span>
           </div>
 

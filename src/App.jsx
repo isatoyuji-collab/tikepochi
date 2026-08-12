@@ -23,9 +23,18 @@ export default function App() {
   const [currentView, setCurrentView] = useState('home');
   const [selectedProductionId, setSelectedProductionId] = useState(null);
 
+  // URLパラメーターから招待劇団IDを取得
+  const getInviteOrgId = () => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('invite_org_id');
+  };
+
   const fetchUserOrganization = async (userId) => {
     setCheckingOrg(true);
     try {
+      const inviteOrgId = getInviteOrgId();
+
+      // 1. 既存の劇団所属情報を確認
       const { data: memberData } = await supabase
         .from('organization_members')
         .select('organization_id, role')
@@ -33,6 +42,7 @@ export default function App() {
         .maybeSingle();
 
       if (memberData && memberData.organization_id) {
+        // すでに所属済み
         const { data: orgData } = await supabase
           .from('organizations')
           .select('id, name')
@@ -40,11 +50,28 @@ export default function App() {
           .maybeSingle();
 
         if (orgData) {
-          setCurrentOrg({
-            id: orgData.id,
-            name: orgData.name,
-            role: memberData.role,
-          });
+          setCurrentOrg({ id: orgData.id, name: orgData.name, role: memberData.role });
+        } else {
+          setCurrentOrg(null);
+        }
+      } else if (inviteOrgId) {
+        // 招待URL経由でアクセスし、まだ未所属の場合 ➔ 自動参加
+        const { data: orgData } = await supabase
+          .from('organizations')
+          .select('id, name')
+          .eq('id', inviteOrgId)
+          .maybeSingle();
+
+        if (orgData) {
+          // メンバーテーブルに追加
+          await supabase.from('organization_members').insert([
+            { organization_id: inviteOrgId, user_id: userId, role: 'member' }
+          ]);
+
+          setCurrentOrg({ id: orgData.id, name: orgData.name, role: 'member' });
+
+          // URLからパラメータを削除
+          window.history.replaceState({}, document.title, window.location.pathname);
         } else {
           setCurrentOrg(null);
         }
