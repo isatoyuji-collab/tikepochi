@@ -5,7 +5,7 @@ import AdminStageSettings from './AdminStageSettings';
 import AdminStaffSettings from './AdminStaffSettings';
 import AdminReservations from './AdminReservations';
 import TabletReception from './TabletReception';
-import { Ticket, Calendar, Users, List, Tablet, Plus, LogOut, ChevronRight } from 'lucide-react';
+import { Ticket, Calendar, Users, List, Tablet, LogOut, ChevronRight } from 'lucide-react';
 
 const COLORS = {
   bg: '#faf5ea',
@@ -21,10 +21,9 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [productions, setProductions] = useState([]);
   const [currentProduction, setCurrentProduction] = useState(null);
-  const [currentView, setCurrentView] = useState('home'); // 'home' | 'tickets' | 'stages' | 'staff' | 'reservations' | 'tablet'
+  const [currentView, setCurrentView] = useState('home');
   const [loading, setLoading] = useState(true);
 
-  // 1. 認証セッション監視
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -45,7 +44,6 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 2. 公演一覧取得
   const fetchProductions = async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -62,7 +60,6 @@ export default function App() {
     setLoading(false);
   };
 
-  // ログイン処理（マジックリンク / パスワードレス）
   const handleLogin = async (e) => {
     e.preventDefault();
     const email = e.target.email.value;
@@ -71,20 +68,17 @@ export default function App() {
     else alert('ログイン用リンクをメールに送信しました！');
   };
 
-  // ログアウト
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setCurrentView('home');
   };
 
-  // 公演未選択・初期状態の場合
   if (!session) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '20px' }}>
         <div style={{ width: '100%', maxWidth: '400px', backgroundColor: COLORS.surface, borderRadius: '20px', padding: '32px', border: `1px solid ${COLORS.border}`, boxShadow: '0 8px 24px rgba(43,36,56,0.06)', textAlign: 'center' }}>
-          <h1 style={{ fontFamily: "'Shippori Mincho', serif", fontSize: '24px', color: COLORS.gold, margin: '0 0 8px 0' }}>チケポチ 管理システム</h1>
-          <p style={{ fontSize: '13px', color: COLORS.muted, marginBottom: '24px' }}>登録したメールアドレスを入力してログインしてください</p>
-          
+          <h1 style={{ fontFamily: "'Shippori Mincho', serif", fontSize: '24px', color: COLORS.gold, margin: '0 0 8px 0' }}>チケポチ 管理ポータル</h1>
+          <p style={{ fontSize: '13px', color: COLORS.muted, marginBottom: '24px' }}>登録メールアドレスでログイン</p>
           <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <input
               type="email"
@@ -105,59 +99,30 @@ export default function App() {
     );
   }
 
-  // --- ビュー切り替えルーティング ---
-
+  // 子画面のレンダリング（フッターの重なりを排除）
   if (currentView === 'tickets' && currentProduction) {
-    return (
-      <AdminTicketSettings
-        productionId={currentProduction.id}
-        org={{ name: currentProduction.title }}
-        onBack={() => setCurrentView('home')}
-      />
-    );
+    return <AdminTicketSettings productionId={currentProduction.id} org={{ name: currentProduction.title }} onBack={() => setCurrentView('home')} />;
   }
 
   if (currentView === 'stages' && currentProduction) {
-    return (
-      <AdminStageSettings
-        productionId={currentProduction.id}
-        onBack={() => setCurrentView('home')}
-      />
-    );
+    return <AdminStageSettings productionId={currentProduction.id} onBack={() => setCurrentView('home')} />;
   }
 
   if (currentView === 'staff' && currentProduction) {
-    return (
-      <AdminStaffSettings
-        productionId={currentProduction.id}
-        onBack={() => setCurrentView('home')}
-      />
-    );
+    return <AdminStaffSettings productionId={currentProduction.id} onBack={() => setCurrentView('home')} />;
   }
 
   if (currentView === 'reservations' && currentProduction) {
-    return (
-      <AdminReservations
-        productionId={currentProduction.id}
-        onBack={() => setCurrentView('home')}
-        onOpenTablet={() => setCurrentView('tablet')}
-      />
-    );
+    return <AdminReservations productionId={currentProduction.id} onBack={() => setCurrentView('home')} onOpenTablet={() => setCurrentView('tablet')} />;
   }
 
   if (currentView === 'tablet' && currentProduction) {
-    return (
-      <TabletReception
-        productionId={currentProduction.id}
-        onBack={() => setCurrentView('reservations')}
-      />
-    );
+    return <TabletReception productionId={currentProduction.id} onBack={() => setCurrentView('home')} />;
   }
 
-  // --- メインダッシュボード（Home） ---
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '24px', boxSizing: 'border-box' }}>
-      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '24px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+      <div style={{ maxWidth: '800px', width: '100%', margin: '0 auto' }}>
         
         {/* ヘッダー */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '16px', marginBottom: '24px' }}>
@@ -165,9 +130,7 @@ export default function App() {
             <h1 style={{ fontFamily: "'Shippori Mincho', serif", fontSize: '22px', margin: '0 0 4px 0', color: COLORS.gold, fontWeight: 700 }}>
               チケポチ 管理ポータル
             </h1>
-            <div style={{ fontSize: '12px', color: COLORS.muted }}>
-              ログイン中: {session.user?.email}
-            </div>
+            <div style={{ fontSize: '12px', color: COLORS.muted }}>公演・予約一元管理システム</div>
           </div>
           <button
             onClick={handleLogout}
@@ -180,29 +143,23 @@ export default function App() {
         {/* 公演セレクター */}
         <div style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', marginBottom: '24px', boxShadow: '0 2px 4px rgba(43,36,56,0.04)' }}>
           <div style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold, marginBottom: '8px' }}>選択中の公演</div>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <select
-              value={currentProduction?.id || ''}
-              onChange={(e) => {
-                const sel = productions.find(p => p.id === e.target.value);
-                if (sel) setCurrentProduction(sel);
-              }}
-              style={{ flex: 1, padding: '12px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, fontSize: '15px', fontWeight: 'bold' }}
-            >
-              {productions.map(p => (
-                <option key={p.id} value={p.id}>{p.title}</option>
-              ))}
-            </select>
-          </div>
+          <select
+            value={currentProduction?.id || ''}
+            onChange={(e) => {
+              const sel = productions.find(p => p.id === e.target.value);
+              if (sel) setCurrentProduction(sel);
+            }}
+            style={{ width: '100%', padding: '12px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, fontSize: '15px', fontWeight: 'bold' }}
+          >
+            {productions.map(p => (
+              <option key={p.id} value={p.id}>{p.title}</option>
+            ))}
+          </select>
         </div>
 
         {/* 管理メニュー一覧 */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
-          
-          <div
-            onClick={() => setCurrentView('tickets')}
-            style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-          >
+          <div onClick={() => setCurrentView('tickets')} style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
               <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: '#fff6e8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.gold }}>
                 <Ticket size={22} />
@@ -215,10 +172,7 @@ export default function App() {
             <ChevronRight size={18} color={COLORS.muted} />
           </div>
 
-          <div
-            onClick={() => setCurrentView('stages')}
-            style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-          >
+          <div onClick={() => setCurrentView('stages')} style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
               <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: '#fff6e8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.gold }}>
                 <Calendar size={22} />
@@ -231,10 +185,7 @@ export default function App() {
             <ChevronRight size={18} color={COLORS.muted} />
           </div>
 
-          <div
-            onClick={() => setCurrentView('staff')}
-            style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-          >
+          <div onClick={() => setCurrentView('staff')} style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
               <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: '#fff6e8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.gold }}>
                 <Users size={22} />
@@ -247,10 +198,7 @@ export default function App() {
             <ChevronRight size={18} color={COLORS.muted} />
           </div>
 
-          <div
-            onClick={() => setCurrentView('reservations')}
-            style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-          >
+          <div onClick={() => setCurrentView('reservations')} style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
               <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: '#fff6e8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.gold }}>
                 <List size={22} />
@@ -263,10 +211,7 @@ export default function App() {
             <ChevronRight size={18} color={COLORS.muted} />
           </div>
 
-          <div
-            onClick={() => setCurrentView('tablet')}
-            style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gridColumn: '1 / -1' }}
-          >
+          <div onClick={() => setCurrentView('tablet')} style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gridColumn: '1 / -1' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
               <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' }}>
                 <Tablet size={22} />
@@ -278,9 +223,13 @@ export default function App() {
             </div>
             <ChevronRight size={18} color={COLORS.muted} />
           </div>
-
         </div>
 
+      </div>
+
+      {/* フッター（ホーム画面のみ最下部に表示） */}
+      <div style={{ maxWidth: '800px', width: '100%', margin: '40px auto 0 auto', textAlign: 'center', fontSize: '12px', color: COLORS.muted }}>
+        ログインアカウント: {session.user?.email}
       </div>
     </div>
   );
