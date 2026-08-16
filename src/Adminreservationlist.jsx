@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Smartphone, Printer, Search, X, Trash2, Check, Send } from 'lucide-react';
-import TabletReception from './TabletReception';
-import { supabase } from './supabaseClient'; // ⭐ Supabaseクライアントをインポート
+import { supabase } from './supabaseClient';
+import { ArrowLeft, Tablet, Printer, Search, Check, Users } from 'lucide-react';
 
 const COLORS = {
   bg: '#faf5ea',
@@ -9,396 +8,248 @@ const COLORS = {
   surfaceAlt: '#f7efe0',
   border: 'rgba(201,121,31,0.22)',
   gold: '#c9791f',
-  coral: '#e85a45',
-  indigo: '#5457d6',
-  success: '#1f9a56',
   text: '#2b2438',
   muted: '#8a8398',
 };
 
-const CASTS = ['山田 太郎', '鈴木 次郎', '田中 三郎'];
-const TICKET_TYPES = ['自由席', '指定席オプション', 'セット券'];
-
-const STAGES = [
-  { id: 's1', date: '8/1', time: '15:00', capacity: 80, status: '販売中' },
-  { id: 's2', date: '8/1', time: '19:00', capacity: 80, status: '販売中' },
-  { id: 's3', date: '8/2', time: '15:00', capacity: 80, status: '受付前' },
-];
-
-const INITIAL_RESERVATIONS = [
-  { id: '1', stageId: 's1', name: '山田 花子', tel: '090-1234-5678', email: 'hanako@example.com', ticketType: '指定席オプション', count: 2, cast: '山田 太郎', price: 8000, isPaid: false, isCheckedIn: false },
-  { id: '2', stageId: 's1', name: '山本 尚子', tel: '080-9876-5432', email: 'naoko@example.com', ticketType: '自由席', count: 1, cast: '鈴木 次郎', price: 3500, isPaid: true, isCheckedIn: false },
-  { id: '3', stageId: 's2', name: '佐藤 健太', tel: '070-1111-2222', email: 'kenta@example.com', ticketType: 'セット券', count: 3, cast: '田中 三郎', price: 21000, isPaid: false, isCheckedIn: false },
-  { id: '4', stageId: 's2', name: '高橋 美咲', tel: '090-2222-3333', email: 'misaki@example.com', ticketType: '自由席', count: 2, cast: '山田 太郎', price: 7000, isPaid: true, isCheckedIn: true },
-  { id: '5', stageId: 's3', name: '中村 一郎', tel: '080-4444-5555', email: 'ichiro@example.com', ticketType: '自由席', count: 4, cast: '鈴木 次郎', price: 14000, isPaid: false, isCheckedIn: false },
-];
-
-const statusColor = (status) => {
-  if (status === '完売') return COLORS.coral;
-  if (status === '終了') return COLORS.muted;
-  if (status === '受付前') return COLORS.indigo;
-  return COLORS.success;
-};
-
-export default function AdminReservationList({ productionId, onBack }) {
-  const [viewMode, setViewMode] = useState('admin');
+export default function AdminReservations({ productionId, onBack, onOpenTablet }) {
+  const [stages, setStages] = useState([]);
   const [reservations, setReservations] = useState([]);
+  const [casts, setCasts] = useState([]);
+  const [ticketTypes, setTicketTypes] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [selectedStageId, setSelectedStageId] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [castFilter, setCastFilter] = useState('');
-  const [ticketTypeFilter, setTicketTypeFilter] = useState('');
-  const [checkinFilter, setCheckinFilter] = useState('all');
-  const [selectedIds, setSelectedIds] = useState([]);
-  const [editing, setEditing] = useState(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
-  const [showThanks, setShowThanks] = useState(false);
+  // フィルター用
+  const [selectedStageId, setSelectedStageId] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCast, setSelectedCast] = useState('all');
+  const [selectedTicket, setSelectedTicket] = useState('all');
+  const [selectedCheckin, setSelectedCheckin] = useState('all');
 
-  // 1. Supabaseから予約一覧を取得
-  const fetchReservations = async () => {
+  const fetchData = async () => {
     setLoading(true);
-    let query = supabase.from('reservations').select('*').order('created_at', { ascending: false });
-    
-    if (productionId) {
-      query = query.eq('production_id', productionId);
+    if (!productionId) {
+      setLoading(false);
+      return;
     }
 
-    const { data, error } = await query;
+    // 1. 日程・ステージ取得
+    const { data: stagesData } = await supabase
+      .from('stages')
+      .select('*')
+      .eq('production_id', productionId)
+      .order('stage_date', { ascending: true })
+      .order('start_time', { ascending: true });
+    if (stagesData) setStages(stagesData);
 
-    if (!error && data && data.length > 0) {
-      const formatted = data.map(item => ({
-        id: item.id,
-        stageId: item.stage_id || 's1',
-        name: item.customer_name || '名称未設定',
-        tel: item.tel || '',
-        email: item.email || '',
-        ticketType: item.ticket_type || '自由席',
-        count: item.ticket_count || 1,
-        cast: item.cast_name || '指定なし',
-        price: item.total_price || 0,
-        isPaid: item.is_paid || false,
-        isCheckedIn: item.is_checked_in || false,
-      }));
-      setReservations(formatted);
-    } else {
-      // Supabaseにデータが無い場合は初期サンプルを使用
-      setReservations(INITIAL_RESERVATIONS);
-    }
+    // 2. キャスト一覧取得
+    const { data: castsData } = await supabase
+      .from('cast_staff')
+      .select('*')
+      .eq('production_id', productionId);
+    if (castsData) setCasts(castsData);
+
+    // 3. 券種一覧取得
+    const { data: ticketsData } = await supabase
+      .from('ticket_types')
+      .select('*')
+      .eq('production_id', productionId);
+    if (ticketsData) setTicketTypes(ticketsData);
+
+    // 4. 予約一覧取得
+    const { data: resData } = await supabase
+      .from('reservations')
+      .select(`
+        *,
+        stages (stage_date, start_time, team_name),
+        ticket_types (name, price),
+        cast_staff (name)
+      `)
+      .eq('production_id', productionId)
+      .order('created_at', { ascending: false });
+
+    if (resData) setReservations(resData);
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchReservations();
+    fetchData();
   }, [productionId]);
 
-  if (viewMode === 'tablet') {
-    return <TabletReception onBackToAdmin={() => setViewMode('admin')} />;
-  }
-
-  const stageById = (id) => STAGES.find(s => s.id === id);
-  const stageLabel = (id) => { const s = stageById(id); return s ? `${s.date} ${s.time}` : ''; };
-
-  const reservedCount = (stageId) => reservations.filter(r => r.stageId === stageId).reduce((s, r) => s + r.count, 0);
-  const totalReserved = reservations.reduce((s, r) => s + r.count, 0);
-  const totalCapacity = STAGES.reduce((s, st) => s + st.capacity, 0);
-
-  const filtered = reservations.filter(r =>
-    (!selectedStageId || r.stageId === selectedStageId) &&
-    (!searchTerm || r.name.includes(searchTerm)) &&
-    (!castFilter || r.cast === castFilter) &&
-    (!ticketTypeFilter || r.ticketType === ticketTypeFilter) &&
-    (checkinFilter === 'all' || (checkinFilter === 'done' ? r.isCheckedIn : !r.isCheckedIn))
-  );
-
-  const toggleSelect = (id) => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-
-  // 2. Supabaseへの更新保存 (UPDATE)
-  const handleSave = async (updated) => {
-    const payload = {
-      stage_id: updated.stageId,
-      customer_name: updated.name,
-      tel: updated.tel,
-      email: updated.email,
-      ticket_type: updated.ticketType,
-      ticket_count: updated.count,
-      cast_name: updated.cast,
-      total_price: updated.price,
-      is_paid: updated.isPaid,
-      is_checked_in: updated.isCheckedIn,
-    };
-
-    const { error } = await supabase
-      .from('reservations')
-      .update(payload)
-      .eq('id', updated.id);
-
-    if (error) {
-      alert('更新に失敗しました: ' + error.message);
-    } else {
-      setReservations(prev => prev.map(r => r.id === updated.id ? updated : r));
-      setEditing(null);
-    }
+  // 来場トグル
+  const handleToggleCheckin = async (resItem) => {
+    const nextStatus = !resItem.checked_in;
+    await supabase.from('reservations').update({ checked_in: nextStatus }).eq('id', resItem.id);
+    setReservations(reservations.map(r => r.id === resItem.id ? { ...r, checked_in: nextStatus } : r));
   };
 
-  // 3. Supabaseからの削除 (DELETE)
-  const handleDelete = async (id) => {
-    const { error } = await supabase
-      .from('reservations')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      alert('削除に失敗しました: ' + error.message);
-    } else {
-      setReservations(prev => prev.filter(r => r.id !== id));
-      setConfirmDeleteId(null);
-      setEditing(null);
+  // フィルター処理
+  const filteredReservations = reservations.filter(r => {
+    if (selectedStageId !== 'all' && r.stage_id !== selectedStageId) return false;
+    if (selectedCast !== 'all' && r.cast_id !== selectedCast) return false;
+    if (selectedTicket !== 'all' && r.ticket_type_id !== selectedTicket) return false;
+    if (selectedCheckin === 'checked' && !r.checked_in) return false;
+    if (selectedCheckin === 'unchecked' && r.checked_in) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const nameMatch = r.customer_name?.toLowerCase().includes(q);
+      const emailMatch = r.customer_email?.toLowerCase().includes(q);
+      const phoneMatch = r.customer_phone?.includes(q);
+      if (!nameMatch && !emailMatch && !phoneMatch) return false;
     }
-  };
+    return true;
+  });
+
+  const totalSeats = stages.reduce((sum, s) => sum + (s.capacity || 80), 0);
+  const totalReserved = reservations.reduce((sum, r) => sum + (r.count || 1), 0);
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '24px' }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap');
-        @media print {
-          .no-print { display: none !important; }
-        }
-        .top-btn {
-          display: flex; align-items: center; gap: 6px;
-          padding: 9px 14px; border-radius: 9px; border: 1px solid ${COLORS.border};
-          background: ${COLORS.surface}; color: ${COLORS.text}; font-size: 13px; font-weight: 700;
-          cursor: pointer; font-family: 'Zen Kaku Gothic New', sans-serif;
-        }
-        .top-btn:hover { background: ${COLORS.surfaceAlt}; }
-        .stage-card {
-          flex: 0 0 128px; padding: 10px 12px; border-radius: 10px; cursor: pointer;
-          border: 2px solid ${COLORS.border}; background: ${COLORS.surface}; transition: border-color 0.15s ease, transform 0.1s ease;
-        }
-        .stage-card:hover { transform: translateY(-2px); }
-        .stage-card.active { border-color: ${COLORS.gold}; background: #fff6e8; }
-        .filter-input, .filter-select {
-          padding: 9px 12px; border-radius: 8px; border: 1px solid ${COLORS.border};
-          background: ${COLORS.surface}; color: ${COLORS.text}; font-size: 13px;
-          font-family: 'Zen Kaku Gothic New', sans-serif;
-        }
-        .res-row {
-          display: grid; grid-template-columns: 32px 1.2fr 1.3fr 1.6fr 1fr 1fr 1fr 0.8fr;
-          align-items: center; gap: 10px; padding: 12px 14px;
-          border-bottom: 1px solid rgba(201,121,31,0.12); cursor: pointer; font-size: 13px;
-        }
-        .res-row:hover { background: #fff6e8; }
-        .res-row:last-child { border-bottom: none; }
-        .badge {
-          display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px;
-        }
-        .modal-input {
-          width: 100%; padding: 9px 10px; border-radius: 8px; border: 1px solid ${COLORS.border};
-          font-size: 14px; font-family: 'Zen Kaku Gothic New', sans-serif; box-sizing: border-box;
-        }
-        .modal-label { font-size: 11px; color: ${COLORS.muted}; margin-bottom: 4px; display: block; font-weight: 700; }
-        .save-btn, .delete-btn, .cancel-btn {
-          padding: 12px; border-radius: 10px; border: none; font-weight: 700; font-size: 14px; cursor: pointer;
-          font-family: 'Zen Kaku Gothic New', sans-serif;
-        }
-      `}</style>
-
-      {/* ヘッダー */}
-      <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <button onClick={onBack} className="top-btn"><ArrowLeft size={15} /> ホームへ戻る</button>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={() => setViewMode('tablet')} className="top-btn" style={{ borderColor: COLORS.gold, color: COLORS.gold, fontWeight: 'bold' }}>
-            <Smartphone size={15} /> 当日受付タブレットを開く
+    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '24px', boxSizing: 'border-box' }}>
+      <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+        
+        {/* ヘッダー */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+          <button onClick={onBack} style={{ background: 'none', border: 'none', color: COLORS.gold, fontSize: '14px', cursor: 'pointer', padding: '4px 8px 4px 0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <ArrowLeft size={16} /> ホームへ戻る
           </button>
-          <button className="top-btn" onClick={() => window.print()}><Printer size={15} /> 印刷</button>
-        </div>
-      </div>
-
-      {/* 全体サマリー */}
-      <div style={{ fontFamily: "'Shippori Mincho', serif", fontSize: '15px', marginBottom: '14px' }}>
-        総動員数 <strong style={{ color: COLORS.gold, fontSize: '18px' }}>{totalReserved}</strong> / {totalCapacity}人
-        {loading && <span style={{ marginLeft: '12px', fontSize: '13px', color: COLORS.muted }}> (同期中...)</span>}
-      </div>
-
-      {/* 回カード */}
-      <div className="no-print" style={{ marginBottom: '18px' }}>
-        <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
-          {STAGES.map(s => (
-            <div
-              key={s.id}
-              className={`stage-card ${selectedStageId === s.id ? 'active' : ''}`}
-              onClick={() => setSelectedStageId(selectedStageId === s.id ? null : s.id)}
-            >
-              <div style={{ fontFamily: "'Shippori Mincho', serif", fontWeight: 700, fontSize: '14px', marginBottom: '4px', whiteSpace: 'nowrap' }}>{s.date} {s.time}</div>
-              <div style={{ fontSize: '12px', marginBottom: '6px' }}>{reservedCount(s.id)} / {s.capacity}</div>
-              <span className="badge" style={{ backgroundColor: `${statusColor(s.status)}22`, color: statusColor(s.status), fontSize: '10px' }}>{s.status}</span>
-            </div>
-          ))}
-        </div>
-        {selectedStageId && (
-          <button className="top-btn" style={{ marginTop: '8px' }} onClick={() => setSelectedStageId(null)}>絞り込み解除</button>
-        )}
-      </div>
-
-      {/* 検索・フィルタ */}
-      <div className="no-print" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '14px' }}>
-        <div style={{ position: 'relative', flex: '1 1 220px' }}>
-          <Search size={15} color={COLORS.gold} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-          <input
-            className="filter-input"
-            style={{ width: '100%', paddingLeft: '32px', boxSizing: 'border-box' }}
-            placeholder="お名前で検索..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <select className="filter-select" value={castFilter} onChange={(e) => setCastFilter(e.target.value)}>
-          <option value="">担当キャスト（全員）</option>
-          {CASTS.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select className="filter-select" value={ticketTypeFilter} onChange={(e) => setTicketTypeFilter(e.target.value)}>
-          <option value="">券種（全て）</option>
-          {TICKET_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <select className="filter-select" value={checkinFilter} onChange={(e) => setCheckinFilter(e.target.value)}>
-          <option value="all">来場チェック（全て）</option>
-          <option value="done">来場済み</option>
-          <option value="not">未来場</option>
-        </select>
-      </div>
-
-      {selectedIds.length > 0 && (
-        <div className="no-print" style={{ marginBottom: '10px' }}>
-          <button className="top-btn" style={{ backgroundColor: COLORS.gold, color: '#fff', borderColor: COLORS.gold }} onClick={() => setShowThanks(true)}>
-            <Send size={15} /> {selectedIds.length}件にお礼メッセージを送る
-          </button>
-        </div>
-      )}
-
-      {/* 予約リスト */}
-      <div style={{ backgroundColor: COLORS.surface, borderRadius: '14px', border: `1px solid ${COLORS.border}`, overflow: 'hidden' }}>
-        <div className="res-row" style={{ fontSize: '11px', color: COLORS.muted, fontWeight: 700, cursor: 'default', backgroundColor: COLORS.surfaceAlt }}>
-          <span></span>
-          <span>お客様名</span>
-          <span>連絡先</span>
-          <span>券種・枚数</span>
-          <span>担当</span>
-          <span>精算</span>
-          <span>来場</span>
-          <span>回</span>
-        </div>
-        {filtered.length === 0 && (
-          <div style={{ padding: '24px', textAlign: 'center', color: COLORS.muted, fontSize: '13px' }}>該当する予約がありません</div>
-        )}
-        {filtered.map(r => (
-          <div key={r.id} className="res-row" onClick={() => setEditing(r)}>
-            <input type="checkbox" checked={selectedIds.includes(r.id)} onClick={(e) => e.stopPropagation()} onChange={() => toggleSelect(r.id)} />
-            <span style={{ fontWeight: 700 }}>{r.name}</span>
-            <span style={{ color: COLORS.muted, fontSize: '12px' }}>{r.tel}<br />{r.email}</span>
-            <span>{r.ticketType} × {r.count}枚</span>
-            <span><span className="badge" style={{ backgroundColor: `${COLORS.indigo}1a`, color: COLORS.indigo }}>{r.cast}</span></span>
-            <span style={{ color: r.isPaid ? COLORS.success : COLORS.coral, fontWeight: 700 }}>{r.isPaid ? '精算済' : `未精算 ¥${r.price.toLocaleString()}`}</span>
-            <span style={{ color: r.isCheckedIn ? COLORS.success : COLORS.muted }}>{r.isCheckedIn ? <Check size={16} /> : '—'}</span>
-            <span style={{ fontSize: '12px', color: COLORS.muted }}>{stageLabel(r.stageId)}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* 編集モーダル */}
-      {editing && (
-        <div onClick={() => setEditing(null)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: '480px', maxWidth: '92vw', maxHeight: '86vh', overflowY: 'auto', backgroundColor: COLORS.surface, borderRadius: '18px', padding: '28px', position: 'relative', border: `1px solid ${COLORS.border}` }}>
-            <button onClick={() => setEditing(null)} style={{ position: 'absolute', top: '16px', right: '16px', background: 'rgba(201,121,31,0.1)', border: 'none', width: '28px', height: '28px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.muted }}>
-              <X size={16} />
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button onClick={onOpenTablet} style={{ padding: '8px 16px', borderRadius: '10px', border: `1px solid ${COLORS.gold}`, backgroundColor: '#fff', color: COLORS.gold, fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Tablet size={16} /> 当日受付タブレットを開く
             </button>
-            <h2 style={{ margin: '0 0 18px', fontFamily: "'Shippori Mincho', serif", fontSize: '20px' }}>予約編集</h2>
+            <button onClick={() => window.print()} style={{ padding: '8px 16px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, backgroundColor: '#fff', color: COLORS.text, fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Printer size={16} /> 印刷
+            </button>
+          </div>
+        </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-              <div>
-                <label className="modal-label">お客様名</label>
-                <input className="modal-input" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
-              </div>
-              <div>
-                <label className="modal-label">回</label>
-                <select className="modal-input" value={editing.stageId} onChange={(e) => setEditing({ ...editing, stageId: e.target.value })}>
-                  {STAGES.map(s => <option key={s.id} value={s.id}>{s.date} {s.time}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="modal-label">電話番号</label>
-                <input className="modal-input" value={editing.tel} onChange={(e) => setEditing({ ...editing, tel: e.target.value })} />
-              </div>
-              <div>
-                <label className="modal-label">メールアドレス</label>
-                <input className="modal-input" value={editing.email} onChange={(e) => setEditing({ ...editing, email: e.target.value })} />
-              </div>
-              <div>
-                <label className="modal-label">券種</label>
-                <select className="modal-input" value={editing.ticketType} onChange={(e) => setEditing({ ...editing, ticketType: e.target.value })}>
-                  {TICKET_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="modal-label">枚数</label>
-                <input className="modal-input" type="number" min="1" value={editing.count} onChange={(e) => setEditing({ ...editing, count: Number(e.target.value) })} />
-              </div>
-              <div>
-                <label className="modal-label">担当キャスト</label>
-                <select className="modal-input" value={editing.cast} onChange={(e) => setEditing({ ...editing, cast: e.target.value })}>
-                  {CASTS.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="modal-label">金額</label>
-                <input className="modal-input" type="number" value={editing.price} onChange={(e) => setEditing({ ...editing, price: Number(e.target.value) })} />
-              </div>
-            </div>
+        {/* 総動員数サマリー */}
+        <div style={{ fontFamily: "'Shippori Mincho', serif", fontSize: '20px', fontWeight: 700, marginBottom: '16px' }}>
+          総動員数 <span style={{ color: COLORS.gold, fontSize: '24px' }}>{totalReserved}</span> / {totalSeats}人
+        </div>
 
-            <div style={{ display: 'flex', gap: '20px', marginBottom: '20px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                <input type="checkbox" checked={editing.isPaid} onChange={(e) => setEditing({ ...editing, isPaid: e.target.checked })} /> 精算済み
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                <input type="checkbox" checked={editing.isCheckedIn} onChange={(e) => setEditing({ ...editing, isCheckedIn: e.target.checked })} /> 来場済み
-              </label>
-            </div>
+        {/* 日程カード一覧 */}
+        <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '20px' }}>
+          <div
+            onClick={() => setSelectedStageId('all')}
+            style={{ minWidth: '120px', padding: '12px 16px', borderRadius: '12px', backgroundColor: selectedStageId === 'all' ? '#fff6e8' : COLORS.surface, border: `1px solid ${selectedStageId === 'all' ? COLORS.gold : COLORS.border}`, cursor: 'pointer' }}
+          >
+            <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '4px' }}>全日程</div>
+            <div style={{ fontSize: '12px', color: COLORS.muted }}>{totalReserved} / {totalSeats}</div>
+          </div>
 
-            {confirmDeleteId === editing.id ? (
-              <div style={{ backgroundColor: `${COLORS.coral}15`, padding: '14px', borderRadius: '10px', marginBottom: '14px' }}>
-                <div style={{ fontSize: '13px', marginBottom: '10px' }}>本当に削除しますか？この操作は取り消せません。</div>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button className="delete-btn" style={{ flex: 1, backgroundColor: COLORS.coral, color: '#fff' }} onClick={() => handleDelete(editing.id)}>削除する</button>
-                  <button className="cancel-btn" style={{ flex: 1, backgroundColor: '#f0ece2', color: COLORS.text }} onClick={() => setConfirmDeleteId(null)}>キャンセル</button>
+          {stages.map(stage => {
+            const stageReserved = reservations.filter(r => r.stage_id === stage.id).reduce((sum, r) => sum + (r.count || 1), 0);
+            const isSelected = selectedStageId === stage.id;
+            return (
+              <div
+                key={stage.id}
+                onClick={() => setSelectedStageId(stage.id)}
+                style={{ minWidth: '120px', padding: '12px 16px', borderRadius: '12px', backgroundColor: isSelected ? '#fff6e8' : COLORS.surface, border: `1px solid ${isSelected ? COLORS.gold : COLORS.border}`, cursor: 'pointer' }}
+              >
+                <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '4px' }}>
+                  {stage.stage_date ? `${new Date(stage.stage_date).getMonth() + 1}/${new Date(stage.stage_date).getDate()}` : ''} {stage.start_time?.slice(0, 5)}
+                </div>
+                <div style={{ fontSize: '12px', color: COLORS.muted }}>
+                  {stageReserved} / {stage.capacity || 80}
                 </div>
               </div>
-            ) : (
-              <button className="delete-btn" style={{ width: '100%', marginBottom: '14px', backgroundColor: 'transparent', border: `1px solid ${COLORS.coral}`, color: COLORS.coral, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }} onClick={() => setConfirmDeleteId(editing.id)}>
-                <Trash2 size={14} /> 削除
-              </button>
-            )}
-
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button className="save-btn" style={{ flex: 1, backgroundColor: COLORS.gold, color: '#fff' }} onClick={() => handleSave(editing)}>保存</button>
-              <button className="cancel-btn" style={{ flex: 1, backgroundColor: '#f0ece2', color: COLORS.text }} onClick={() => setEditing(null)}>キャンセル</button>
-            </div>
-          </div>
+            );
+          })}
         </div>
-      )}
 
-      {/* お礼メッセージモーダル */}
-      {showThanks && (
-        <div onClick={() => setShowThanks(false)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: '440px', maxWidth: '92vw', backgroundColor: COLORS.surface, borderRadius: '18px', padding: '26px', border: `1px solid ${COLORS.border}` }}>
-            <h2 style={{ margin: '0 0 10px', fontFamily: "'Shippori Mincho', serif", fontSize: '19px' }}>お礼メッセージを送る</h2>
-            <div style={{ fontSize: '13px', color: COLORS.muted, marginBottom: '12px' }}>{selectedIds.length}名に、予約時に選ばれた連絡方法（メール／LINE）で送信します。</div>
-            <textarea className="modal-input" style={{ height: '120px', resize: 'vertical', marginBottom: '16px' }} defaultValue={'本日はご来場いただきありがとうございました。またのお越しをお待ちしております。'} />
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button className="save-btn" style={{ flex: 1, backgroundColor: COLORS.gold, color: '#fff' }} onClick={() => { setShowThanks(false); setSelectedIds([]); }}>送信（ダミー）</button>
-              <button className="cancel-btn" style={{ flex: 1, backgroundColor: '#f0ece2', color: COLORS.text }} onClick={() => setShowThanks(false)}>キャンセル</button>
-            </div>
+        {/* フィルターバー */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '16px' }}>
+          <div style={{ position: 'relative' }}>
+            <Search size={16} color={COLORS.muted} style={{ position: 'absolute', left: '12px', top: '12px' }} />
+            <input
+              type="text"
+              placeholder="お名前・連絡先で検索..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, backgroundColor: COLORS.surface, fontSize: '13px', boxSizing: 'border-box' }}
+            />
           </div>
+
+          <select value={selectedCast} onChange={(e) => setSelectedCast(e.target.value)} style={{ padding: '10px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, backgroundColor: COLORS.surface, fontSize: '13px' }}>
+            <option value="all">担当キャスト（全員）</option>
+            {casts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+
+          <select value={selectedTicket} onChange={(e) => setSelectedTicket(e.target.value)} style={{ padding: '10px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, backgroundColor: COLORS.surface, fontSize: '13px' }}>
+            <option value="all">券種（全て）</option>
+            {ticketTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+
+          <select value={selectedCheckin} onChange={(e) => setSelectedCheckin(e.target.value)} style={{ padding: '10px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, backgroundColor: COLORS.surface, fontSize: '13px' }}>
+            <option value="all">来場チェック（全て）</option>
+            <option value="checked">来場済み</option>
+            <option value="unchecked">未チェック</option>
+          </select>
         </div>
-      )}
+
+        {/* 予約一覧テーブル */}
+        <div style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, overflow: 'hidden', boxShadow: '0 2px 4px rgba(43, 36, 56, 0.04)' }}>
+          {loading ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: COLORS.muted }}>データを読み込み中...</div>
+          ) : filteredReservations.length === 0 ? (
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: COLORS.muted }}>
+              <Users size={32} color={COLORS.gold} style={{ marginBottom: '8px' }} />
+              <div>予約データはまだありません</div>
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#fcf9f2', borderBottom: `1px solid ${COLORS.border}`, color: COLORS.muted }}>
+                  <th style={{ padding: '12px 16px' }}>お客様名</th>
+                  <th style={{ padding: '12px 16px' }}>連絡先</th>
+                  <th style={{ padding: '12px 16px' }}>券種・枚数</th>
+                  <th style={{ padding: '12px 16px' }}>担当</th>
+                  <th style={{ padding: '12px 16px' }}>精算</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'center' }}>来場</th>
+                  <th style={{ padding: '12px 16px' }}>回</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredReservations.map(res => (
+                  <tr key={res.id} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                    <td style={{ padding: '14px 16px', fontWeight: 700 }}>{res.customer_name}</td>
+                    <td style={{ padding: '14px 16px', color: COLORS.muted, fontSize: '12px' }}>
+                      {res.customer_phone}<br />{res.customer_email}
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
+                      {res.ticket_types?.name || '一般'} × {res.count || 1}枚
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
+                      {res.cast_staff?.name ? (
+                        <span style={{ padding: '3px 8px', borderRadius: '6px', backgroundColor: '#eef2ff', color: '#4f46e5', fontWeight: 700, fontSize: '11px' }}>
+                          {res.cast_staff.name}
+                        </span>
+                      ) : '劇団扱い'}
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
+                      <span style={{ color: res.payment_status === 'paid' ? '#10b981' : '#e85a45', fontWeight: 700 }}>
+                        {res.payment_status === 'paid' ? '精算済' : `未精算 ¥${Number(res.total_price || 0).toLocaleString()}`}
+                      </span>
+                    </td>
+                    <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                      <button
+                        onClick={() => handleToggleCheckin(res)}
+                        style={{ width: '28px', height: '28px', borderRadius: '6px', border: `1px solid ${res.checked_in ? '#10b981' : COLORS.border}`, backgroundColor: res.checked_in ? '#10b981' : '#fff', color: '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        {res.checked_in && <Check size={16} />}
+                      </button>
+                    </td>
+                    <td style={{ padding: '14px 16px', color: COLORS.muted, fontSize: '12px' }}>
+                      {res.stages ? `${new Date(res.stages.stage_date).getMonth() + 1}/${new Date(res.stages.stage_date).getDate()} ${res.stages.start_time?.slice(0, 5)}` : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+      </div>
     </div>
   );
 }
