@@ -5,7 +5,7 @@ import Onboarding from './Onboarding';
 import TicketPochiAdminHome from './TicketPochiAdminHome';
 import AdminProductionInfo from './AdminProductionInfo';
 import AdminStaffSettings from './AdminStaffSettings';
-import AdminReservationList from './Adminreservationlist';
+import AdminReservationList from './AdminReservations';
 import AdminTicketSettings from './AdminTicketSettings';
 import AdminStageSettings from './AdminStageSettings';
 import AdminSeatSettings from './AdminSeatSettings';
