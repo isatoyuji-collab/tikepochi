@@ -23,6 +23,8 @@ const KANA_GRID = [
 export default function TabletReception({ productionId, onBack }) {
   const [stages, setStages] = useState([]);
   const [reservations, setReservations] = useState([]);
+  const [casts, setCasts] = useState([]);
+  const [ticketTypes, setTicketTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedStageId, setSelectedStageId] = useState('');
 
@@ -40,35 +42,53 @@ export default function TabletReception({ productionId, onBack }) {
       return;
     }
 
-    // 1. ステージ取得
-    const { data: stagesData } = await supabase
-      .from('stages')
-      .select('*')
-      .eq('production_id', productionId)
-      .order('stage_date', { ascending: true })
-      .order('start_time', { ascending: true });
+    try {
+      // 1. ステージ取得
+      const { data: stagesData } = await supabase
+        .from('stages')
+        .select('*')
+        .eq('production_id', productionId)
+        .order('stage_date', { ascending: true })
+        .order('start_time', { ascending: true });
 
-    if (stagesData && stagesData.length > 0) {
-      setStages(stagesData);
-      if (!selectedStageId) {
-        setSelectedStageId(stagesData[0].id);
+      if (stagesData && stagesData.length > 0) {
+        setStages(stagesData);
+        if (!selectedStageId) {
+          setSelectedStageId(stagesData[0].id);
+        }
       }
+
+      // 2. キャスト一覧取得
+      const { data: castsData } = await supabase
+        .from('cast_staff')
+        .select('*')
+        .eq('production_id', productionId);
+
+      if (castsData) setCasts(castsData);
+
+      // 3. 券種一覧取得
+      const { data: ticketsData } = await supabase
+        .from('ticket_types')
+        .select('*')
+        .eq('production_id', productionId);
+
+      if (ticketsData) setTicketTypes(ticketsData);
+
+      // 4. 予約一覧取得（安全な単体取得）
+      const { data: resData } = await supabase
+        .from('reservations')
+        .select('*')
+        .eq('production_id', productionId)
+        .order('customer_name', { ascending: true });
+
+      if (resData) {
+        setReservations(resData);
+      }
+    } catch (err) {
+      console.error('Fetch error:', err);
+    } finally {
+      setLoading(false);
     }
-
-    // 2. 予約一覧取得
-    const { data: resData } = await supabase
-      .from('reservations')
-      .select(`
-        *,
-        stages (stage_date, start_time, team_name),
-        ticket_types (name, price),
-        cast_staff (name)
-      `)
-      .eq('production_id', productionId)
-      .order('customer_name', { ascending: true });
-
-    if (resData) setReservations(resData);
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -83,6 +103,17 @@ export default function TabletReception({ productionId, onBack }) {
     if (detailItem && detailItem.id === resItem.id) {
       setDetailItem({ ...detailItem, checked_in: nextStatus });
     }
+  };
+
+  // 補助データのマッピング用
+  const getCastName = (castId) => {
+    const cast = casts.find(c => c.id === castId);
+    return cast ? cast.name : '劇団扱い';
+  };
+
+  const getTicketName = (ticketId) => {
+    const ticket = ticketTypes.find(t => t.id === ticketId);
+    return ticket ? ticket.name : '一般';
   };
 
   // 該当ステージの予約に絞り込み
@@ -124,20 +155,24 @@ export default function TabletReception({ productionId, onBack }) {
 
         {/* ステージ選択セレクター */}
         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '16px' }}>
-          {stages.map(s => {
-            const isSel = s.id === selectedStageId;
-            const dateStr = s.stage_date ? `${new Date(s.stage_date).getMonth() + 1}/${new Date(s.stage_date).getDate()}` : '';
-            return (
-              <button
-                key={s.id}
-                onClick={() => { setSelectedStageId(s.id); setSelectedKana(''); }}
-                style={{ minWidth: '120px', padding: '10px 14px', borderRadius: '12px', border: `1px solid ${isSel ? COLORS.gold : COLORS.border}`, backgroundColor: isSel ? '#fff6e8' : COLORS.surface, color: COLORS.text, fontWeight: isSel ? 700 : 500, cursor: 'pointer', textAlign: 'center' }}
-              >
-                <div style={{ fontSize: '14px' }}>{dateStr} {s.start_time?.slice(0, 5)}</div>
-                {s.team_name && <div style={{ fontSize: '11px', color: COLORS.gold }}>{s.team_name}</div>}
-              </button>
-            );
-          })}
+          {stages.length === 0 ? (
+            <div style={{ fontSize: '13px', color: COLORS.muted }}>ステージが登録されていません</div>
+          ) : (
+            stages.map(s => {
+              const isSel = s.id === selectedStageId;
+              const dateStr = s.stage_date ? `${new Date(s.stage_date).getMonth() + 1}/${new Date(s.stage_date).getDate()}` : '';
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => { setSelectedStageId(s.id); setSelectedKana(''); }}
+                  style={{ minWidth: '120px', padding: '10px 14px', borderRadius: '12px', border: `1px solid ${isSel ? COLORS.gold : COLORS.border}`, backgroundColor: isSel ? '#fff6e8' : COLORS.surface, color: COLORS.text, fontWeight: isSel ? 700 : 500, cursor: 'pointer', textAlign: 'center' }}
+                >
+                  <div style={{ fontSize: '14px' }}>{dateStr} {s.start_time?.slice(0, 5)}</div>
+                  {s.team_name && <div style={{ fontSize: '11px', color: COLORS.gold }}>{s.team_name}</div>}
+                </button>
+              );
+            })
+          )}
         </div>
 
         {/* 検索バー */}
@@ -235,14 +270,12 @@ export default function TabletReception({ productionId, onBack }) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                     <span style={{ fontWeight: 700, fontSize: '16px' }}>{res.customer_name}</span>
                     <span style={{ fontSize: '13px', fontWeight: 700, color: COLORS.gold }}>{res.count || 1}枚</span>
-                    {res.cast_staff?.name && (
-                      <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#eef2ff', color: '#4f46e5', fontWeight: 700 }}>
-                        {res.cast_staff.name}
-                      </span>
-                    )}
+                    <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#eef2ff', color: '#4f46e5', fontWeight: 700 }}>
+                      {getCastName(res.cast_id)}
+                    </span>
                   </div>
                   <div style={{ fontSize: '12px', color: COLORS.muted }}>
-                    {res.ticket_types?.name || '一般'} · {res.payment_status === 'paid' ? '精算済' : `未精算 ¥${Number(res.total_price || 0).toLocaleString()}`}
+                    {getTicketName(res.ticket_type_id)} · {res.payment_status === 'paid' ? '精算済' : `未精算 ¥${Number(res.total_price || 0).toLocaleString()}`}
                   </div>
                 </div>
 
@@ -293,10 +326,10 @@ export default function TabletReception({ productionId, onBack }) {
               <div><strong>お客様名:</strong> {detailItem.customer_name} 様</div>
               <div><strong>電話番号:</strong> {detailItem.customer_phone || '未登録'}</div>
               <div><strong>メール:</strong> {detailItem.customer_email || '未登録'}</div>
-              <div><strong>券種・枚数:</strong> {detailItem.ticket_types?.name} × {detailItem.count}枚</div>
+              <div><strong>券種・枚数:</strong> {getTicketName(detailItem.ticket_type_id)} × {detailItem.count}枚</div>
               <div><strong>合計金額:</strong> ¥{Number(detailItem.total_price || 0).toLocaleString()}</div>
               <div><strong>精算状況:</strong> {detailItem.payment_status === 'paid' ? '精算済' : '当日未精算'}</div>
-              <div><strong>担当扱い:</strong> {detailItem.cast_staff?.name || '劇団扱い'}</div>
+              <div><strong>担当扱い:</strong> {getCastName(detailItem.cast_id)}</div>
               {detailItem.notes && <div><strong>備考:</strong> {detailItem.notes}</div>}
             </div>
 
