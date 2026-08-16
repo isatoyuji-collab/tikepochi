@@ -1,197 +1,287 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import Login from './Login';
-import Onboarding from './Onboarding';
-import TicketPochiAdminHome from './TicketPochiAdminHome';
-import AdminProductionInfo from './AdminProductionInfo';
-import AdminStaffSettings from './AdminStaffSettings';
-import AdminReservationList from './Adminreservationlist';
 import AdminTicketSettings from './AdminTicketSettings';
 import AdminStageSettings from './AdminStageSettings';
-import AdminSeatSettings from './AdminSeatSettings';
-import AdminPaymentSettings from './AdminPaymentSettings';
-import AdminMessageSettings from './AdminMessageSettings';
+import AdminStaffSettings from './AdminStaffSettings';
+import AdminReservations from './AdminReservations';
 import TabletReception from './TabletReception';
-import { LogOut, Building2 } from 'lucide-react';
+import { Ticket, Calendar, Users, List, Tablet, Plus, LogOut, ChevronRight } from 'lucide-react';
+
+const COLORS = {
+  bg: '#faf5ea',
+  surface: '#ffffff',
+  surfaceAlt: '#f7efe0',
+  border: 'rgba(201,121,31,0.22)',
+  gold: '#c9791f',
+  text: '#2b2438',
+  muted: '#8a8398',
+};
 
 export default function App() {
   const [session, setSession] = useState(null);
+  const [productions, setProductions] = useState([]);
+  const [currentProduction, setCurrentProduction] = useState(null);
+  const [currentView, setCurrentView] = useState('home'); // 'home' | 'tickets' | 'stages' | 'staff' | 'reservations' | 'tablet'
   const [loading, setLoading] = useState(true);
-  const [currentOrg, setCurrentOrg] = useState(null);
-  const [checkingOrg, setCheckingOrg] = useState(true);
 
-  const [currentView, setCurrentView] = useState('home');
-  const [selectedProductionId, setSelectedProductionId] = useState(null);
-
-  // URLパラメーターから招待劇団IDを取得
-  const getInviteOrgId = () => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('invite_org_id');
-  };
-
-  const fetchUserOrganization = async (userId) => {
-    setCheckingOrg(true);
-    try {
-      const inviteOrgId = getInviteOrgId();
-
-      // 1. 既存の劇団所属情報を確認
-      const { data: memberData } = await supabase
-        .from('organization_members')
-        .select('organization_id, role')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (memberData && memberData.organization_id) {
-        // すでに所属済み
-        const { data: orgData } = await supabase
-          .from('organizations')
-          .select('id, name')
-          .eq('id', memberData.organization_id)
-          .maybeSingle();
-
-        if (orgData) {
-          setCurrentOrg({ id: orgData.id, name: orgData.name, role: memberData.role });
-        } else {
-          setCurrentOrg(null);
-        }
-      } else if (inviteOrgId) {
-        // 招待URL経由でアクセスし、まだ未所属の場合 ➔ 自動参加
-        const { data: orgData } = await supabase
-          .from('organizations')
-          .select('id, name')
-          .eq('id', inviteOrgId)
-          .maybeSingle();
-
-        if (orgData) {
-          // メンバーテーブルに追加
-          await supabase.from('organization_members').insert([
-            { organization_id: inviteOrgId, user_id: userId, role: 'member' }
-          ]);
-
-          setCurrentOrg({ id: orgData.id, name: orgData.name, role: 'member' });
-
-          // URLからパラメータを削除
-          window.history.replaceState({}, document.title, window.location.pathname);
-        } else {
-          setCurrentOrg(null);
-        }
-      } else {
-        setCurrentOrg(null);
-      }
-    } catch (e) {
-      console.error('Organization fetch error:', e);
-      setCurrentOrg(null);
-    } finally {
-      setCheckingOrg(false);
-    }
-  };
-
+  // 1. 認証セッション監視
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) {
-        fetchUserOrganization(session.user.id);
-      } else {
-        setCheckingOrg(false);
-      }
-      setLoading(false);
+      if (session) fetchProductions();
+      else setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) {
-        fetchUserOrganization(session.user.id);
-      } else {
-        setCurrentOrg(null);
-        setCheckingOrg(false);
+      if (session) fetchProductions();
+      else {
+        setProductions([]);
+        setCurrentProduction(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleNavigate = (view, productionId = null) => {
-    if (productionId) setSelectedProductionId(productionId);
-    setCurrentView(view);
+  // 2. 公演一覧取得
+  const fetchProductions = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('productions')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!error && data && data.length > 0) {
+      setProductions(data);
+      if (!currentProduction) {
+        setCurrentProduction(data[0]);
+      }
+    }
+    setLoading(false);
   };
 
+  // ログイン処理（マジックリンク / パスワードレス）
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    const email = e.target.email.value;
+    const { error } = await supabase.auth.signInWithOtp({ email });
+    if (error) alert('ログインエラー: ' + error.message);
+    else alert('ログイン用リンクをメールに送信しました！');
+  };
+
+  // ログアウト
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setCurrentView('home');
   };
 
-  if (loading || checkingOrg) {
+  // 公演未選択・初期状態の場合
+  if (!session) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#faf5ea', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif', color: '#2b2438' }}>
-        読み込み中...
+      <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '20px' }}>
+        <div style={{ width: '100%', maxWidth: '400px', backgroundColor: COLORS.surface, borderRadius: '20px', padding: '32px', border: `1px solid ${COLORS.border}`, boxShadow: '0 8px 24px rgba(43,36,56,0.06)', textAlign: 'center' }}>
+          <h1 style={{ fontFamily: "'Shippori Mincho', serif", fontSize: '24px', color: COLORS.gold, margin: '0 0 8px 0' }}>チケポチ 管理システム</h1>
+          <p style={{ fontSize: '13px', color: COLORS.muted, marginBottom: '24px' }}>登録したメールアドレスを入力してログインしてください</p>
+          
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <input
+              type="email"
+              name="email"
+              required
+              placeholder="officeknight06@gmail.com"
+              style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, fontSize: '14px', boxSizing: 'border-box' }}
+            />
+            <button
+              type="submit"
+              style={{ width: '100%', padding: '12px', borderRadius: '10px', border: 'none', backgroundColor: COLORS.gold, color: '#fff', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer' }}
+            >
+              ログインリンクを送信
+            </button>
+          </form>
+        </div>
       </div>
     );
   }
 
-  if (!session) {
-    return <Login onLoginSuccess={() => setLoading(true)} />;
-  }
+  // --- ビュー切り替えルーティング ---
 
-  if (!currentOrg) {
+  if (currentView === 'tickets' && currentProduction) {
     return (
-      <Onboarding
-        user={session.user}
-        onComplete={(org) => {
-          setCurrentOrg({ id: org.id, name: org.name, role: 'owner' });
-          setCurrentView('home');
-        }}
+      <AdminTicketSettings
+        productionId={currentProduction.id}
+        org={{ name: currentProduction.title }}
+        onBack={() => setCurrentView('home')}
       />
     );
   }
 
-  const renderView = () => {
-    switch (currentView) {
-      case 'home':
-        return <TicketPochiAdminHome onNavigate={handleNavigate} user={session.user} org={currentOrg} />;
-      case 'info':
-        return <AdminProductionInfo productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home')} />;
-      case 'staff':
-        return <AdminStaffSettings productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home')} />;
-      case 'reservations':
-        return <AdminReservationList productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home')} />;
-      case 'tickets':
-        return <AdminTicketSettings productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home')} />;
-      case 'dates':
-        return <AdminStageSettings productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home')} />;
-      case 'seats':
-        return <AdminSeatSettings productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home')} />;
-      case 'payments':
-        return <AdminPaymentSettings productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home')} />;
-      case 'messages':
-        return <AdminMessageSettings productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home')} />;
-      case 'tablet':
-        return <TabletReception productionId={selectedProductionId} org={currentOrg} onBackToAdmin={() => handleNavigate('home')} />;
-      default:
-        return (
-          <div style={{ padding: '40px', textAlign: 'center', fontFamily: 'sans-serif' }}>
-            <h2>「{currentView}」画面は準備中です</h2>
-            <button onClick={() => handleNavigate('home')} style={{ padding: '10px 20px', cursor: 'pointer', marginTop: '20px' }}>
-              ホームへ戻る
-            </button>
-          </div>
-        );
-    }
-  };
+  if (currentView === 'stages' && currentProduction) {
+    return (
+      <AdminStageSettings
+        productionId={currentProduction.id}
+        onBack={() => setCurrentView('home')}
+      />
+    );
+  }
 
+  if (currentView === 'staff' && currentProduction) {
+    return (
+      <AdminStaffSettings
+        productionId={currentProduction.id}
+        onBack={() => setCurrentView('home')}
+      />
+    );
+  }
+
+  if (currentView === 'reservations' && currentProduction) {
+    return (
+      <AdminReservations
+        productionId={currentProduction.id}
+        onBack={() => setCurrentView('home')}
+        onOpenTablet={() => setCurrentView('tablet')}
+      />
+    );
+  }
+
+  if (currentView === 'tablet' && currentProduction) {
+    return (
+      <TabletReception
+        productionId={currentProduction.id}
+        onBack={() => setCurrentView('reservations')}
+      />
+    );
+  }
+
+  // --- メインダッシュボード（Home） ---
   return (
-    <div style={{ position: 'relative' }}>
-      <div style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 9999, backgroundColor: '#ffffff', border: '1px solid rgba(201,121,31,0.22)', padding: '8px 14px', borderRadius: '30px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12px' }}>
-        <span style={{ color: '#c9791f', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <Building2 size={13} /> {currentOrg.name} ({currentOrg.role === 'owner' ? '所有者' : 'メンバー'})
-        </span>
-        <span style={{ color: '#8a8398' }}>| {session.user.email}</span>
-        <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#e85a45', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 'bold', padding: 0, marginLeft: '4px' }}>
-          <LogOut size={14} /> ログアウト
-        </button>
-      </div>
+    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '24px', boxSizing: 'border-box' }}>
+      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+        
+        {/* ヘッダー */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '16px', marginBottom: '24px' }}>
+          <div>
+            <h1 style={{ fontFamily: "'Shippori Mincho', serif", fontSize: '22px', margin: '0 0 4px 0', color: COLORS.gold, fontWeight: 700 }}>
+              チケポチ 管理ポータル
+            </h1>
+            <div style={{ fontSize: '12px', color: COLORS.muted }}>
+              ログイン中: {session.user?.email}
+            </div>
+          </div>
+          <button
+            onClick={handleLogout}
+            style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: `1px solid ${COLORS.border}`, borderRadius: '8px', padding: '6px 12px', fontSize: '12px', color: COLORS.muted, cursor: 'pointer' }}
+          >
+            <LogOut size={14} /> ログアウト
+          </button>
+        </div>
 
-      {renderView()}
+        {/* 公演セレクター */}
+        <div style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', marginBottom: '24px', boxShadow: '0 2px 4px rgba(43,36,56,0.04)' }}>
+          <div style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold, marginBottom: '8px' }}>選択中の公演</div>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <select
+              value={currentProduction?.id || ''}
+              onChange={(e) => {
+                const sel = productions.find(p => p.id === e.target.value);
+                if (sel) setCurrentProduction(sel);
+              }}
+              style={{ flex: 1, padding: '12px', borderRadius: '10px', border: `1px solid ${COLORS.border}`, fontSize: '15px', fontWeight: 'bold' }}
+            >
+              {productions.map(p => (
+                <option key={p.id} value={p.id}>{p.title}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* 管理メニュー一覧 */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+          
+          <div
+            onClick={() => setCurrentView('tickets')}
+            style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: '#fff6e8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.gold }}>
+                <Ticket size={22} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '16px' }}>券種・予約フォーム</div>
+                <div style={{ fontSize: '12px', color: COLORS.muted }}>価格・セット券・販売設定</div>
+              </div>
+            </div>
+            <ChevronRight size={18} color={COLORS.muted} />
+          </div>
+
+          <div
+            onClick={() => setCurrentView('stages')}
+            style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: '#fff6e8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.gold }}>
+                <Calendar size={22} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '16px' }}>日程・座席キャパ</div>
+                <div style={{ fontSize: '12px', color: COLORS.muted }}>開演時間・チーム区分</div>
+              </div>
+            </div>
+            <ChevronRight size={18} color={COLORS.muted} />
+          </div>
+
+          <div
+            onClick={() => setCurrentView('staff')}
+            style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: '#fff6e8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.gold }}>
+                <Users size={22} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '16px' }}>キャスト・スタッフ</div>
+                <div style={{ fontSize: '12px', color: COLORS.muted }}>扱いURL発行・権限設定</div>
+              </div>
+            </div>
+            <ChevronRight size={18} color={COLORS.muted} />
+          </div>
+
+          <div
+            onClick={() => setCurrentView('reservations')}
+            style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: '#fff6e8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.gold }}>
+                <List size={22} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '16px' }}>予約者一覧・動員</div>
+                <div style={{ fontSize: '12px', color: COLORS.muted }}>予約状況・精算チェック</div>
+              </div>
+            </div>
+            <ChevronRight size={18} color={COLORS.muted} />
+          </div>
+
+          <div
+            onClick={() => setCurrentView('tablet')}
+            style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gridColumn: '1 / -1' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' }}>
+                <Tablet size={22} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '16px' }}>当日受付タブレット</div>
+                <div style={{ fontSize: '12px', color: COLORS.muted }}>50音検索・ワンタップ来場チェックイン</div>
+              </div>
+            </div>
+            <ChevronRight size={18} color={COLORS.muted} />
+          </div>
+
+        </div>
+
+      </div>
     </div>
   );
 }

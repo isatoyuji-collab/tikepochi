@@ -28,12 +28,17 @@ export default function TabletReception({ productionId, onBack }) {
   const [loading, setLoading] = useState(true);
   const [selectedStageId, setSelectedStageId] = useState('');
 
-  // 検索・絞り込み
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedKana, setSelectedKana] = useState('');
-
-  // 詳細確認モーダル
   const [detailItem, setDetailItem] = useState(null);
+
+  const handleBack = () => {
+    if (typeof onBack === 'function') {
+      onBack();
+    } else {
+      window.history.back();
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -43,49 +48,41 @@ export default function TabletReception({ productionId, onBack }) {
     }
 
     try {
-      // 1. ステージ取得
-      const { data: stagesData } = await supabase
+      const { data: stagesData, error: sErr } = await supabase
         .from('stages')
         .select('*')
         .eq('production_id', productionId)
         .order('stage_date', { ascending: true })
         .order('start_time', { ascending: true });
 
-      if (stagesData && stagesData.length > 0) {
+      if (!sErr && stagesData) {
         setStages(stagesData);
-        if (!selectedStageId) {
+        if (stagesData.length > 0 && !selectedStageId) {
           setSelectedStageId(stagesData[0].id);
         }
       }
 
-      // 2. キャスト一覧取得
       const { data: castsData } = await supabase
         .from('cast_staff')
         .select('*')
         .eq('production_id', productionId);
-
       if (castsData) setCasts(castsData);
 
-      // 3. 券種一覧取得
       const { data: ticketsData } = await supabase
         .from('ticket_types')
         .select('*')
         .eq('production_id', productionId);
-
       if (ticketsData) setTicketTypes(ticketsData);
 
-      // 4. 予約一覧取得（安全な単体取得）
       const { data: resData } = await supabase
         .from('reservations')
         .select('*')
         .eq('production_id', productionId)
         .order('customer_name', { ascending: true });
 
-      if (resData) {
-        setReservations(resData);
-      }
+      if (resData) setReservations(resData);
     } catch (err) {
-      console.error('Fetch error:', err);
+      console.warn('Data fetch notice:', err);
     } finally {
       setLoading(false);
     }
@@ -95,7 +92,6 @@ export default function TabletReception({ productionId, onBack }) {
     fetchData();
   }, [productionId]);
 
-  // 来場チェックイン切り替え
   const handleToggleCheckin = async (resItem) => {
     const nextStatus = !resItem.checked_in;
     await supabase.from('reservations').update({ checked_in: nextStatus }).eq('id', resItem.id);
@@ -105,7 +101,6 @@ export default function TabletReception({ productionId, onBack }) {
     }
   };
 
-  // 補助データのマッピング用
   const getCastName = (castId) => {
     const cast = casts.find(c => c.id === castId);
     return cast ? cast.name : '劇団扱い';
@@ -116,10 +111,8 @@ export default function TabletReception({ productionId, onBack }) {
     return ticket ? ticket.name : '一般';
   };
 
-  // 該当ステージの予約に絞り込み
   const currentStageReservations = reservations.filter(r => r.stage_id === selectedStageId);
 
-  // 検索・カナ絞り込み
   const filteredList = currentStageReservations.filter(r => {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -143,20 +136,18 @@ export default function TabletReception({ productionId, onBack }) {
         
         {/* 上部ヘッダー */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <button onClick={onBack} style={{ background: 'none', border: 'none', color: COLORS.gold, fontSize: '14px', cursor: 'pointer', padding: '4px 8px 4px 0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <ArrowLeft size={16} /> 戻る
+          <button onClick={handleBack} style={{ background: 'none', border: 'none', color: COLORS.gold, fontSize: '14px', cursor: 'pointer', padding: '8px 12px 8px 0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <ArrowLeft size={18} /> 戻る
           </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button onClick={fetchData} style={{ background: 'none', border: `1px solid ${COLORS.border}`, borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', color: COLORS.muted, display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
-              <RefreshCw size={14} /> 最新に更新
-            </button>
-          </div>
+          <button onClick={fetchData} style={{ background: 'none', border: `1px solid ${COLORS.border}`, borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', color: COLORS.muted, display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
+            <RefreshCw size={14} /> 最新に更新
+          </button>
         </div>
 
         {/* ステージ選択セレクター */}
         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '16px' }}>
           {stages.length === 0 ? (
-            <div style={{ fontSize: '13px', color: COLORS.muted }}>ステージが登録されていません</div>
+            <div style={{ fontSize: '13px', color: COLORS.muted, padding: '8px 0' }}>ステージが登録されていません</div>
           ) : (
             stages.map(s => {
               const isSel = s.id === selectedStageId;
