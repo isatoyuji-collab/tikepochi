@@ -1,0 +1,149 @@
+[1mdiff --git a/src/App.jsx b/src/App.jsx[m
+[1mindex 8a78562..19bd37e 100644[m
+[1m--- a/src/App.jsx[m
+[1m+++ b/src/App.jsx[m
+[36m@@ -5,7 +5,7 @@[m [mimport AdminStageSettings from './AdminStageSettings';[m
+ import AdminStaffSettings from './AdminStaffSettings';[m
+ import AdminReservations from './AdminReservations';[m
+ import TabletReception from './TabletReception';[m
+[31m-import { Ticket, Calendar, Users, List, Tablet, Plus, LogOut, ChevronRight } from 'lucide-react';[m
+[32m+[m[32mimport { Ticket, Calendar, Users, List, Tablet, LogOut, ChevronRight } from 'lucide-react';[m
+ [m
+ const COLORS = {[m
+   bg: '#faf5ea',[m
+[36m@@ -21,10 +21,9 @@[m [mexport default function App() {[m
+   const [session, setSession] = useState(null);[m
+   const [productions, setProductions] = useState([]);[m
+   const [currentProduction, setCurrentProduction] = useState(null);[m
+[31m-  const [currentView, setCurrentView] = useState('home'); // 'home' | 'tickets' | 'stages' | 'staff' | 'reservations' | 'tablet'[m
+[32m+[m[32m  const [currentView, setCurrentView] = useState('home');[m
+   const [loading, setLoading] = useState(true);[m
+ [m
+[31m-  // 1. 認証セッション監視[m
+   useEffect(() => {[m
+     supabase.auth.getSession().then(({ data: { session } }) => {[m
+       setSession(session);[m
+[36m@@ -45,7 +44,6 @@[m [mexport default function App() {[m
+     return () => subscription.unsubscribe();[m
+   }, []);[m
+ [m
+[31m-  // 2. 公演一覧取得[m
+   const fetchProductions = async () => {[m
+     setLoading(true);[m
+     const { data, error } = await supabase[m
+[36m@@ -62,7 +60,6 @@[m [mexport default function App() {[m
+     setLoading(false);[m
+   };[m
+ [m
+[31m-  // ログイン処理（マジックリンク / パスワードレス）[m
+   const handleLogin = async (e) => {[m
+     e.preventDefault();[m
+     const email = e.target.email.value;[m
+[36m@@ -71,20 +68,17 @@[m [mexport default function App() {[m
+     else alert('ログイン用リンクをメールに送信しました！');[m
+   };[m
+ [m
+[31m-  // ログアウト[m
+   const handleLogout = async () => {[m
+     await supabase.auth.signOut();[m
+     setCurrentView('home');[m
+   };[m
+ [m
+[31m-  // 公演未選択・初期状態の場合[m
+   if (!session) {[m
+     return ([m
+       <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '20px' }}>[m
+         <div style={{ width: '100%', maxWidth: '400px', backgroundColor: COLORS.surface, borderRadius: '20px', padding: '32px', border: `1px solid ${COLORS.border}`, boxShadow: '0 8px 24px rgba(43,36,56,0.06)', textAlign: 'center' }}>[m
+[31m-          <h1 style={{ fontFamily: "'Shippori Mincho', serif", fontSize: '24px', color: COLORS.gold, margin: '0 0 8px 0' }}>チケポチ 管理システム</h1>[m
+[31m-          <p style={{ fontSize: '13px', color: COLORS.muted, marginBottom: '24px' }}>登録したメールアドレスを入力してログインしてください</p>[m
+[31m-          [m
+[32m+[m[32m          <h1 style={{ fontFamily: "'Shippori Mincho', serif", fontSize: '24px', color: COLORS.gold, margin: '0 0 8px 0' }}>チケポチ 管理ポータル</h1>[m
+[32m+[m[32m          <p style={{ fontSize: '13px', color: COLORS.muted, marginBottom: '24px' }}>登録メールアドレスでログイン</p>[m
+           <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>[m
+             <input[m
+               type="email"[m
+[36m@@ -105,59 +99,32 @@[m [mexport default function App() {[m
+     );[m
+   }[m
+ [m
+[31m-  // --- ビュー切り替えルーティング ---[m
+[32m+[m[32m  // --- 子画面レンダリング ---[m
+ [m
+   if (currentView === 'tickets' && currentProduction) {[m
+[31m-    return ([m
+[31m-      <AdminTicketSettings[m
+[31m-        productionId={currentProduction.id}[m
+[31m-        org={{ name: currentProduction.title }}[m
+[31m-        onBack={() => setCurrentView('home')}[m
+[31m-      />[m
+[31m-    );[m
+[32m+[m[32m    return <AdminTicketSettings productionId={currentProduction.id} org={{ name: currentProduction.title }} onBack={() => setCurrentView('home')} />;[m
+   }[m
+ [m
+   if (currentView === 'stages' && currentProduction) {[m
+[31m-    return ([m
+[31m-      <AdminStageSettings[m
+[31m-        productionId={currentProduction.id}[m
+[31m-        onBack={() => setCurrentView('home')}[m
+[31m-      />[m
+[31m-    );[m
+[32m+[m[32m    return <AdminStageSettings productionId={currentProduction.id} onBack={() => setCurrentView('home')} />;[m
+   }[m
+ [m
+   if (currentView === 'staff' && currentProduction) {[m
+[31m-    return ([m
+[31m-      <AdminStaffSettings[m
+[31m-        productionId={currentProduction.id}[m
+[31m-        onBack={() => setCurrentView('home')}[m
+[31m-      />[m
+[31m-    );[m
+[32m+[m[32m    return <AdminStaffSettings productionId={currentProduction.id} onBack={() => setCurrentView('home')} />;[m
+   }[m
+ [m
+   if (currentView === 'reservations' && currentProduction) {[m
+[31m-    return ([m
+[31m-      <AdminReservations[m
+[31m-        productionId={currentProduction.id}[m
+[31m-        onBack={() => setCurrentView('home')}[m
+[31m-        onOpenTablet={() => setCurrentView('tablet')}[m
+[31m-      />[m
+[31m-    );[m
+[32m+[m[32m    return <AdminReservations productionId={currentProduction.id} onBack={() => setCurrentView('home')} onOpenTablet={() => setCurrentView('tablet')} />;[m
+   }[m
+ [m
+   if (currentView === 'tablet' && currentProduction) {[m
+[31m-    return ([m
+[31m-      <TabletReception[m
+[31m-        productionId={currentProduction.id}[m
+[31m-        onBack={() => setCurrentView('reservations')}[m
+[31m-      />[m
+[31m-    );[m
+[32m+[m[32m    return <TabletReception productionId={currentProduction.id} onBack={() => setCurrentView('home')} />;[m
+   }[m
+ [m
+[31m-  // --- メインダッシュボード（Home） ---[m
+[32m+[m[32m  // --- ホーム画面 ---[m
+   return ([m
+[31m-    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '24px', boxSizing: 'border-box' }}>[m
+[31m-      <div style={{ maxWidth: '800px', margin: '0 auto' }}>[m
+[32m+[m[32m    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '24px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>[m
+[32m+[m[32m      <div style={{ maxWidth: '800px', width: '100%', margin: '0 auto' }}>[m
+         [m
+         {/* ヘッダー */}[m
+         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '16px', marginBottom: '24px' }}>[m
+[36m@@ -165,9 +132,7 @@[m [mexport default function App() {[m
+             <h1 style={{ fontFamily: "'Shippori Mincho', serif", fontSize: '22px', margin: '0 0 4px 0', color: COLORS.gold, fontWeight: 700 }}>[m
+               チケポチ 管理ポータル[m
+             </h1>[m
+[31m-            <div style={{ fontSize: '12px', color: COLORS.muted }}>[m
+[31m-              ログイン中: {session.user?.email}[m
+[31m-            </div>[m
+[32m+[m[32m            <div style={{ fontSize: '12px', color: COLORS.muted }}>公演・予約一元管理システム</div>[m
+           </div>[m
+           <button[m
+             onClick={handleLogout}[m
+[36m@@ -180,29 +145,23 @@[m [mexport default function App() {[m
+         {/* 公演セレクター */}[m
+         <div style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', marginBottom: '24px', boxShadow: '0 2px 4px rgba(43,36,56,0.04)' }}>[m
+           <div style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold, marginBottom: '8px' }}>選択中の公演</div>[m
+[31m-          <div style={{ display: 'flex
