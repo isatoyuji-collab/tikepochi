@@ -1,45 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { ArrowLeft, UserPlus, Trash2, X, Copy, Check, Edit2, Shield, Tag, Link2, Sparkles, FileText, Users } from 'lucide-react';
+import { ArrowLeft, UserPlus, Trash2, X, Copy, Check, Edit2, Shield, Tag, Link2, Sparkles, FileText, Share2 } from 'lucide-react';
 import { COLORS, FONTS, RADIUS } from './theme';
 
 const PRODUCTION_TEAMS = ['Aチーム', 'Bチーム', 'シングルキャスト', 'スタッフ・共通'];
 
-const INITIAL_STAFF = [
-  {
-    id: 1,
-    name: '岸根 勇人',
-    role: 'admin',
-    memberType: 'cast',
-    teamTag: 'シングルキャスト',
-    ticketVisibility: 'all_stages',
-    hasPersonalUrl: true,
-    linkToNextProduction: true,
-    castSlug: 'kishine',
-    personalUrl: 'https://tikepochi.com/p/office-knight-12/reserve?cast=kishine',
-    status: 'active',
-    authType: 'LINE'
-  },
-  {
-    id: 2,
-    name: '受付 太郎',
-    role: 'member',
-    memberType: 'staff',
-    teamTag: 'スタッフ・共通',
-    ticketVisibility: 'all_stages',
-    hasPersonalUrl: true,
-    linkToNextProduction: true,
-    castSlug: 'uketsuke_taro',
-    personalUrl: 'https://tikepochi.com/p/office-knight-12/reserve?cast=uketsuke_taro',
-    status: 'active',
-    authType: 'MagicLink'
-  },
-];
-
 export default function AdminStaffSettings({ productionId, org, onBack }) {
-  const [staffList, setStaffList] = useState(INITIAL_STAFF);
+  const [staffList, setStaffList] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // 共同管理者招待リンク用state
+  // 共同管理者招待リンク用
   const [copiedInvite, setCopiedInvite] = useState(false);
   const inviteUrl = `${window.location.origin}?invite_org_id=${org?.id || ''}`;
 
@@ -57,16 +27,45 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
   const [staffTeam, setStaffTeam] = useState('Aチーム');
   const [ticketVisibility, setTicketVisibility] = useState('assigned_only');
   const [hasPersonalUrl, setHasPersonalUrl] = useState(true);
-  const [linkToNextProduction, setLinkToNextProduction] = useState(false);
 
   const [copiedId, setCopiedId] = useState(null);
   const [copiedAll, setCopiedAll] = useState(false);
+
+  // Supabaseから実際のメンバーを取得
+  const fetchStaff = async () => {
+    setLoading(true);
+    if (!productionId) {
+      setLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('cast_staff')
+      .select('*')
+      .eq('production_id', productionId)
+      .order('created_at', { ascending: true });
+
+    if (!error && data) {
+      setStaffList(data);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchStaff();
+  }, [productionId]);
 
   // 招待URLコピー処理
   const handleCopyInviteUrl = () => {
     navigator.clipboard.writeText(inviteUrl);
     setCopiedInvite(true);
     setTimeout(() => setCopiedInvite(false), 2000);
+  };
+
+  // LINE共有処理（汎用）
+  const handleShareLine = (text, url) => {
+    const shareText = encodeURIComponent(`${text}\n${url}`);
+    window.open(`https://line.me/R/msg/text/?${shareText}`, '_blank');
   };
 
   const handleRunAiAnalysis = () => {
@@ -91,70 +90,47 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
     setAiParsedResults(prev => prev.filter(item => item.tempId !== tempId));
   };
 
-  const handleConfirmAiImport = () => {
+  const handleConfirmAiImport = async () => {
     if (!aiParsedResults || aiParsedResults.length === 0) return;
 
-    const newMembers = aiParsedResults.map(item => {
+    const newRecords = aiParsedResults.map(item => {
       const dummySlug = item.name.replace(/\s+/g, '').toLowerCase() || `cast${Date.now()}`;
       return {
-        id: Date.now() + Math.random(),
+        production_id: productionId,
         name: item.name,
         role: 'member',
-        memberType: item.memberType,
-        teamTag: item.teamTag,
-        ticketVisibility: 'all_stages',
-        hasPersonalUrl: item.hasPersonalUrl,
-        linkToNextProduction: false,
-        castSlug: dummySlug,
-        personalUrl: item.hasPersonalUrl ? `https://tikepochi.com/p/office-knight-12/reserve?cast=${encodeURIComponent(dummySlug)}` : '',
-        status: 'invited',
-        authType: 'Pending'
+        member_type: item.memberType,
+        team_tag: item.teamTag,
+        has_personal_url: item.hasPersonalUrl,
+        cast_slug: dummySlug,
+        personal_url: item.hasPersonalUrl ? `${window.location.origin}/reserve?prod=${productionId}&cast=${encodeURIComponent(dummySlug)}` : ''
       };
     });
 
-    setStaffList([...staffList, ...newMembers]);
-    setIsAiModalOpen(false);
-    setAiParsedResults(null);
-    setAiInputText('');
-    alert(`${newMembers.length} 名のメンバーを一括登録しました！`);
-  };
+    const { error } = await supabase.from('cast_staff').insert(newRecords);
 
-  const handleGenerateAllUrls = () => {
-    let generatedCount = 0;
-    const updated = staffList.map(member => {
-      if (member.hasPersonalUrl && !member.personalUrl) {
-        generatedCount++;
-        const dummySlug = member.name.replace(/\s+/g, '').toLowerCase() || `member${member.id}`;
-        return {
-          ...member,
-          castSlug: dummySlug,
-          personalUrl: `https://tikepochi.com/p/office-knight-12/reserve?cast=${encodeURIComponent(dummySlug)}`
-        };
-      }
-      return member;
-    });
-
-    setStaffList(updated);
-    if (generatedCount > 0) {
-      alert(`新規で ${generatedCount} 名の専用予約URLを発行しました！\n（※既存の発行済みURLは保持されています）`);
+    if (error) {
+      alert('一括保存に失敗しました: ' + error.message);
     } else {
-      alert('対象全員の専用予約URLはすでに発行済みです。');
+      setIsAiModalOpen(false);
+      setAiParsedResults(null);
+      setAiInputText('');
+      fetchStaff();
     }
   };
 
-  const handleGenerateSingleUrl = (id) => {
-    setStaffList(prev => prev.map(m => {
-      if (m.id === id) {
-        const dummySlug = m.name.replace(/\s+/g, '').toLowerCase() || `member${m.id}`;
-        return {
-          ...m,
-          hasPersonalUrl: true,
-          castSlug: dummySlug,
-          personalUrl: `https://tikepochi.com/p/office-knight-12/reserve?cast=${encodeURIComponent(dummySlug)}`
-        };
+  const handleGenerateAllUrls = async () => {
+    let updated = false;
+    for (const member of staffList) {
+      if (member.has_personal_url && !member.personal_url) {
+        const dummySlug = member.name.replace(/\s+/g, '').toLowerCase() || `member${member.id}`;
+        const pUrl = `${window.location.origin}/reserve?prod=${productionId}&cast=${encodeURIComponent(dummySlug)}`;
+        await supabase.from('cast_staff').update({ cast_slug: dummySlug, personal_url: pUrl }).eq('id', member.id);
+        updated = true;
       }
-      return m;
-    }));
+    }
+    fetchStaff();
+    alert(updated ? '専用予約URLを一括生成しました！' : '対象全員の専用予約URLは生成済みです。');
   };
 
   const handleCopyUrl = (id, url) => {
@@ -164,12 +140,12 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
   };
 
   const handleCopyAllUrlsText = () => {
-    const list = staffList.filter(m => m.hasPersonalUrl && m.personalUrl);
+    const list = staffList.filter(m => m.has_personal_url && m.personal_url);
     if (list.length === 0) {
-      alert('コピー対象の個別URLがありません。まずはURLを発行してください。');
+      alert('コピー対象の個別URLがありません。');
       return;
     }
-    const text = list.map(m => `${m.name} 扱い専用予約URL:\n${m.personalUrl}`).join('\n\n');
+    const text = list.map(m => `${m.name} 扱い専用予約URL:\n${m.personal_url}`).join('\n\n');
     navigator.clipboard.writeText(text);
     setCopiedAll(true);
     setTimeout(() => setCopiedAll(false), 2000);
@@ -181,64 +157,60 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
     setStaffRole('member');
     setMemberType('cast');
     setStaffTeam(PRODUCTION_TEAMS[0]);
-    setTicketVisibility('assigned_only');
     setHasPersonalUrl(true);
-    setLinkToNextProduction(false);
     setIsModalOpen(true);
   };
 
   const handleOpenEditModal = (member) => {
     setEditingMember(member);
     setStaffName(member.name);
-    setStaffRole(member.role);
-    setMemberType(member.memberType || 'cast');
-    setStaffTeam(member.teamTag || PRODUCTION_TEAMS[0]);
-    setTicketVisibility(member.ticketVisibility || 'assigned_only');
-    setHasPersonalUrl(member.hasPersonalUrl !== false);
-    setLinkToNextProduction(member.linkToNextProduction || false);
+    setStaffRole(member.role || 'member');
+    setMemberType(member.member_type || 'cast');
+    setStaffTeam(member.team_tag || PRODUCTION_TEAMS[0]);
+    setHasPersonalUrl(member.has_personal_url !== false);
     setIsModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!staffName.trim()) {
       alert('お名前を入力してください');
       return;
     }
-    const payload = {
-      name: staffName.trim(),
-      role: staffRole,
-      memberType: memberType,
-      teamTag: staffTeam,
-      ticketVisibility: ticketVisibility,
-      hasPersonalUrl: hasPersonalUrl,
-      linkToNextProduction: linkToNextProduction
-    };
+
+    const dummySlug = staffName.trim().replace(/\s+/g, '').toLowerCase();
+    const pUrl = hasPersonalUrl ? `${window.location.origin}/reserve?prod=${productionId}&cast=${encodeURIComponent(dummySlug)}` : '';
 
     if (editingMember) {
-      setStaffList(prev => prev.map(m => {
-        if (m.id === editingMember.id) {
-          const dummySlug = m.castSlug || staffName.trim().replace(/\s+/g, '').toLowerCase();
-          return {
-            ...m,
-            ...payload,
-            personalUrl: hasPersonalUrl ? (m.personalUrl || `https://tikepochi.com/p/office-knight-12/reserve?cast=${encodeURIComponent(dummySlug)}`) : ''
-          };
-        }
-        return m;
-      }));
+      await supabase.from('cast_staff').update({
+        name: staffName.trim(),
+        role: staffRole,
+        member_type: memberType,
+        team_tag: staffTeam,
+        has_personal_url: hasPersonalUrl,
+        personal_url: pUrl
+      }).eq('id', editingMember.id);
     } else {
-      const dummySlug = staffName.trim().replace(/\s+/g, '').toLowerCase();
-      const newMember = {
-        id: Date.now(),
-        ...payload,
-        castSlug: dummySlug,
-        personalUrl: hasPersonalUrl ? `https://tikepochi.com/p/office-knight-12/reserve?cast=${encodeURIComponent(dummySlug)}` : '',
-        status: 'invited',
-        authType: 'Pending'
-      };
-      setStaffList([...staffList, newMember]);
+      await supabase.from('cast_staff').insert([{
+        production_id: productionId,
+        name: staffName.trim(),
+        role: staffRole,
+        member_type: memberType,
+        team_tag: staffTeam,
+        has_personal_url: hasPersonalUrl,
+        cast_slug: dummySlug,
+        personal_url: pUrl
+      }]);
     }
+
     setIsModalOpen(false);
+    fetchStaff();
+  };
+
+  const handleDeleteMember = async (id) => {
+    if (confirm('このメンバーを削除してよろしいですか？')) {
+      await supabase.from('cast_staff').delete().eq('id', id);
+      fetchStaff();
+    }
   };
 
   return (
@@ -253,14 +225,6 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
           padding: 18px;
           margin-bottom: 12px;
           box-shadow: 0 2px 4px rgba(33,26,44,0.05);
-        }
-
-        .input-label {
-          display: block;
-          font-size: 13px;
-          font-weight: 700;
-          color: ${COLORS.gold};
-          margin-bottom: 6px;
         }
 
         .text-input {
@@ -285,13 +249,28 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
           font-weight: 700;
           cursor: pointer;
           font-family: ${FONTS.body};
-          transition: filter 0.15s ease;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           gap: 6px;
         }
         .btn-gold:hover { filter: brightness(1.08); }
+
+        .btn-line {
+          padding: 10px 16px;
+          background-color: #06C755;
+          color: #ffffff;
+          border: none;
+          border-radius: ${RADIUS.sm};
+          font-size: 13px;
+          font-weight: 700;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          white-space: nowrap;
+        }
+        .btn-line:hover { filter: brightness(1.08); }
 
         .btn-outline {
           padding: 8px 12px;
@@ -334,7 +313,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
           <div style={{ width: '80px' }} />
         </div>
 
-        {/* 🎪 追加：共同管理者・スタッフ招待用カード */}
+        {/* 🎪 共同管理者・スタッフ招待カード（LINE共有付き） */}
         <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: RADIUS.md, padding: '20px', marginBottom: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: COLORS.gold, fontWeight: 700, fontSize: '15px', marginBottom: '6px' }}>
             <UserPlus size={18} /> 共同管理者・制作スタッフの招待
@@ -343,17 +322,20 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
             同じ劇団の管理画面（予約状況の確認・受付運用など）を共有したいスタッフに、以下の招待URLを送ってください。
           </p>
 
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <input
               type="text"
               readOnly
               value={inviteUrl}
               className="text-input"
-              style={{ flex: 1, backgroundColor: COLORS.surfaceAlt, fontSize: '13px' }}
+              style={{ flex: 1, minWidth: '240px', backgroundColor: COLORS.surfaceAlt, fontSize: '13px' }}
             />
             <button onClick={handleCopyInviteUrl} className="btn-gold" style={{ padding: '10px 16px', fontSize: '13px', whiteSpace: 'nowrap' }}>
               {copiedInvite ? <Check size={16} /> : <Copy size={16} />}
-              {copiedInvite ? 'コピー完了' : '招待URLをコピー'}
+              {copiedInvite ? 'コピー完了' : 'URLコピー'}
+            </button>
+            <button onClick={() => handleShareLine(`【${org?.name || '劇団'}】管理メンバー招待URL`, inviteUrl)} className="btn-line">
+              <Share2 size={16} /> LINEで共有
             </button>
           </div>
         </div>
@@ -368,11 +350,11 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
             <UserPlus size={16} /> 手動で追加
           </button>
 
-          <button onClick={handleGenerateAllUrls} className="btn-outline" style={{ padding: '12px 16px' }} title="未発行のメンバーだけに専用URLを一括割り当て">
+          <button onClick={handleGenerateAllUrls} className="btn-outline" style={{ padding: '12px 16px' }}>
             <Link2 size={16} /> URLを一括生成
           </button>
 
-          <button onClick={handleCopyAllUrlsText} className="btn-outline" style={{ padding: '12px 16px' }} title="一覧テキストをコピー">
+          <button onClick={handleCopyAllUrlsText} className="btn-outline" style={{ padding: '12px 16px' }}>
             {copiedAll ? <Check size={16} color={COLORS.success} /> : <FileText size={16} />}
             {copiedAll ? '完了' : '全URLコピー'}
           </button>
@@ -385,99 +367,102 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
             <span style={{ fontSize: '12px', color: COLORS.muted }}>全 {staffList.length} 名</span>
           </div>
 
-          {staffList.map(member => (
-            <div key={member.id} className="form-card" style={{ marginBottom: 0 }}>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <span style={{ fontWeight: 700, fontSize: '16px', color: COLORS.text, fontFamily: FONTS.display }}>
-                    {member.name}
-                  </span>
-
-                  <span className="badge" style={{ backgroundColor: member.memberType === 'cast' ? 'rgba(184,100,26,0.15)' : 'rgba(84,87,214,0.15)', color: member.memberType === 'cast' ? COLORS.gold : COLORS.indigo }}>
-                    {member.memberType === 'cast' ? '役者' : 'スタッフ'}
-                  </span>
-
-                  {member.role === 'admin' && (
-                    <span className="badge" style={{ backgroundColor: 'rgba(232,90,69,0.1)', color: COLORS.danger, border: '1px solid rgba(232,90,69,0.2)' }}>
-                      <Shield size={11} /> 管理者
-                    </span>
-                  )}
-
-                  {member.teamTag && (
-                    <span className="badge" style={{ backgroundColor: COLORS.surfaceAlt, color: COLORS.text, border: `1px solid ${COLORS.border}` }}>
-                      <Tag size={10} color={COLORS.gold} /> {member.teamTag}
-                    </span>
-                  )}
-                </div>
-
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  <button onClick={() => handleOpenEditModal(member)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted, padding: '4px' }}>
-                    <Edit2 size={16} />
-                  </button>
-                  <button onClick={() => setStaffList(staffList.filter(s => s.id !== member.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.danger, padding: '4px' }}>
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
-
-              {member.hasPersonalUrl ? (
-                <div style={{ padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '10px', border: `1px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: '220px' }}>
-                    <div style={{ fontSize: '11px', color: COLORS.gold, fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-                      <Link2 size={12} /> {member.name} 扱い専用予約URL
-                    </div>
-                    {member.personalUrl ? (
-                      <div style={{ fontSize: '12px', color: COLORS.text, wordBreak: 'break-all', fontFamily: 'monospace' }}>
-                        {member.personalUrl}
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '12px', color: COLORS.muted, fontStyle: 'italic' }}>専用URL未発行</div>
-                    )}
-                  </div>
-
-                  <div>
-                    {member.personalUrl ? (
-                      <button onClick={() => handleCopyUrl(member.id, member.personalUrl)} className="btn-outline">
-                        {copiedId === member.id ? <Check size={14} color={COLORS.success} /> : <Copy size={14} />}
-                        {copiedId === member.id ? '完了' : 'URLコピー'}
-                      </button>
-                    ) : (
-                      <button onClick={() => handleGenerateSingleUrl(member.id)} className="btn-gold" style={{ padding: '6px 12px', fontSize: '12px' }}>
-                        <Sparkles size={14} /> 個別発行
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div style={{ fontSize: '12px', color: COLORS.muted }}>※扱い窓口なし（設定から変更可能）</div>
-              )}
-
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '30px', color: COLORS.muted }}>データを読み込み中...</div>
+          ) : staffList.length === 0 ? (
+            <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '30px', textAlign: 'center', color: COLORS.muted, fontSize: '13px' }}>
+              まだキャスト・スタッフが登録されていません。<br />上の「AIでキャスト/スタッフを一括抽出」または「手動で追加」から登録してください。
             </div>
-          ))}
+          ) : (
+            staffList.map(member => (
+              <div key={member.id} className="form-card" style={{ marginBottom: 0 }}>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 700, fontSize: '16px', color: COLORS.text, fontFamily: FONTS.display }}>
+                      {member.name}
+                    </span>
+
+                    <span className="badge" style={{ backgroundColor: member.member_type === 'cast' ? 'rgba(184,100,26,0.15)' : 'rgba(84,87,214,0.15)', color: member.member_type === 'cast' ? COLORS.gold : COLORS.indigo }}>
+                      {member.member_type === 'cast' ? '役者' : 'スタッフ'}
+                    </span>
+
+                    {member.role === 'admin' && (
+                      <span className="badge" style={{ backgroundColor: 'rgba(232,90,69,0.1)', color: COLORS.danger, border: '1px solid rgba(232,90,69,0.2)' }}>
+                        <Shield size={11} /> 管理者
+                      </span>
+                    )}
+
+                    {member.team_tag && (
+                      <span className="badge" style={{ backgroundColor: COLORS.surfaceAlt, color: COLORS.text, border: `1px solid ${COLORS.border}` }}>
+                        <Tag size={10} color={COLORS.gold} /> {member.team_tag}
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button onClick={() => handleOpenEditModal(member)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted, padding: '4px' }}>
+                      <Edit2 size={16} />
+                    </button>
+                    <button onClick={() => handleDeleteMember(member.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.danger, padding: '4px' }}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                {member.has_personal_url ? (
+                  <div style={{ padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '10px', border: `1px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: '220px' }}>
+                      <div style={{ fontSize: '11px', color: COLORS.gold, fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+                        <Link2 size={12} /> {member.name} 扱い専用予約URL
+                      </div>
+                      {member.personal_url ? (
+                        <div style={{ fontSize: '12px', color: COLORS.text, wordBreak: 'break-all', fontFamily: 'monospace' }}>
+                          {member.personal_url}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '12px', color: COLORS.muted, fontStyle: 'italic' }}>専用URL未発行</div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      {member.personal_url ? (
+                        <>
+                          <button onClick={() => handleCopyUrl(member.id, member.personal_url)} className="btn-outline">
+                            {copiedId === member.id ? <Check size={14} color={COLORS.success} /> : <Copy size={14} />}
+                            {copiedId === member.id ? '完了' : 'コピー'}
+                          </button>
+                          <button onClick={() => handleShareLine(`${member.name} 扱い予約URL`, member.personal_url)} className="btn-line" style={{ padding: '6px 10px', fontSize: '12px' }}>
+                            <Share2 size={14} /> LINE送信
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '12px', color: COLORS.muted }}>※扱い窓口なし</div>
+                )}
+
+              </div>
+            ))
+          )}
         </div>
 
       </div>
 
+      {/* モーダル群 (AI一括抽出 & 手動編集) */}
       {isAiModalOpen && (
         <div onClick={() => setIsAiModalOpen(false)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', boxSizing: 'border-box' }}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '650px', maxHeight: '88vh', overflowY: 'auto', backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: '24px', border: `1px solid ${COLORS.border}` }}>
-
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ margin: 0, color: COLORS.text, fontFamily: FONTS.display, fontWeight: 700, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Sparkles size={18} color={COLORS.gold} /> AIキャスト・スタッフ一括登録
               </h3>
-              <button onClick={() => setIsAiModalOpen(false)} style={{ background: 'none', border: 'none', color: COLORS.muted, cursor: 'pointer' }}>
-                <X size={20} />
-              </button>
+              <button onClick={() => setIsAiModalOpen(false)} style={{ background: 'none', border: 'none', color: COLORS.muted, cursor: 'pointer' }}><X size={20} /></button>
             </div>
 
-            {!aiParsedResults && (
+            {!aiParsedResults ? (
               <div>
-                <div style={{ fontSize: '12px', color: COLORS.muted, marginBottom: '12px' }}>
-                  LINEグループノートのキャスティングメモや、フライヤーのテキストをそのまま貼り付けてください。AIが「名前」「分類」「チーム」を抽出します。
-                </div>
-
                 <textarea
                   rows={6}
                   value={aiInputText}
@@ -486,84 +471,30 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
                   className="text-input"
                   style={{ marginBottom: '16px', lineHeight: '1.5' }}
                 />
-
                 <button onClick={handleRunAiAnalysis} className="btn-gold" style={{ width: '100%' }} disabled={isAiAnalyzing}>
-                  {isAiAnalyzing ? 'AIがリストを解析・抽出中...' : 'テキストを解析してプレビュー生成'}
+                  {isAiAnalyzing ? '解析中...' : 'テキストを解析してプレビュー生成'}
                 </button>
               </div>
-            )}
-
-            {aiParsedResults && (
+            ) : (
               <div>
-                <div style={{ padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '10px', marginBottom: '16px', fontSize: '12px', color: COLORS.text }}>
-                  <strong>登録前の確認・編集:</strong><br />
-                  AIが抽出した結果です。名前や分類の変更、および<strong>「専用URL要・不要」のチェックを自由に切り替えてから一括登録</strong>できます。
-                </div>
-
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px', maxHeight: '350px', overflowY: 'auto' }}>
                   {aiParsedResults.map(item => (
-                    <div key={item.tempId} style={{ padding: '12px', border: `1px solid ${COLORS.border}`, borderRadius: '10px', backgroundColor: COLORS.surface, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <input
-                          type="text"
-                          value={item.name}
-                          onChange={(e) => handleUpdateParsedItem(item.tempId, 'name', e.target.value)}
-                          className="text-input"
-                          style={{ flex: 1, fontWeight: 'bold' }}
-                        />
-
-                        <select
-                          value={item.memberType}
-                          onChange={(e) => handleUpdateParsedItem(item.tempId, 'memberType', e.target.value)}
-                          className="text-input"
-                          style={{ width: '110px' }}
-                        >
-                          <option value="cast">役者</option>
-                          <option value="staff">スタッフ</option>
-                        </select>
-
-                        <select
-                          value={item.teamTag}
-                          onChange={(e) => handleUpdateParsedItem(item.tempId, 'teamTag', e.target.value)}
-                          className="text-input"
-                          style={{ width: '130px' }}
-                        >
-                          {PRODUCTION_TEAMS.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
-
-                        <button onClick={() => handleRemoveParsedItem(item.tempId)} style={{ background: 'none', border: 'none', color: COLORS.danger, cursor: 'pointer', padding: '4px' }}>
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
-                        <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', color: COLORS.gold, fontWeight: 700 }}>
-                          <input
-                            type="checkbox"
-                            checked={item.hasPersonalUrl}
-                            onChange={(e) => handleUpdateParsedItem(item.tempId, 'hasPersonalUrl', e.target.checked)}
-                            style={{ accentColor: COLORS.gold }}
-                          />
-                          この人に専用予約URL（動員バック窓口）を発行する
-                        </label>
-                      </div>
-
+                    <div key={item.tempId} style={{ padding: '12px', border: `1px solid ${COLORS.border}`, borderRadius: '10px', backgroundColor: COLORS.surface, display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <input type="text" value={item.name} onChange={(e) => handleUpdateParsedItem(item.tempId, 'name', e.target.value)} className="text-input" style={{ flex: 1 }} />
+                      <select value={item.memberType} onChange={(e) => handleUpdateParsedItem(item.tempId, 'memberType', e.target.value)} className="text-input" style={{ width: '100px' }}>
+                        <option value="cast">役者</option>
+                        <option value="staff">スタッフ</option>
+                      </select>
+                      <button onClick={() => handleRemoveParsedItem(item.tempId)} style={{ background: 'none', border: 'none', color: COLORS.danger, cursor: 'pointer' }}><Trash2 size={16} /></button>
                     </div>
                   ))}
                 </div>
-
                 <div style={{ display: 'flex', gap: '10px' }}>
-                  <button onClick={() => setAiParsedResults(null)} className="btn-outline" style={{ flex: 1 }}>
-                    やり直す
-                  </button>
-                  <button onClick={handleConfirmAiImport} className="btn-gold" style={{ flex: 2 }}>
-                    この内容で一括登録を確定する
-                  </button>
+                  <button onClick={() => setAiParsedResults(null)} className="btn-outline" style={{ flex: 1 }}>やり直す</button>
+                  <button onClick={handleConfirmAiImport} className="btn-gold" style={{ flex: 2 }}>一括登録を確定する</button>
                 </div>
               </div>
             )}
-
           </div>
         </div>
       )}
@@ -580,13 +511,13 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label className="input-label">お名前</label>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold }}>お名前</label>
                 <input type="text" value={staffName} onChange={(e) => setStaffName(e.target.value)} className="text-input" />
               </div>
 
               <div>
-                <label className="input-label">分類</label>
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold }}>分類</label>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
                   <label style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `1px solid ${memberType === 'cast' ? COLORS.gold : COLORS.border}`, backgroundColor: memberType === 'cast' ? COLORS.surfaceAlt : COLORS.surface, cursor: 'pointer', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>
                     <input type="radio" checked={memberType === 'cast'} onChange={() => setMemberType('cast')} style={{ accentColor: COLORS.gold }} /> 役者
                   </label>
@@ -594,13 +525,6 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
                     <input type="radio" checked={memberType === 'staff'} onChange={() => setMemberType('staff')} style={{ accentColor: COLORS.gold }} /> スタッフ
                   </label>
                 </div>
-              </div>
-
-              <div style={{ padding: '8px 10px', backgroundColor: COLORS.surfaceAlt, borderRadius: '8px', border: `1px solid ${COLORS.border}` }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '12px', color: COLORS.text }}>
-                  <input type="checkbox" checked={hasPersonalUrl} onChange={(e) => setHasPersonalUrl(e.target.checked)} style={{ accentColor: COLORS.gold }} />
-                  このメンバー専用の扱い予約URLを発行する
-                </label>
               </div>
 
               <button onClick={handleSave} className="btn-gold" style={{ marginTop: '8px' }}>保存する</button>
