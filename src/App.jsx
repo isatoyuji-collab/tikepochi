@@ -99,7 +99,8 @@ export default function App() {
     );
   }
 
-  // 子画面のレンダリング（フッターの重なりを排除）
+  // --- 子画面レンダリング ---
+
   if (currentView === 'tickets' && currentProduction) {
     return <AdminTicketSettings productionId={currentProduction.id} org={{ name: currentProduction.title }} onBack={() => setCurrentView('home')} />;
   }
@@ -120,6 +121,7 @@ export default function App() {
     return <TabletReception productionId={currentProduction.id} onBack={() => setCurrentView('home')} />;
   }
 
+  // --- ホーム画面 ---
   return (
     <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '24px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
       <div style={{ maxWidth: '800px', width: '100%', margin: '0 auto' }}>
@@ -157,7 +159,7 @@ export default function App() {
           </select>
         </div>
 
-        {/* 管理メニュー一覧 */}
+        {/* メニューリスト */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
           <div onClick={() => setCurrentView('tickets')} style={{ backgroundColor: COLORS.surface, borderRadius: '16px', border: `1px solid ${COLORS.border}`, padding: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
@@ -227,7 +229,6 @@ export default function App() {
 
       </div>
 
-      {/* フッター（ホーム画面のみ最下部に表示） */}
       <div style={{ maxWidth: '800px', width: '100%', margin: '40px auto 0 auto', textAlign: 'center', fontSize: '12px', color: COLORS.muted }}>
         ログインアカウント: {session.user?.email}
       </div>

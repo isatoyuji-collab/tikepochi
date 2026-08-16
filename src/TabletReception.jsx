@@ -32,14 +32,6 @@ export default function TabletReception({ productionId, onBack }) {
   const [selectedKana, setSelectedKana] = useState('');
   const [detailItem, setDetailItem] = useState(null);
 
-  const handleBack = () => {
-    if (typeof onBack === 'function') {
-      onBack();
-    } else {
-      window.history.back();
-    }
-  };
-
   const fetchData = async () => {
     setLoading(true);
     if (!productionId) {
@@ -48,14 +40,14 @@ export default function TabletReception({ productionId, onBack }) {
     }
 
     try {
-      const { data: stagesData, error: sErr } = await supabase
+      const { data: stagesData } = await supabase
         .from('stages')
         .select('*')
         .eq('production_id', productionId)
         .order('stage_date', { ascending: true })
         .order('start_time', { ascending: true });
 
-      if (!sErr && stagesData) {
+      if (stagesData) {
         setStages(stagesData);
         if (stagesData.length > 0 && !selectedStageId) {
           setSelectedStageId(stagesData[0].id);
@@ -136,8 +128,15 @@ export default function TabletReception({ productionId, onBack }) {
         
         {/* 上部ヘッダー */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <button onClick={handleBack} style={{ background: 'none', border: 'none', color: COLORS.gold, fontSize: '14px', cursor: 'pointer', padding: '8px 12px 8px 0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <ArrowLeft size={18} /> 戻る
+          <button
+            type="button"
+            onClick={() => {
+              if (onBack) onBack();
+              else window.location.reload();
+            }}
+            style={{ background: 'none', border: 'none', color: COLORS.gold, fontSize: '15px', cursor: 'pointer', padding: '8px 12px 8px 0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <ArrowLeft size={18} /> ホームへ戻る
           </button>
           <button onClick={fetchData} style={{ background: 'none', border: `1px solid ${COLORS.border}`, borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', color: COLORS.muted, display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
             <RefreshCw size={14} /> 最新に更新
@@ -303,7 +302,7 @@ export default function TabletReception({ productionId, onBack }) {
 
       </div>
 
-      {/* 予約詳細モーダル */}
+      {/* 詳細モーダル */}
       {detailItem && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
           <div style={{ width: '100%', maxWidth: '400px', backgroundColor: COLORS.surface, borderRadius: '18px', padding: '24px', border: `1px solid ${COLORS.border}`, position: 'relative' }}>
