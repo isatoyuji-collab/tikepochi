@@ -22,7 +22,7 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
   const [name, setName] = useState('');
   const [price, setPrice] = useState(3000);
   const [maxPerReserve, setMaxPerReserve] = useState(4);
-  const [paymentType, setPaymentType] = useState('both'); // both: 現金/事前決済OK, cash: 当日現金のみ
+  const [paymentType, setPaymentType] = useState('both');
   const [saving, setSaving] = useState(false);
 
   // Supabaseから該当公演の券種を取得
@@ -79,7 +79,7 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
       name: name.trim(),
       price: Number(price),
       max_per_reserve: Number(maxPerReserve),
-      payment_type: paymentType
+      payment_type: paymentType,
     };
 
     let error = null;
@@ -160,7 +160,6 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
       `}</style>
 
       <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-        
         {/* ヘッダー */}
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '24px', borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '16px' }}>
           <button onClick={onBack} style={{ background: 'none', border: 'none', color: COLORS.gold, fontSize: '14px', cursor: 'pointer', padding: '4px 8px 4px 0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -193,7 +192,7 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
           </div>
         ) : (
           <div>
-            {tickets.map(ticket => (
+            {tickets.map((ticket) => (
               <div key={ticket.id} className="ticket-card">
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
@@ -229,7 +228,6 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
             </button>
           </div>
         )}
-
       </div>
 
       {/* 券種追加・編集モーダル */}
@@ -257,7 +255,7 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
                 className="modal-input"
               />
 
-              <label style={{ fontSize: '12px', fontWeight 700, color: COLORS.gold }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold }}>
                 価格（円）
               </label>
               <input
@@ -271,7 +269,7 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
                 className="modal-input"
               />
 
-              <label style={{ fontSize: '12px', fontWeight 700, color: COLORS.gold }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold }}>
                 1回の予約につき選べる最大枚数
               </label>
               <input
@@ -284,7 +282,7 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
                 className="modal-input"
               />
 
-              <label style={{ fontSize: '12px', fontWeight 700, color: COLORS.gold }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold }}>
                 受け付ける支払い方法
               </label>
               <select
@@ -308,7 +306,6 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
           </div>
         </div>
       )}
-
     </div>
   );
 }
