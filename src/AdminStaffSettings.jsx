@@ -8,7 +8,6 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
   const [loading, setLoading] = useState(true);
   const [productions, setProductions] = useState([]);
 
-  // 共同管理者招待リンク用
   const [copiedInvite, setCopiedInvite] = useState(false);
   const inviteUrl = `${window.location.origin}?invite_org_id=${org?.id || ''}`;
 
@@ -29,32 +28,48 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
   const [copiedId, setCopiedId] = useState(null);
   const [copiedAll, setCopiedAll] = useState(false);
 
-  // 劇団内の全公演とメンバーを取得
+  // 劇団に紐づく全公演のキャストを一括取得
   const fetchStaffAndProductions = async () => {
     setLoading(true);
     try {
-      if (org?.id) {
-        const { data: prods } = await supabase
-          .from('productions')
-          .select('id, title')
-          .eq('organization_id', org.id)
-          .order('created_at', { ascending: true });
-        if (prods) setProductions(prods);
+      if (!org?.id) {
+        setLoading(false);
+        return;
       }
 
-      if (productionId) {
-        const { data, error } = await supabase
+      // 1. 劇団の全公演を取得
+      const { data: prods } = await supabase
+        .from('productions')
+        .select('id, title')
+        .eq('organization_id', org.id)
+        .order('created_at', { ascending: true });
+
+      if (prods && prods.length > 0) {
+        setProductions(prods);
+        const prodIds = prods.map(p => p.id);
+
+        // 2. 劇団内の全公演に属するキャストを取得
+        const { data: allStaff, error } = await supabase
           .from('cast_staff')
           .select('*')
-          .eq('production_id', productionId)
+          .in('production_id', prodIds)
           .order('created_at', { ascending: true });
 
-        if (!error && data) {
-          setStaffList(data);
+        if (!error && allStaff) {
+          // キャスト名の重複を排除（同一人物が複数公演に存在しても1名として管理）
+          const uniqueList = [];
+          const seenNames = new Set();
+          allStaff.forEach(m => {
+            if (!seenNames.has(m.name)) {
+              seenNames.add(m.name);
+              uniqueList.push(m);
+            }
+          });
+          setStaffList(uniqueList);
         }
       }
     } catch (e) {
-      console.error(e);
+      console.error('Fetch staff error:', e);
     } finally {
       setLoading(false);
     }
@@ -145,10 +160,11 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
   const handleConfirmAiImport = async () => {
     if (!aiParsedResults || aiParsedResults.length === 0) return;
 
+    const targetProdId = productionId || (productions[0]?.id);
     const newRecords = aiParsedResults.map(item => {
-      const pUrl = item.hasPersonalUrl ? `${window.location.origin}/r/${productionId}?staff=${encodeURIComponent(item.name)}` : '';
+      const pUrl = item.hasPersonalUrl ? `${window.location.origin}/r/${targetProdId}?staff=${encodeURIComponent(item.name)}` : '';
       return {
-        production_id: productionId,
+        production_id: targetProdId,
         name: item.name,
         role: 'member',
         member_type: item.memberType,
@@ -173,10 +189,11 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
 
   // URL一括再生成
   const handleGenerateAllUrls = async () => {
+    const targetProdId = productionId || (productions[0]?.id);
     let count = 0;
     for (const member of staffList) {
       if (member.has_personal_url) {
-        const pUrl = `${window.location.origin}/r/${productionId}?staff=${encodeURIComponent(member.name)}`;
+        const pUrl = `${window.location.origin}/r/${targetProdId}?staff=${encodeURIComponent(member.name)}`;
         await supabase.from('cast_staff').update({ cast_slug: member.name, personal_url: pUrl }).eq('id', member.id);
         count++;
       }
@@ -229,7 +246,8 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
       return;
     }
 
-    const pUrl = hasPersonalUrl ? `${window.location.origin}/r/${productionId}?staff=${encodeURIComponent(staffName.trim())}` : '';
+    const targetProdId = productionId || (productions[0]?.id);
+    const pUrl = hasPersonalUrl ? `${window.location.origin}/r/${targetProdId}?staff=${encodeURIComponent(staffName.trim())}` : '';
 
     if (editingMember) {
       await supabase.from('cast_staff').update({
@@ -243,7 +261,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
       }).eq('id', editingMember.id);
     } else {
       await supabase.from('cast_staff').insert([{
-        production_id: productionId,
+        production_id: targetProdId,
         name: staffName.trim(),
         role: staffRole,
         member_type: memberType,
@@ -415,7 +433,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
         {/* メンバー一覧 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-            <h2 style={{ fontSize: '16px', margin: 0, fontFamily: FONTS.display, fontWeight: 700 }}>キャスト・スタッフ一覧 ＆ 扱い予約URL</h2>
+            <h2 style={{ fontSize: '16px', margin: 0, fontFamily: FONTS.display, fontWeight: 700 }}>劇団キャスト・スタッフ一覧（全演目共通）</h2>
             <span style={{ fontSize: '12px', color: COLORS.muted }}>全 {staffList.length} 名</span>
           </div>
 
@@ -502,7 +520,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
 
       </div>
 
-      {/* AI抽出モーダル */}
+      {/* AIモーダル */}
       {isAiModalOpen && (
         <div onClick={() => setIsAiModalOpen(false)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', boxSizing: 'border-box' }}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '650px', maxHeight: '88vh', overflowY: 'auto', backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: '24px', border: `1px solid ${COLORS.border}` }}>
