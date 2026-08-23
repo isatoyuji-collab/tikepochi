@@ -3,11 +3,10 @@ import { supabase } from './supabaseClient';
 import { ArrowLeft, UserPlus, Trash2, X, Copy, Check, Edit2, Shield, Tag, Link2, Sparkles, FileText, Share2 } from 'lucide-react';
 import { COLORS, FONTS, RADIUS } from './theme';
 
-const PRODUCTION_TEAMS = ['チームなし（共通・シングル）', 'Aチーム', 'Bチーム', 'スタッフ・共通'];
-
 export default function AdminStaffSettings({ productionId, org, onBack }) {
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [productions, setProductions] = useState([]);
 
   // 共同管理者招待リンク用
   const [copiedInvite, setCopiedInvite] = useState(false);
@@ -24,50 +23,59 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
   const [staffName, setStaffName] = useState('');
   const [staffRole, setStaffRole] = useState('member');
   const [memberType, setMemberType] = useState('cast');
-  const [staffTeam, setStaffTeam] = useState('チームなし（共通・シングル）');
+  const [staffTeam, setStaffTeam] = useState('共通・両公演');
   const [hasPersonalUrl, setHasPersonalUrl] = useState(true);
 
   const [copiedId, setCopiedId] = useState(null);
   const [copiedAll, setCopiedAll] = useState(false);
 
-  // Supabaseから実際のメンバーを取得
-  const fetchStaff = async () => {
+  // 劇団内の全公演とメンバーを取得
+  const fetchStaffAndProductions = async () => {
     setLoading(true);
-    if (!productionId) {
+    try {
+      if (org?.id) {
+        const { data: prods } = await supabase
+          .from('productions')
+          .select('id, title')
+          .eq('organization_id', org.id)
+          .order('created_at', { ascending: true });
+        if (prods) setProductions(prods);
+      }
+
+      if (productionId) {
+        const { data, error } = await supabase
+          .from('cast_staff')
+          .select('*')
+          .eq('production_id', productionId)
+          .order('created_at', { ascending: true });
+
+        if (!error && data) {
+          setStaffList(data);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const { data, error } = await supabase
-      .from('cast_staff')
-      .select('*')
-      .eq('production_id', productionId)
-      .order('created_at', { ascending: true });
-
-    if (!error && data) {
-      setStaffList(data);
-    }
-    setLoading(false);
   };
 
   useEffect(() => {
-    fetchStaff();
-  }, [productionId]);
+    fetchStaffAndProductions();
+  }, [productionId, org]);
 
-  // 招待URLコピー処理
   const handleCopyInviteUrl = () => {
     navigator.clipboard.writeText(inviteUrl);
     setCopiedInvite(true);
     setTimeout(() => setCopiedInvite(false), 2000);
   };
 
-  // LINE共有処理
   const handleShareLine = (text, url) => {
     const shareText = encodeURIComponent(`${text}\n${url}`);
     window.open(`https://line.me/R/msg/text/?${shareText}`, '_blank');
   };
 
-  // テキスト貼り付けからキャスト・スタッフを解析
+  // テキスト解析
   const handleRunAiAnalysis = () => {
     if (!aiInputText.trim()) {
       alert('解析するテキストを入力してください。');
@@ -75,40 +83,33 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
     }
 
     setIsAiAnalyzing(true);
-    
-    // 入力テキストを行ごとにパースするロジック
     const lines = aiInputText.split('\n').map(l => l.trim()).filter(Boolean);
     const results = [];
-    let currentTeam = 'チームなし（共通・シングル）';
+    let currentTeam = '共通・両公演';
     let currentType = 'cast';
 
     lines.forEach((line, index) => {
-      // チームタグや役職ヘッダーの検出
-      if (line.includes('Aチーム') || line.includes('A班')) {
-        currentTeam = 'Aチーム';
+      if (line.includes('あなたとコンビ') || line.includes('A公演') || line.includes('Aチーム')) {
+        currentTeam = 'A公演（あなたとコンビ、に）';
         currentType = 'cast';
         return;
       }
-      if (line.includes('Bチーム') || line.includes('B班')) {
-        currentTeam = 'Bチーム';
+      if (line.includes('爆弾') || line.includes('B公演') || line.includes('Bチーム')) {
+        currentTeam = 'B公演（爆弾よりもハードです）';
         currentType = 'cast';
         return;
       }
       if (line.includes('スタッフ') || line.includes('音響') || line.includes('照明') || line.includes('制作')) {
         currentType = 'staff';
-        currentTeam = 'スタッフ・共通';
+        currentTeam = '共通・スタッフ';
       }
 
-      // 「役職：名前」や「役名：名前」の分割処理
       let cleanName = line;
       if (line.includes('：') || line.includes(':')) {
         const parts = line.split(/[:：]/);
-        if (parts[1] && parts[1].trim()) {
-          cleanName = parts[1].trim();
-        }
+        if (parts[1] && parts[1].trim()) cleanName = parts[1].trim();
       }
 
-      // カッコや余計な記号を除去
       cleanName = cleanName.replace(/^[・\-\*◆●]\s*/, '').replace(/\(.*\)|（.*）/, '').trim();
 
       if (cleanName && cleanName.length <= 20) {
@@ -116,7 +117,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
           tempId: Date.now() + index,
           name: cleanName,
           memberType: currentType,
-          teamTag: currentTeam === 'チームなし（共通・シングル）' ? '' : currentTeam,
+          teamTag: currentTeam,
           hasPersonalUrl: true
         });
       }
@@ -140,7 +141,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
     setAiParsedResults(prev => prev.filter(item => item.tempId !== tempId));
   };
 
-  // AI解析結果の一括保存（URL形式を /r/公演ID?staff=名前 に統一）
+  // AI解析結果の一括保存
   const handleConfirmAiImport = async () => {
     if (!aiParsedResults || aiParsedResults.length === 0) return;
 
@@ -151,7 +152,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
         name: item.name,
         role: 'member',
         member_type: item.memberType,
-        team_tag: item.teamTag || null,
+        team_tag: item.teamTag,
         has_personal_url: item.hasPersonalUrl,
         cast_slug: item.name,
         personal_url: pUrl
@@ -166,11 +167,11 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
       setIsAiModalOpen(false);
       setAiParsedResults(null);
       setAiInputText('');
-      fetchStaff();
+      fetchStaffAndProductions();
     }
   };
 
-  // URL一括再生成処理
+  // URL一括再生成
   const handleGenerateAllUrls = async () => {
     let count = 0;
     for (const member of staffList) {
@@ -180,8 +181,8 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
         count++;
       }
     }
-    fetchStaff();
-    alert(`${count}件の専用予約URLを /r/ 形式で更新しました！`);
+    fetchStaffAndProductions();
+    alert(`${count}件の専用予約URLを更新しました！`);
   };
 
   const handleCopyUrl = (id, url) => {
@@ -207,7 +208,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
     setStaffName('');
     setStaffRole('member');
     setMemberType('cast');
-    setStaffTeam('チームなし（共通・シングル）');
+    setStaffTeam('共通・両公演');
     setHasPersonalUrl(true);
     setIsModalOpen(true);
   };
@@ -217,7 +218,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
     setStaffName(member.name);
     setStaffRole(member.role || 'member');
     setMemberType(member.member_type || 'cast');
-    setStaffTeam(member.team_tag || 'チームなし（共通・シングル）');
+    setStaffTeam(member.team_tag || '共通・両公演');
     setHasPersonalUrl(member.has_personal_url !== false);
     setIsModalOpen(true);
   };
@@ -228,7 +229,6 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
       return;
     }
 
-    const teamValue = (staffTeam === 'チームなし（共通・シングル）' || staffTeam === 'スタッフ・共通') ? null : staffTeam;
     const pUrl = hasPersonalUrl ? `${window.location.origin}/r/${productionId}?staff=${encodeURIComponent(staffName.trim())}` : '';
 
     if (editingMember) {
@@ -236,7 +236,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
         name: staffName.trim(),
         role: staffRole,
         member_type: memberType,
-        team_tag: teamValue,
+        team_tag: staffTeam,
         has_personal_url: hasPersonalUrl,
         cast_slug: staffName.trim(),
         personal_url: pUrl
@@ -247,7 +247,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
         name: staffName.trim(),
         role: staffRole,
         member_type: memberType,
-        team_tag: teamValue,
+        team_tag: staffTeam,
         has_personal_url: hasPersonalUrl,
         cast_slug: staffName.trim(),
         personal_url: pUrl
@@ -255,13 +255,13 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
     }
 
     setIsModalOpen(false);
-    fetchStaff();
+    fetchStaffAndProductions();
   };
 
   const handleDeleteMember = async (id) => {
     if (confirm('このメンバーを削除してよろしいですか？')) {
       await supabase.from('cast_staff').delete().eq('id', id);
-      fetchStaff();
+      fetchStaffAndProductions();
     }
   };
 
@@ -360,12 +360,12 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
             <ArrowLeft size={16} /> ホームへ戻る
           </button>
           <h1 style={{ fontSize: '18px', margin: 0, flex: 1, textAlign: 'center', fontFamily: FONTS.display, color: COLORS.text, fontWeight: 700 }}>
-            キャスト・スタッフ権限 ＆ 個別URL管理
+            キャスト・スタッフ ＆ 扱い予約URL管理
           </h1>
           <div style={{ width: '80px' }} />
         </div>
 
-        {/* 🎪 共同管理者・スタッフ招待カード */}
+        {/* 共同管理者招待 */}
         <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: RADIUS.md, padding: '20px', marginBottom: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: COLORS.gold, fontWeight: 700, fontSize: '15px', marginBottom: '6px' }}>
             <UserPlus size={18} /> 共同管理者・制作スタッフの招待
@@ -392,7 +392,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
           </div>
         </div>
 
-        {/* ボタン群 */}
+        {/* アクションボタン */}
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px' }}>
           <button onClick={() => setIsAiModalOpen(true)} className="btn-gold" style={{ flex: 1, minWidth: '220px' }}>
             <Sparkles size={16} /> AIでキャスト/スタッフを一括抽出
@@ -423,7 +423,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
             <div style={{ textAlign: 'center', padding: '30px', color: COLORS.muted }}>データを読み込み中...</div>
           ) : staffList.length === 0 ? (
             <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '30px', textAlign: 'center', color: COLORS.muted, fontSize: '13px' }}>
-              まだキャスト・スタッフが登録されていません。<br />上の「AIでキャスト/スタッフを一括抽出」または「手動で追加」から登録してください。
+              まだキャスト・スタッフが登録されていません。
             </div>
           ) : (
             staffList.map(member => (
@@ -502,7 +502,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
 
       </div>
 
-      {/* モーダル群 (AIテキスト抽出 & 手動追加/編集) */}
+      {/* AI抽出モーダル */}
       {isAiModalOpen && (
         <div onClick={() => setIsAiModalOpen(false)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', boxSizing: 'border-box' }}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '650px', maxHeight: '88vh', overflowY: 'auto', backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: '24px', border: `1px solid ${COLORS.border}` }}>
@@ -515,12 +515,12 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
 
             {!aiParsedResults ? (
               <div>
-                <p style={{ fontSize: '12px', color: COLORS.muted, marginTop: 0 }}>チラシや台本のキャスト・スタッフ文面を貼り付けてください。自動で行ごとにお名前を抽出します。</p>
+                <p style={{ fontSize: '12px', color: COLORS.muted, marginTop: 0 }}>キャスト・スタッフの文面を貼り付けてください。自動でお名前と所属公演を抽出します。</p>
                 <textarea
                   rows={6}
                   value={aiInputText}
                   onChange={(e) => setAiInputText(e.target.value)}
-                  placeholder={`【テキスト貼り付け例】\nAチーム\nよしひろ 葵\n坂本 竜馬\n\nBチーム\nヒロイン 花子\n\nスタッフ\n音響：佐藤 音響\n制作：田中 制作`}
+                  placeholder={`【テキスト貼り付け例】\nA公演（あなたとコンビ、に）\nよしひろ 葵\n坂本 竜馬\n\nB公演（爆弾よりもハードです）\nベル\nたーりー\n\nスタッフ\n音響：佐藤\n照明：田中`}
                   className="text-input"
                   style={{ marginBottom: '16px', lineHeight: '1.5' }}
                 />
@@ -538,11 +538,11 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
                         <option value="cast">役者</option>
                         <option value="staff">スタッフ</option>
                       </select>
-                      <select value={item.teamTag} onChange={(e) => handleUpdateParsedItem(item.tempId, 'teamTag', e.target.value)} className="text-input" style={{ flex: 1, minWidth: '110px' }}>
-                        <option value="">チームなし</option>
-                        <option value="Aチーム">Aチーム</option>
-                        <option value="Bチーム">Bチーム</option>
-                        <option value="スタッフ・共通">スタッフ・共通</option>
+                      <select value={item.teamTag} onChange={(e) => handleUpdateParsedItem(item.tempId, 'teamTag', e.target.value)} className="text-input" style={{ flex: 1.5, minWidth: '130px' }}>
+                        <option value="共通・両公演">共通・両公演</option>
+                        <option value="A公演（あなたとコンビ、に）">A公演（あなたとコンビ、に）</option>
+                        <option value="B公演（爆弾よりもハードです）">B公演（爆弾よりもハードです）</option>
+                        <option value="共通・スタッフ">共通・スタッフ</option>
                       </select>
                       <button onClick={() => handleRemoveParsedItem(item.tempId)} style={{ background: 'none', border: 'none', color: COLORS.danger, cursor: 'pointer' }}><Trash2 size={16} /></button>
                     </div>
@@ -558,6 +558,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
         </div>
       )}
 
+      {/* 手動追加・編集モーダル */}
       {isModalOpen && (
         <div onClick={() => setIsModalOpen(false)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', boxSizing: 'border-box' }}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '500px', backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: '24px', border: `1px solid ${COLORS.border}` }}>
@@ -587,11 +588,12 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold }}>チームタグ（班設定）</label>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold }}>所属公演・班設定</label>
                 <select value={staffTeam} onChange={(e) => setStaffTeam(e.target.value)} className="text-input" style={{ marginTop: '4px' }}>
-                  {PRODUCTION_TEAMS.map(team => (
-                    <option key={team} value={team}>{team}</option>
-                  ))}
+                  <option value="共通・両公演">共通・両公演</option>
+                  <option value="A公演（あなたとコンビ、に）">A公演（あなたとコンビ、に）</option>
+                  <option value="B公演（爆弾よりもハードです）">B公演（爆弾よりもハードです）</option>
+                  <option value="共通・スタッフ">共通・スタッフ</option>
                 </select>
               </div>
 
