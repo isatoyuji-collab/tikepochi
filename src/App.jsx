@@ -12,9 +12,16 @@ import AdminSeatSettings from './AdminSeatSettings';
 import AdminPaymentSettings from './AdminPaymentSettings';
 import AdminMessageSettings from './AdminMessageSettings';
 import TabletReception from './TabletReception';
+import CustomerReservationForm from './CustomerReservationForm';
 import { LogOut, Building2 } from 'lucide-react';
 
 export default function App() {
+  // --- お客様向け予約フォームのURL判定（/r/公演ID）を最優先でチェック ---
+  const reservationMatch = window.location.pathname.match(/^\/r\/([a-zA-Z0-9-]+)$/);
+  if (reservationMatch) {
+    return <CustomerReservationForm productionId={reservationMatch[1]} />;
+  }
+
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentOrg, setCurrentOrg] = useState(null);
