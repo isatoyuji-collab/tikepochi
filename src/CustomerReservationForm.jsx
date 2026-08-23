@@ -54,7 +54,7 @@ export default function CustomerReservationForm({ productionId }) {
         const urlParams = new URLSearchParams(window.location.search);
         const staffParam = urlParams.get('staff') || '';
 
-        // 1. まずアクセスされた公演情報を取得
+        // 1. 公演情報の取得
         const { data: thisProd, error: prodErr } = await supabase
           .from('productions')
           .select('*')
@@ -64,7 +64,7 @@ export default function CustomerReservationForm({ productionId }) {
         if (prodErr || !thisProd) throw prodErr;
         setCurrentProd(thisProd);
 
-        // 2. 同じ劇団（organization_id）の全公演を取得
+        // 2. 同じ劇団の全公演を取得
         let prodList = [thisProd];
         if (thisProd.organization_id) {
           const { data: orgProds } = await supabase
@@ -74,7 +74,6 @@ export default function CustomerReservationForm({ productionId }) {
             .order('created_at', { ascending: true });
 
           if (orgProds && orgProds.length > 0) {
-            // A公演（あなたとコンビ、に）を先頭、B公演（爆弾よりもハードです）を2番目に整列
             prodList = orgProds.sort((a, b) => {
               if (a.title.includes('あなたとコンビ')) return -1;
               if (b.title.includes('あなたとコンビ')) return 1;
@@ -84,7 +83,6 @@ export default function CustomerReservationForm({ productionId }) {
         }
         setProductions(prodList);
 
-        // 開いたURLの公演がどちらかを判定して初期モードを設定
         const initialIdx = prodList.findIndex(p => p.id === productionId);
         setReservationMode(initialIdx >= 0 ? `single_${initialIdx}` : 'single_0');
 
@@ -116,7 +114,7 @@ export default function CustomerReservationForm({ productionId }) {
         setSelectedStageIds(initialStages);
         setSelectedTicketTypeIds(initialTickets);
 
-        // キャストリストの重複排除とURLキャスト設定
+        // 重複排除したキャストリスト
         const uniqueStaff = [];
         const seenNames = new Set();
         (staffData || []).forEach(st => {
@@ -140,7 +138,6 @@ export default function CustomerReservationForm({ productionId }) {
     if (productionId) loadData();
   }, [productionId]);
 
-  // キャスト変更処理
   const handleStaffChange = (index, value) => {
     setSelectedStaffNames(prev => {
       const next = [...prev];
@@ -152,14 +149,36 @@ export default function CustomerReservationForm({ productionId }) {
     });
   };
 
-  // キャストの優先2段表示（出演者を上段、その他を下段）
-  const getSortedStaffOptions = (prodId) => {
-    const currentProdStaff = allStaff.filter(s => s.production_id === prodId);
-    const otherStaff = allStaff.filter(s => s.production_id !== prodId);
+  // キャストの優先2段ソート（A/B/チームタグのゆらぎに対応）
+  const getSortedStaffOptions = (prod) => {
+    if (!prod) return { currentProdStaff: allStaff, otherStaff: [] };
+
+    const isA = prod.title?.includes('あなたとコンビ');
+
+    const currentProdStaff = allStaff.filter((s) => {
+      const tag = s.team_tag || '';
+      
+      // スタッフタグのみは下段
+      if (tag.includes('スタッフ')) return false;
+
+      // 共通・両公演・タグなしの場合は上段
+      if (tag === '共通・両公演' || tag === 'チームなし（共通・シングル）' || !tag) {
+        return true;
+      }
+
+      // A公演の場合
+      if (isA) {
+        return tag.includes('A公演') || tag.includes('Aチーム') || tag.includes('A班') || tag.includes('コンビ');
+      }
+
+      // B公演の場合
+      return tag.includes('B公演') || tag.includes('Bチーム') || tag.includes('B班') || tag.includes('爆弾');
+    });
+
+    const otherStaff = allStaff.filter((s) => !currentProdStaff.some((cp) => cp.id === s.id));
     return { currentProdStaff, otherStaff };
   };
 
-  // 予約送信処理
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!customerName.trim() || !customerEmail.trim()) {
@@ -259,7 +278,7 @@ export default function CustomerReservationForm({ productionId }) {
           </div>
         </div>
 
-        {/* 🎭 演目選択カードタブ (A公演 / B公演 / ⭐両方) */}
+        {/* 🎭 演目選択カードタブ */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
           {productions.map((prod, idx) => {
             const isA = prod.title.includes('あなたとコンビ');
@@ -320,7 +339,7 @@ export default function CustomerReservationForm({ productionId }) {
 
             const stages = stagesMap[prod.id] || [];
             const tickets = ticketTypesMap[prod.id] || [];
-            const { currentProdStaff, otherStaff } = getSortedStaffOptions(prod.id);
+            const { currentProdStaff, otherStaff } = getSortedStaffOptions(prod);
             const currentTicket = tickets.find(t => t.id === selectedTicketTypeIds[idx]);
             const isA = prod.title.includes('あなたとコンビ');
 
