@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { ArrowLeft, Save, Sparkles, MapPin, Building2, Calendar, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Save, MapPin, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
 import { COLORS, FONTS, RADIUS } from './theme';
 
-// 関西小劇場・ホール会場名プリセット
+// 関西主要小劇場・ホール会場名プリセット
 const VENUE_PRESETS = [
   "布施PEベース",
   "ウイングフィールド",
@@ -108,7 +108,6 @@ export default function AdminProductionInfo({ productionId, org, onBack }) {
   // 公演情報ステート
   const [title, setTitle] = useState('');
   const [subtitle, setSubtitle] = useState('');
-  const [synopsis, setSynopsis] = useState('');
   const [venueName, setVenueName] = useState('');
   const [venueAddress, setVenueAddress] = useState('');
 
@@ -128,7 +127,6 @@ export default function AdminProductionInfo({ productionId, org, onBack }) {
         if (data) {
           setTitle(data.title || '');
           setSubtitle(data.subtitle || '');
-          setSynopsis(data.synopsis || '');
           setVenueName(data.venue_name || '');
           setVenueAddress(data.venue_address || '');
         }
@@ -159,10 +157,8 @@ export default function AdminProductionInfo({ productionId, org, onBack }) {
         .update({
           title: title.trim(),
           subtitle: subtitle.trim() || null,
-          synopsis: synopsis.trim() || null,
           venue_name: venueName.trim() || null,
           venue_address: venueAddress.trim() || null,
-          updated_at: new Date().toISOString(),
         })
         .eq('id', productionId);
 
@@ -253,10 +249,10 @@ export default function AdminProductionInfo({ productionId, org, onBack }) {
 
         <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-          {/* 公演タイトル・基本 */}
+          {/* 公演タイトル・企画名 */}
           <div className="form-card">
             <div style={{ fontSize: '14px', fontWeight: 700, color: COLORS.gold, marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <FileText size={16} /> 公演タイトル・キャッチコピー
+              <FileText size={16} /> 公演タイトル・企画名
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -267,7 +263,7 @@ export default function AdminProductionInfo({ productionId, org, onBack }) {
                 <input
                   type="text"
                   required
-                  placeholder="例: 『あなたとコンビ、に』"
+                  placeholder="例: office Knightプロデュース公演 vol.3&vol.3.5 『爆弾よりもハードです』"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   className="text-input"
@@ -280,30 +276,16 @@ export default function AdminProductionInfo({ productionId, org, onBack }) {
                 </label>
                 <input
                   type="text"
-                  placeholder="例: office Knightプロデュース公演 vol.3&vol.3.5 『秋の大笑会-ダイエンカイ-』"
+                  placeholder="例: 秋の大笑会-ダイエンカイ-"
                   value={subtitle}
                   onChange={(e) => setSubtitle(e.target.value)}
                   className="text-input"
                 />
               </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>
-                  あらすじ・公演詳細（任意）
-                </label>
-                <textarea
-                  rows={4}
-                  placeholder="あらすじやお客様へのご案内文面を入力"
-                  value={synopsis}
-                  onChange={(e) => setSynopsis(e.target.value)}
-                  className="text-input"
-                  style={{ lineHeight: '1.5' }}
-                />
-              </div>
             </div>
           </div>
 
-          {/* 🎪 会場設定（datalist サジェスト機能付き） */}
+          {/* 上演会場設定 */}
           <div className="form-card">
             <div style={{ fontSize: '14px', fontWeight: 700, color: COLORS.gold, marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <MapPin size={16} /> 上演会場情報
@@ -317,19 +299,18 @@ export default function AdminProductionInfo({ productionId, org, onBack }) {
                 <input
                   type="text"
                   list="venue-options"
-                  placeholder="例: 布施PEベース（文字を入力すると候補が出ます）"
+                  placeholder="例: 布施PEベース（入力すると候補が表示されます）"
                   value={venueName}
                   onChange={(e) => setVenueName(e.target.value)}
                   className="text-input"
                 />
-                {/* 会場一覧サジェスト */}
                 <datalist id="venue-options">
                   {VENUE_PRESETS.map((v, i) => (
                     <option key={i} value={v} />
                   ))}
                 </datalist>
                 <span style={{ fontSize: '11px', color: COLORS.muted, marginTop: '4px', display: 'block' }}>
-                  ※関西主要小劇場・ホール（90会場以上）の候補から素早く選べます。候補にない会場も直接手入力可能です。
+                  ※関西主要小劇場・ホール（90会場以上）の候補から選べます。候補にない会場名も直接入力可能です。
                 </span>
               </div>
 
