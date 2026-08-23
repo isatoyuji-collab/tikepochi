@@ -13,13 +13,26 @@ import AdminPaymentSettings from './AdminPaymentSettings';
 import AdminMessageSettings from './AdminMessageSettings';
 import TabletReception from './TabletReception';
 import CustomerReservationForm from './CustomerReservationForm';
+import CustomerPortal from './CustomerPortal';
+import Myreservationspag from './Myreservationspag';
 import { LogOut, Building2 } from 'lucide-react';
 
 export default function App() {
-  // --- お客様向け予約フォームのURL判定（/r/公演ID）を最優先でチェック ---
+  // 1. お客様向け合同予約ポータル（/p/劇団ID）の判定
+  const portalMatch = window.location.pathname.match(/^\/p\/([a-zA-Z0-9-]+)$/);
+  if (portalMatch) {
+    return <CustomerPortal orgId={portalMatch[1]} />;
+  }
+
+  // 2. お客様向け個別予約フォーム（/r/公演ID）の判定
   const reservationMatch = window.location.pathname.match(/^\/r\/([a-zA-Z0-9-]+)$/);
   if (reservationMatch) {
     return <CustomerReservationForm productionId={reservationMatch[1]} />;
+  }
+
+  // 3. お客様向けマイページ（/mypage）の判定
+  if (window.location.pathname === '/mypage') {
+    return <Myreservationspag />;
   }
 
   const [session, setSession] = useState(null);
