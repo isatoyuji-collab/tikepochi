@@ -1,193 +1,215 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, X, ChevronDown, ChevronUp, MapPin, Copy, Check } from 'lucide-react';
-import { supabase } from './supabaseClient'; // ⭐ Supabaseクライアントをインポート
+import { supabase } from './supabaseClient';
+import { ArrowLeft, Save, Sparkles, MapPin, Building2, Calendar, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import { COLORS, FONTS, RADIUS } from './theme';
 
-const INITIAL_VENUES = [
-  { id: 1, name: '近鉄アート館', address: '大阪府大阪市阿倍野区阿倍野筋1-1-43' },
-  { id: 2, name: 'HEP HALL', address: '大阪府大阪市北区角田町5-15' },
-  { id: 3, name: '扇町ミュージアムキューブ', address: '大阪府大阪市北区南扇町6-26' },
-  { id: 4, name: '布施PEベース', address: '大阪府東大阪市足代新町4-12' },
+// 関西小劇場・ホール会場名プリセット
+const VENUE_PRESETS = [
+  "布施PEベース",
+  "ウイングフィールド",
+  "in→dependent theatre 1st",
+  "in→dependent theatre 2nd",
+  "扇町ミュージアムキューブ",
+  "大阪市立芸術創造館",
+  "一心寺シアター倶楽",
+  "ABCホール",
+  "HEP HALL",
+  "近鉄アート館",
+  "世界館",
+  "表現者工房",
+  "SPACE9",
+  "STAGE+PLUS",
+  "BAR舞台袖",
+  "楽屋A",
+  "アカルスタジオ",
+  "シアターOM",
+  "難波サザンシアター",
+  "Soap opera classics",
+  "中津vi-code",
+  "聖天通劇場",
+  "イロリムラ・プチホール",
+  "アトリエS-pace",
+  "Black Boxx（劇団そとばこまちアトリエ）",
+  "船場ユシュット座（NGRアトリエ）",
+  "神戸三宮シアター・エートー",
+  "新開地アートひろば（旧・神戸アートビレッジセンター）",
+  "兵庫県立尼崎青少年創造劇場 ピッコロシアター",
+  "伊丹AI・HALL",
+  "Art Theater dB KOBE",
+  "Theatre E9 KYOTO",
+  "京都芸術センター",
+  "京都芸術劇場・春秋座",
+  "京都芸術劇場・studio21",
+  "ロームシアター京都（メインホール / サウスホール / ノースホール）",
+  "京都府立府民ホールアルティ",
+  "アトリエアンダースロー",
+  "アートコミュニティスペースKAIKA",
+  "UrBANGUILD",
+  "梅田芸術劇場 / シアター・ドラマシティ",
+  "梅田芸術劇場 / メインホール",
+  "サンケイホールブリーゼ",
+  "森ノ宮ピロティホール",
+  "SkyシアターMBS",
+  "フェスティバルホール",
+  "ドーンセンター",
+  "ナレッジシアター",
+  "ソフィア堺",
+  "吹田メイシアター",
+  "八尾市文化会館プリズムホール・小ホール",
+  "ACT cafe（旧・commom cafe）",
+  "ART COMPLEX 1928",
+  "AiiA 2.5 Theater Kobe",
+  "A＆Hホール",
+  "Free Studio KONPIRA -金毘羅-",
+  "LOXODONTA BLACK（OVAL THEATER）",
+  "Live ＆ Cafe Bar PLACEBO",
+  "MOVE FACTORY STUDIO",
+  "SPACE LFAN",
+  "T-6（テシス） / 音太小屋",
+  "TEMPO HARBOR THEATER",
+  "Theatre Cafe 信天翁",
+  "epok",
+  "kYOTO ART THEATRE URU（シアターウル）",
+  "opencafe ロック亭 恵美須町",
+  "studio seedbox",
+  "えさか芸術文化館ピエロハーバー",
+  "くさのね劇場",
+  "アトカフェ HAKONIWA gallery",
+  "イカロスの森",
+  "オルタナキッチンOooze",
+  "クリエイティブセンター大阪（C.C.O.）",
+  "ク・ビレ邸",
+  "シアターカフェNyan",
+  "シアターセブン BOX1",
+  "スタジオガリバー",
+  "スペースコラリオン（旧・Cafe Slow Osaka）",
+  "ビックワンミニシアター",
+  "京都大学吉田寮食堂",
+  "京都大学西部講堂",
+  "京都舞踏館",
+  "兵庫県立芸術文化センター",
+  "協創カフェ natura",
+  "扇町公園",
+  "未知座小劇場",
+  "東山青少年活動センター（創造活動室）",
+  "枚方公園青少年センター",
+  "石炭倉庫(大阪市港区波除6-5-18)",
+  "諏訪山異人館",
+  "魅殺陣屋",
+  "黒門カルチャーファクトリー"
 ];
 
-const COLORS = {
-  bg: '#faf5ea',
-  surface: '#ffffff',
-  surfaceAlt: '#f7efe0',
-  border: 'rgba(201,121,31,0.22)',
-  gold: '#c9791f',
-  text: '#2b2438',
-  muted: '#8a8398',
-  success: '#1f9a56',
-};
-
-export default function AdminProductionInfo({ productionId, onBack }) {
-  const [currentProdId, setCurrentProdId] = useState(productionId);
-  const [title, setTitle] = useState('');
-  const [mainTitle, setMainTitle] = useState('');
-  const [teamTags, setTeamTags] = useState(['Aチーム', 'Bチーム']);
-  const [newTagInput, setNewTagInput] = useState('');
-
-  const [venues, setVenues] = useState(INITIAL_VENUES);
-  const [venueInput, setVenueInput] = useState('');
-  const [showVenueDropdown, setShowVenueDropdown] = useState(false);
-  const [isEditingVenue, setIsEditingVenue] = useState(false);
-
-  const [formUrl, setFormUrl] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
-  const [saving, setSaving] = useState(false);
+export default function AdminProductionInfo({ productionId, org, onBack }) {
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savedSuccess, setSavedSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  // 1. Supabaseから現在の公演情報を取得
+  // 公演情報ステート
+  const [title, setTitle] = useState('');
+  const [subtitle, setSubtitle] = useState('');
+  const [synopsis, setSynopsis] = useState('');
+  const [venueName, setVenueName] = useState('');
+  const [venueAddress, setVenueAddress] = useState('');
+
   useEffect(() => {
     async function fetchProduction() {
       setLoading(true);
-      
-      let query = supabase.from('productions').select('*');
-      if (currentProdId) {
-        query = query.eq('id', currentProdId);
-      } else {
-        query = query.order('created_at', { ascending: true }).limit(1);
-      }
+      try {
+        if (!productionId) return;
 
-      const { data, error } = await query;
+        const { data, error } = await supabase
+          .from('productions')
+          .select('*')
+          .eq('id', productionId)
+          .single();
 
-      if (!error && data && data.length > 0) {
-        const prod = data[0];
-        setCurrentProdId(prod.id);
-        setTitle(prod.title || '');
-        setMainTitle(prod.subtitle || '');
-        setVenueInput(prod.venue_name || '');
-        setFormUrl(`${window.location.origin}/r/${prod.id}`);
-      } else {
-        // DBに未登録の場合の初期表示データ
-        setTitle('office Knight 第12回本公演「タイトル」');
-        setMainTitle('熱き想いが交差する、小劇場サスペンスの最高峰。');
-        setVenueInput('布施PEベース');
+        if (error) throw error;
+        if (data) {
+          setTitle(data.title || '');
+          setSubtitle(data.subtitle || '');
+          setSynopsis(data.synopsis || '');
+          setVenueName(data.venue_name || '');
+          setVenueAddress(data.venue_address || '');
+        }
+      } catch (err) {
+        console.error('Fetch production info error:', err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
 
     fetchProduction();
-  }, [currentProdId]);
+  }, [productionId]);
 
-  // 2. Supabaseへの保存処理（UPDATE または INSERT）
-  const handleSave = async () => {
+  const handleSave = async (e) => {
+    e.preventDefault();
     if (!title.trim()) {
-      alert('公演名を入力してください。');
+      alert('公演タイトルは必須項目です。');
       return;
     }
 
     setSaving(true);
-    const payload = {
-      title: title.trim(),
-      subtitle: mainTitle.trim(),
-      venue_name: venueInput.trim(),
-    };
+    setErrorMessage('');
+    setSavedSuccess(false);
 
-    let result;
-    if (currentProdId) {
-      // 既存の公演を更新
-      result = await supabase
+    try {
+      const { error } = await supabase
         .from('productions')
-        .update(payload)
-        .eq('id', currentProdId);
-    } else {
-      // 新規公演を作成
-      result = await supabase
-        .from('productions')
-        .insert([payload])
-        .select();
+        .update({
+          title: title.trim(),
+          subtitle: subtitle.trim() || null,
+          synopsis: synopsis.trim() || null,
+          venue_name: venueName.trim() || null,
+          venue_address: venueAddress.trim() || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', productionId);
 
-      if (result.data && result.data[0]) {
-        setCurrentProdId(result.data[0].id);
-      }
+      if (error) throw error;
+
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } catch (err) {
+      console.error('Save error:', err);
+      setErrorMessage('保存に失敗しました: ' + err.message);
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
-
-    if (result.error) {
-      alert('保存に失敗しました: ' + result.error.message);
-    } else {
-      alert('公演基本情報をSupabaseに保存しました！');
-    }
-  };
-
-  const handleAddTag = () => {
-    if (newTagInput.trim() && !teamTags.includes(newTagInput.trim())) {
-      setTeamTags([...teamTags, newTagInput.trim()]);
-      setNewTagInput('');
-    }
-  };
-
-  const handleRemoveTag = (tag) => {
-    setTeamTags(teamTags.filter(t => t !== tag));
-  };
-
-  const handleSelectVenue = (venue) => {
-    setVenueInput(venue.name);
-    setShowVenueDropdown(false);
-    setIsEditingVenue(false);
-  };
-
-  const handleSaveVenue = () => {
-    if (!venueInput.trim()) return;
-    const existing = venues.find(v => v.name === venueInput.trim());
-    if (!existing) {
-      const newVenue = { id: Date.now(), name: venueInput.trim(), address: '' };
-      setVenues([...venues, newVenue]);
-    }
-    setIsEditingVenue(false);
-    setShowVenueDropdown(false);
-  };
-
-  const handleCopyUrl = () => {
-    navigator.clipboard.writeText(formUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        データを読み込み中...
+      <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.text, fontFamily: FONTS.body }}>
+        読み込み中...
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '24px', boxSizing: 'border-box' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: FONTS.body, padding: '24px', boxSizing: 'border-box' }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap');
+        @import url('${FONTS.importUrl}');
 
         .form-card {
           background-color: ${COLORS.surface};
           border: 1px solid ${COLORS.border};
-          border-radius: 14px;
+          border-radius: ${RADIUS.md};
           padding: 20px;
-          margin-bottom: 20px;
-          box-shadow: 0 2px 4px rgba(43, 36, 56, 0.04);
-        }
-
-        .input-label {
-          display: block;
-          font-size: 13px;
-          font-weight: 700;
-          color: ${COLORS.gold};
-          margin-bottom: 8px;
+          margin-bottom: 16px;
+          box-shadow: 0 2px 6px rgba(33,26,44,0.05);
         }
 
         .text-input {
           width: 100%;
-          padding: 12px 14px;
-          border-radius: 10px;
+          padding: 10px 12px;
+          border-radius: 8px;
           border: 1px solid ${COLORS.border};
           background-color: ${COLORS.surface};
           color: ${COLORS.text};
-          font-size: 15px;
-          font-family: 'Zen Kaku Gothic New', sans-serif;
+          font-size: 14px;
+          font-family: ${FONTS.body};
           box-sizing: border-box;
-          transition: border-color 0.15s ease;
         }
         .text-input:focus {
           outline: none;
@@ -195,205 +217,160 @@ export default function AdminProductionInfo({ productionId, onBack }) {
         }
 
         .btn-gold {
-          width: 100%;
-          padding: 14px;
+          padding: 12px 24px;
           background-color: ${COLORS.gold};
           color: #ffffff;
           border: none;
-          border-radius: 10px;
-          font-size: 15px;
+          border-radius: ${RADIUS.sm};
+          font-size: 14px;
           font-weight: 700;
           cursor: pointer;
-          font-family: 'Zen Kaku Gothic New', sans-serif;
-          transition: filter 0.15s ease, transform 0.1s ease;
-          box-shadow: 0 2px 6px rgba(201, 121, 31, 0.25);
-        }
-        .btn-gold:hover { filter: brightness(1.08); }
-        .btn-gold:active { transform: scale(0.98); }
-        .btn-gold:disabled { opacity: 0.6; cursor: not-allowed; }
-
-        .btn-outline {
-          background-color: ${COLORS.surface};
-          border: 1px solid ${COLORS.border};
-          color: ${COLORS.gold};
-          border-radius: 8px;
-          padding: 8px 16px;
-          font-size: 13px;
-          font-weight: 700;
-          cursor: pointer;
-        }
-        .btn-outline:hover { background-color: ${COLORS.surfaceAlt}; }
-
-        .tag-chip {
-          background-color: ${COLORS.surfaceAlt};
-          color: ${COLORS.gold};
-          border: 1px solid ${COLORS.border};
-          padding: 6px 12px;
-          border-radius: 20px;
-          font-size: 12px;
-          font-weight: 700;
+          font-family: ${FONTS.body};
           display: inline-flex;
           align-items: center;
+          justify-content: center;
           gap: 6px;
+          box-shadow: 0 2px 8px rgba(201,121,31,0.25);
         }
+        .btn-gold:hover { filter: brightness(1.08); }
       `}</style>
 
-      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-        
-        {/* ヘッダーナビゲーション */}
+      <div style={{ maxWidth: '720px', margin: '0 auto' }}>
+
+        {/* ヘッダー */}
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '24px', borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '16px' }}>
-          <button 
-            onClick={onBack} 
+          <button
+            onClick={onBack}
             style={{ background: 'none', border: 'none', color: COLORS.gold, fontSize: '14px', cursor: 'pointer', padding: '4px 8px 4px 0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}
           >
             <ArrowLeft size={16} /> ホームへ戻る
           </button>
-          <h1 style={{ fontSize: '18px', margin: 0, flex: 1, textAlign: 'center', fontFamily: "'Shippori Mincho', serif", color: COLORS.text, fontWeight: 700 }}>
-            公演基本情報
+          <h1 style={{ fontSize: '18px', margin: 0, flex: 1, textAlign: 'center', fontFamily: FONTS.display, color: COLORS.text, fontWeight: 700 }}>
+            公演基本情報・会場設定
           </h1>
           <div style={{ width: '80px' }} />
         </div>
 
-        {/* 基本情報入力カード */}
-        <div className="form-card" style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          <div>
-            <label className="input-label">公演名（必須）</label>
-            <input 
-              type="text" 
-              value={title} 
-              onChange={(e) => setTitle(e.target.value)}
-              className="text-input"
-            />
-          </div>
+        <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-          <div>
-            <label className="input-label" style={{ color: COLORS.text }}>メインタイトル・キャッチコピー（任意）</label>
-            <textarea 
-              value={mainTitle} 
-              onChange={(e) => setMainTitle(e.target.value)}
-              rows={2}
-              className="text-input"
-              style={{ lineHeight: '1.5' }}
-            />
-          </div>
-
-          <div>
-            <label className="input-label" style={{ color: COLORS.text }}>チームタグ（Wキャスト・班設定）</label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
-              {teamTags.map(tag => (
-                <span key={tag} className="tag-chip">
-                  {tag}
-                  <button 
-                    onClick={() => handleRemoveTag(tag)}
-                    style={{ background: 'none', border: 'none', color: COLORS.muted, cursor: 'pointer', padding: 0, display: 'flex' }}
-                  >
-                    <X size={14} />
-                  </button>
-                </span>
-              ))}
+          {/* 公演タイトル・基本 */}
+          <div className="form-card">
+            <div style={{ fontSize: '14px', fontWeight: 700, color: COLORS.gold, marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <FileText size={16} /> 公演タイトル・キャッチコピー
             </div>
 
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <input 
-                type="text" 
-                value={newTagInput} 
-                onChange={(e) => setNewTagInput(e.target.value)}
-                placeholder="例: Cチーム, シングルキャスト"
-                className="text-input"
-                style={{ flex: 1 }}
-              />
-              <button onClick={handleAddTag} className="btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Plus size={14} /> 追加
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* 詳細設定（アコーディオン） */}
-        <div className="form-card" style={{ padding: 0, overflow: 'hidden' }}>
-          <button
-            onClick={() => setShowDetails(!showDetails)}
-            style={{ width: '100%', padding: '18px 20px', backgroundColor: COLORS.surface, color: COLORS.text, border: 'none', textAlign: 'left', fontSize: '15px', fontWeight: 700, fontFamily: "'Shippori Mincho', serif", display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-          >
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              ⚙️ 詳細設定（会場・専用予約URL）
-            </span>
-            {showDetails ? <ChevronUp size={18} color={COLORS.gold} /> : <ChevronDown size={18} color={COLORS.gold} />}
-          </button>
-
-          {showDetails && (
-            <div style={{ padding: '20px', borderTop: `1px solid ${COLORS.border}`, display: 'flex', flexDirection: 'column', gap: '18px', backgroundColor: COLORS.surfaceAlt }}>
-              <div style={{ position: 'relative' }}>
-                <label className="input-label">会場名（オートコンプリート選択）</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input 
-                    type="text" 
-                    value={venueInput} 
-                    onChange={(e) => {
-                      setVenueInput(e.target.value);
-                      setShowVenueDropdown(true);
-                      setIsEditingVenue(true);
-                    }}
-                    onFocus={() => setShowVenueDropdown(true)}
-                    placeholder="会場名を入力または選択..."
-                    className="text-input"
-                    style={{ flex: 1 }}
-                  />
-                  {isEditingVenue && (
-                    <button onClick={handleSaveVenue} className="btn-outline">確定</button>
-                  )}
-                </div>
-
-                {showVenueDropdown && (
-                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '10px', marginTop: '4px', zIndex: 100, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: '160px', overflowY: 'auto' }}>
-                    {venues
-                      .filter(v => v.name.includes(venueInput))
-                      .map(venue => (
-                        <div 
-                          key={venue.id}
-                          onClick={() => handleSelectVenue(venue)}
-                          style={{ padding: '12px 14px', fontSize: '14px', color: COLORS.text, cursor: 'pointer', borderBottom: `1px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', gap: '6px' }}
-                        >
-                          <MapPin size={14} color={COLORS.gold} />
-                          {venue.name}
-                        </div>
-                      ))}
-                    {venueInput && !venues.some(v => v.name === venueInput) && (
-                      <div 
-                        onClick={handleSaveVenue}
-                        style={{ padding: '12px 14px', fontSize: '13px', color: COLORS.gold, cursor: 'pointer', fontWeight: 'bold' }}
-                      >
-                        ＋ 「{venueInput}」を新規会場として登録
-                      </div>
-                    )}
-                  </div>
-                )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>
+                  公演タイトル（必須）
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="例: 『あなたとコンビ、に』"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="text-input"
+                />
               </div>
 
               <div>
-                <label className="input-label">専用予約フォームURL</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input 
-                    type="text" 
-                    readOnly 
-                    value={formUrl || '公演保存後にURLが生成されます'} 
-                    className="text-input"
-                    style={{ flex: 1, backgroundColor: COLORS.surface, color: COLORS.muted, fontSize: '13px' }}
-                  />
-                  <button onClick={handleCopyUrl} disabled={!formUrl} className="btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    {copied ? <Check size={14} color={COLORS.success} /> : <Copy size={14} />}
-                    {copied ? '完了' : 'コピー'}
-                  </button>
-                </div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>
+                  サブタイトル・企画名（任意）
+                </label>
+                <input
+                  type="text"
+                  placeholder="例: office Knightプロデュース公演 vol.3&vol.3.5 『秋の大笑会-ダイエンカイ-』"
+                  value={subtitle}
+                  onChange={(e) => setSubtitle(e.target.value)}
+                  className="text-input"
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>
+                  あらすじ・公演詳細（任意）
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="あらすじやお客様へのご案内文面を入力"
+                  value={synopsis}
+                  onChange={(e) => setSynopsis(e.target.value)}
+                  className="text-input"
+                  style={{ lineHeight: '1.5' }}
+                />
               </div>
             </div>
-          )}
-        </div>
+          </div>
 
-        {/* 保存ボタン */}
-        <button onClick={handleSave} disabled={saving} className="btn-gold">
-          {saving ? 'Supabaseへ保存中...' : '変更を保存する'}
-        </button>
+          {/* 🎪 会場設定（datalist サジェスト機能付き） */}
+          <div className="form-card">
+            <div style={{ fontSize: '14px', fontWeight: 700, color: COLORS.gold, marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <MapPin size={16} /> 上演会場情報
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>
+                  会場名（候補から選択または直接入力）
+                </label>
+                <input
+                  type="text"
+                  list="venue-options"
+                  placeholder="例: 布施PEベース（文字を入力すると候補が出ます）"
+                  value={venueName}
+                  onChange={(e) => setVenueName(e.target.value)}
+                  className="text-input"
+                />
+                {/* 会場一覧サジェスト */}
+                <datalist id="venue-options">
+                  {VENUE_PRESETS.map((v, i) => (
+                    <option key={i} value={v} />
+                  ))}
+                </datalist>
+                <span style={{ fontSize: '11px', color: COLORS.muted, marginTop: '4px', display: 'block' }}>
+                  ※関西主要小劇場・ホール（90会場以上）の候補から素早く選べます。候補にない会場も直接手入力可能です。
+                </span>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>
+                  会場住所・アクセス（任意）
+                </label>
+                <input
+                  type="text"
+                  placeholder="例: 大阪府東大阪市足代..."
+                  value={venueAddress}
+                  onChange={(e) => setVenueAddress(e.target.value)}
+                  className="text-input"
+                />
+              </div>
+            </div>
+          </div>
+
+          {savedSuccess && (
+            <div style={{ padding: '12px 16px', backgroundColor: 'rgba(31,154,86,0.1)', color: COLORS.success, borderRadius: '8px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}>
+              <CheckCircle2 size={16} /> 公演情報を正常に保存しました！
+            </div>
+          )}
+
+          {errorMessage && (
+            <div style={{ padding: '12px 16px', backgroundColor: 'rgba(232,90,69,0.1)', color: COLORS.danger, borderRadius: '8px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <AlertCircle size={16} /> {errorMessage}
+            </div>
+          )}
+
+          {/* 保存ボタン */}
+          <button
+            type="submit"
+            disabled={saving}
+            className="btn-gold"
+            style={{ width: '100%', padding: '14px', fontSize: '15px' }}
+          >
+            <Save size={16} /> {saving ? '保存中...' : '公演基本情報を保存する'}
+          </button>
+
+        </form>
 
       </div>
     </div>
