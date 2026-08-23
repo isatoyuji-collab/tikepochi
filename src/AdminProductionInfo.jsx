@@ -58,7 +58,7 @@ export default function AdminProductionInfo({ productionId, onBack }) {
         setTitle(prod.title || '');
         setMainTitle(prod.subtitle || '');
         setVenueInput(prod.venue_name || '');
-        setFormUrl(`https://tikepochi.vercel.app/r/${prod.id}`);
+        setFormUrl(`${window.location.origin}/r/${prod.id}`);
       } else {
         // DBに未登録の場合の初期表示データ
         setTitle('office Knight 第12回本公演「タイトル」');
