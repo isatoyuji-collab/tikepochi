@@ -100,35 +100,29 @@ export default function TicketPochiAdminHome({ onNavigate, user, org, activeProd
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: FONTS.body, padding: '20px 16px 60px 16px', boxSizing: 'border-box' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: FONTS.body, padding: '16px 12px 60px 12px', boxSizing: 'border-box' }}>
       <style>{`
         @import url('${FONTS.importUrl}');
 
-        /* 横2列グリッド（スマホでは縦1列に自動切替） */
+        /* PC・タブレット・スマホ全対応の2列グリッド */
         .menu-grid-2col {
           display: grid;
           grid-template-columns: repeat(2, 1fr);
-          gap: 12px;
-        }
-
-        @media (max-width: 680px) {
-          .menu-grid-2col {
-            grid-template-columns: 1fr;
-            gap: 10px;
-          }
+          gap: 10px;
         }
 
         .menu-card {
           background-color: ${COLORS.surface};
           border: 1px solid ${COLORS.border};
           border-radius: 14px;
-          padding: 16px 18px;
+          padding: 14px 12px;
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: space-between;
           transition: all 0.15s ease;
           box-shadow: 0 2px 4px rgba(43, 36, 56, 0.04);
+          min-width: 0;
         }
         .menu-card:hover {
           background-color: #fff6e8;
@@ -136,7 +130,56 @@ export default function TicketPochiAdminHome({ onNavigate, user, org, activeProd
           transform: translateY(-1px);
         }
         .menu-card:active {
-          transform: scale(0.99);
+          transform: scale(0.98);
+        }
+
+        .card-icon-box {
+          width: 36px;
+          height: 36px;
+          border-radius: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .card-title {
+          font-weight: 700;
+          font-size: 14px;
+          color: ${COLORS.text};
+          line-height: 1.3;
+        }
+
+        .card-desc {
+          font-size: 11px;
+          color: ${COLORS.muted};
+          margin-top: 2px;
+          line-height: 1.3;
+        }
+
+        /* スマホ向け微調整 */
+        @media (max-width: 480px) {
+          .menu-grid-2col {
+            gap: 8px;
+          }
+          .menu-card {
+            padding: 12px 8px;
+            border-radius: 12px;
+          }
+          .card-icon-box {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+          }
+          .card-title {
+            font-size: 12px;
+          }
+          .card-desc {
+            font-size: 10px;
+          }
+          .chevron-icon {
+            display: none;
+          }
         }
 
         .modal-input {
@@ -158,22 +201,22 @@ export default function TicketPochiAdminHome({ onNavigate, user, org, activeProd
       <div style={{ maxWidth: '860px', margin: '0 auto' }}>
         
         {/* ヘッダー・劇団名 */}
-        <div style={{ marginBottom: '16px' }}>
+        <div style={{ marginBottom: '14px' }}>
           <div style={{ fontSize: '12px', color: COLORS.gold, fontWeight: 700, letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '4px' }}>
             <Building2 size={13} /> {org?.name || '劇団ポータル'}
           </div>
-          <h1 style={{ margin: '4px 0 0 0', fontFamily: FONTS.display, fontSize: '22px', fontWeight: 700 }}>
+          <h1 style={{ margin: '4px 0 0 0', fontFamily: FONTS.display, fontSize: '20px', fontWeight: 700 }}>
             {currentProd ? currentProd.title : '登録済みの公演はありません'}
           </h1>
           {currentProd?.subtitle && (
-            <div style={{ fontSize: '13px', color: COLORS.muted, marginTop: '2px' }}>
+            <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '2px' }}>
               {currentProd.subtitle}
             </div>
           )}
         </div>
 
         {/* 🎭 公演切替タブ & 新規作成ボタン */}
-        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '16px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '6px', marginBottom: '14px', alignItems: 'center' }}>
           {productions.map((p) => {
             const isThisA = p.title?.includes('あなたとコンビ');
             const isSelected = selectedProdId === p.id;
@@ -184,21 +227,21 @@ export default function TicketPochiAdminHome({ onNavigate, user, org, activeProd
                 key={p.id}
                 onClick={() => setSelectedProdId(p.id)}
                 style={{
-                  padding: '8px 14px',
+                  padding: '6px 12px',
                   borderRadius: '20px',
                   border: `2px solid ${isSelected ? tagCol : COLORS.border}`,
                   backgroundColor: isSelected ? (isThisA ? '#fffbeb' : '#eef2ff') : COLORS.surface,
                   color: isSelected ? tagCol : COLORS.text,
                   fontWeight: 700,
-                  fontSize: '13px',
+                  fontSize: '12px',
                   cursor: 'pointer',
                   whiteSpace: 'nowrap',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px'
+                  gap: '4px'
                 }}
               >
-                <span style={{ fontSize: '10px', color: '#fff', backgroundColor: tagCol, padding: '1px 6px', borderRadius: '10px' }}>
+                <span style={{ fontSize: '10px', color: '#fff', backgroundColor: tagCol, padding: '1px 5px', borderRadius: '10px' }}>
                   {isThisA ? 'A公演' : 'B公演'}
                 </span>
                 <span>{p.title}</span>
@@ -209,13 +252,13 @@ export default function TicketPochiAdminHome({ onNavigate, user, org, activeProd
             type="button"
             onClick={() => setShowModal(true)}
             style={{
-              padding: '8px 14px',
+              padding: '6px 12px',
               borderRadius: '20px',
               border: `1px dashed ${COLORS.gold}`,
               backgroundColor: 'transparent',
               color: COLORS.gold,
               fontWeight: 700,
-              fontSize: '13px',
+              fontSize: '12px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -223,24 +266,24 @@ export default function TicketPochiAdminHome({ onNavigate, user, org, activeProd
               whiteSpace: 'nowrap'
             }}
           >
-            <Plus size={15} /> 新規公演を追加
+            <Plus size={14} /> 新規公演を追加
           </button>
         </div>
 
         {/* 公演情報・予約フォーム確認バナー */}
         {currentProd && (
-          <div style={{ backgroundColor: themeBg, border: `1px solid ${themeBorder}`, borderRadius: '12px', padding: '12px 16px', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ backgroundColor: themeBg, border: `1px solid ${themeBorder}`, borderRadius: '12px', padding: '10px 14px', marginBottom: '18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
             <div>
               <div style={{ fontSize: '11px', fontWeight: 800, color: themeColor }}>現在選択中の公演</div>
-              <div style={{ fontSize: '13px', color: COLORS.muted, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <MapPin size={12} color={themeColor} /> 会場: {currentProd.venue_name || '未設定'}
               </div>
             </div>
             <button
               onClick={() => window.open(`/r/${currentProd.id}`, '_blank')}
-              style={{ padding: '6px 12px', borderRadius: '8px', border: `1px solid ${themeBorder}`, backgroundColor: '#ffffff', color: themeColor, fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+              style={{ padding: '6px 10px', borderRadius: '8px', border: `1px solid ${themeBorder}`, backgroundColor: '#ffffff', color: themeColor, fontSize: '11px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
             >
-              <ExternalLink size={13} /> お客様用予約フォームを開く
+              <ExternalLink size={12} /> お客様用予約フォームを開く
             </button>
           </div>
         )}
@@ -257,136 +300,135 @@ export default function TicketPochiAdminHome({ onNavigate, user, org, activeProd
             </button>
           </div>
         ) : (
-          /* 全9種類の管理機能カード（横2列グリッド） */
           <div>
             {/* ① 予約・当日運用 */}
-            <div style={{ fontSize: '12px', fontWeight: 800, color: COLORS.gold, marginBottom: '10px', letterSpacing: '0.05em' }}>
+            <div style={{ fontSize: '12px', fontWeight: 800, color: COLORS.gold, marginBottom: '8px', letterSpacing: '0.05em' }}>
               🎟️ 予約・当日運用
             </div>
 
-            <div className="menu-grid-2col" style={{ marginBottom: '24px' }}>
+            <div className="menu-grid-2col" style={{ marginBottom: '18px' }}>
               <div className="menu-card" onClick={() => onNavigate('reservations', selectedProdId)}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Users size={18} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                  <div className="card-icon-box" style={{ backgroundColor: themeBg, color: themeColor }}>
+                    <Users size={16} />
                   </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '14px' }}>予約一覧・動員状況</div>
-                    <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>予約一覧・動員数・メール</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="card-title">予約一覧・動員状況</div>
+                    <div className="card-desc">予約一覧・動員数・メール</div>
                   </div>
                 </div>
-                <ChevronRight size={16} color={COLORS.muted} />
+                <ChevronRight size={15} color={COLORS.muted} className="chevron-icon" />
               </div>
 
               <div className="menu-card" onClick={() => onNavigate('tablet', selectedProdId)}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: 'rgba(31,154,86,0.1)', color: COLORS.success, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Tablet size={18} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                  <div className="card-icon-box" style={{ backgroundColor: 'rgba(31,154,86,0.1)', color: COLORS.success }}>
+                    <Tablet size={16} />
                   </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '14px' }}>当日受付</div>
-                    <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>50音検索・チェックイン・精算</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="card-title">当日受付</div>
+                    <div className="card-desc">50音検索・チェックイン・精算</div>
                   </div>
                 </div>
-                <ChevronRight size={16} color={COLORS.muted} />
+                <ChevronRight size={15} color={COLORS.muted} className="chevron-icon" />
               </div>
             </div>
 
             {/* ② 公演の準備・各種設定 */}
-            <div style={{ fontSize: '12px', fontWeight: 800, color: COLORS.gold, marginBottom: '10px', letterSpacing: '0.05em' }}>
+            <div style={{ fontSize: '12px', fontWeight: 800, color: COLORS.gold, marginBottom: '8px', letterSpacing: '0.05em' }}>
               ⚙️ 公演の準備・各種設定
             </div>
 
             <div className="menu-grid-2col">
               <div className="menu-card" onClick={() => onNavigate('info', selectedProdId)}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Settings size={18} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                  <div className="card-icon-box" style={{ backgroundColor: themeBg, color: themeColor }}>
+                    <Settings size={16} />
                   </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '14px' }}>公演基本情報</div>
-                    <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>公演名・煽り文・会場設定</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="card-title">公演基本情報</div>
+                    <div className="card-desc">公演名・煽り文・会場設定</div>
                   </div>
                 </div>
-                <ChevronRight size={16} color={COLORS.muted} />
+                <ChevronRight size={15} color={COLORS.muted} className="chevron-icon" />
               </div>
 
               <div className="menu-card" onClick={() => onNavigate('tickets', selectedProdId)}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Ticket size={18} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                  <div className="card-icon-box" style={{ backgroundColor: themeBg, color: themeColor }}>
+                    <Ticket size={16} />
                   </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '14px' }}>券種 ＆ オプション設定</div>
-                    <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>前売り・学割・指定席・カンパ</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="card-title">券種 ＆ オプション設定</div>
+                    <div className="card-desc">前売り・学割・指定席・カンパ</div>
                   </div>
                 </div>
-                <ChevronRight size={16} color={COLORS.muted} />
+                <ChevronRight size={15} color={COLORS.muted} className="chevron-icon" />
               </div>
 
               <div className="menu-card" onClick={() => onNavigate('dates', selectedProdId)}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Calendar size={18} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                  <div className="card-icon-box" style={{ backgroundColor: themeBg, color: themeColor }}>
+                    <Calendar size={16} />
                   </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '14px' }}>日程・キャパ設定</div>
-                    <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>ステージ日時・席数上限</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="card-title">日程・キャパ設定</div>
+                    <div className="card-desc">ステージ日時・席数上限</div>
                   </div>
                 </div>
-                <ChevronRight size={16} color={COLORS.muted} />
+                <ChevronRight size={15} color={COLORS.muted} className="chevron-icon" />
               </div>
 
               <div className="menu-card" onClick={() => onNavigate('seats', selectedProdId)}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Grid size={18} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                  <div className="card-icon-box" style={{ backgroundColor: themeBg, color: themeColor }}>
+                    <Grid size={16} />
                   </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '14px' }}>指定席・会場マップ設定</div>
-                    <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>座席配置図・ゾーン分け</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="card-title">指定席・会場マップ設定</div>
+                    <div className="card-desc">座席配置図・ゾーン分け</div>
                   </div>
                 </div>
-                <ChevronRight size={16} color={COLORS.muted} />
+                <ChevronRight size={15} color={COLORS.muted} className="chevron-icon" />
               </div>
 
               <div className="menu-card" onClick={() => onNavigate('staff', selectedProdId)}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <UserCheck size={18} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                  <div className="card-icon-box" style={{ backgroundColor: themeBg, color: themeColor }}>
+                    <UserCheck size={16} />
                   </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '14px' }}>キャスト・スタッフ管理</div>
-                    <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>メンバー登録・個人予約URL発行</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="card-title">キャスト・スタッフ管理</div>
+                    <div className="card-desc">メンバー登録・個人予約URL発行</div>
                   </div>
                 </div>
-                <ChevronRight size={16} color={COLORS.muted} />
+                <ChevronRight size={15} color={COLORS.muted} className="chevron-icon" />
               </div>
 
               <div className="menu-card" onClick={() => onNavigate('payments', selectedProdId)}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <CreditCard size={18} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                  <div className="card-icon-box" style={{ backgroundColor: themeBg, color: themeColor }}>
+                    <CreditCard size={16} />
                   </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '14px' }}>決済連携設定</div>
-                    <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>Stripe / PayPay / 銀行振込</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="card-title">決済連携設定</div>
+                    <div className="card-desc">Stripe / PayPay / 銀行振込</div>
                   </div>
                 </div>
-                <ChevronRight size={16} color={COLORS.muted} />
+                <ChevronRight size={15} color={COLORS.muted} className="chevron-icon" />
               </div>
 
               <div className="menu-card" onClick={() => onNavigate('messages', selectedProdId)}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Mail size={18} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                  <div className="card-icon-box" style={{ backgroundColor: themeBg, color: themeColor }}>
+                    <Mail size={16} />
                   </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '14px' }}>メール・LINE通知設定</div>
-                    <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>自動返信・一斉送信文言</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="card-title">メール・LINE通知設定</div>
+                    <div className="card-desc">自動返信・一斉送信文言</div>
                   </div>
                 </div>
-                <ChevronRight size={16} color={COLORS.muted} />
+                <ChevronRight size={15} color={COLORS.muted} className="chevron-icon" />
               </div>
             </div>
           </div>
