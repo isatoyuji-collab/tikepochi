@@ -66,13 +66,28 @@ export default function CustomerReservationForm({ productionId }) {
         const urlParams = new URLSearchParams(window.location.search);
         const staffParam = urlParams.get('staff') || '';
 
-        const { data: thisProd, error: prodErr } = await supabase
-          .from('productions')
-          .select('*')
-          .eq('id', productionId)
-          .single();
+        // 1. 公演情報の取得（完全一致 または 8文字の短縮IDに対応）
+        let thisProd = null;
+        if (productionId.length === 36) {
+          const { data, error } = await supabase
+            .from('productions')
+            .select('*')
+            .eq('id', productionId)
+            .single();
+          if (error) throw error;
+          thisProd = data;
+        } else {
+          const { data, error } = await supabase
+            .from('productions')
+            .select('*')
+            .like('id', `${productionId}%`)
+            .limit(1)
+            .maybeSingle();
+          if (error) throw error;
+          thisProd = data;
+        }
 
-        if (prodErr || !thisProd) throw prodErr;
+        if (!thisProd) throw new Error('公演情報が見つかりませんでした');
 
         let prodList = [thisProd];
         if (thisProd.organization_id) {

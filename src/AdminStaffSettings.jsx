@@ -28,6 +28,14 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
   const [copiedId, setCopiedId] = useState(null);
   const [copiedAll, setCopiedAll] = useState(false);
 
+  // 短縮URL生成ヘルパー（公演ID先頭8文字 + 日本語キャスト名）
+  const getShortStaffUrl = (name) => {
+    const targetProdId = productionId || (productions[0]?.id) || '';
+    const shortId = targetProdId ? targetProdId.slice(0, 8) : '';
+    const base = `${window.location.origin}/r/${shortId}`;
+    return name ? `${base}?staff=${name}` : base;
+  };
+
   // 劇団に紐づく全公演のキャストを一括取得
   const fetchStaffAndProductions = async () => {
     setLoading(true);
@@ -156,13 +164,13 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
     setAiParsedResults(prev => prev.filter(item => item.tempId !== tempId));
   };
 
-  // AI解析結果の一括保存
+  // AI解析結果の一括保存（短縮URLで生成保存）
   const handleConfirmAiImport = async () => {
     if (!aiParsedResults || aiParsedResults.length === 0) return;
 
     const targetProdId = productionId || (productions[0]?.id);
     const newRecords = aiParsedResults.map(item => {
-      const pUrl = item.hasPersonalUrl ? `${window.location.origin}/r/${targetProdId}?staff=${encodeURIComponent(item.name)}` : '';
+      const pUrl = item.hasPersonalUrl ? getShortStaffUrl(item.name) : '';
       return {
         production_id: targetProdId,
         name: item.name,
@@ -187,19 +195,18 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
     }
   };
 
-  // URL一括再生成
+  // URL一括再生成（短縮URLへ一括更新）
   const handleGenerateAllUrls = async () => {
-    const targetProdId = productionId || (productions[0]?.id);
     let count = 0;
     for (const member of staffList) {
-      if (member.has_personal_url) {
-        const pUrl = `${window.location.origin}/r/${targetProdId}?staff=${encodeURIComponent(member.name)}`;
+      if (member.has_personal_url !== false) {
+        const pUrl = getShortStaffUrl(member.name);
         await supabase.from('cast_staff').update({ cast_slug: member.name, personal_url: pUrl }).eq('id', member.id);
         count++;
       }
     }
     fetchStaffAndProductions();
-    alert(`${count}件の専用予約URLを更新しました！`);
+    alert(`${count}件の専用予約URLを短縮形式に更新しました！`);
   };
 
   const handleCopyUrl = (id, url) => {
@@ -209,12 +216,12 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
   };
 
   const handleCopyAllUrlsText = () => {
-    const list = staffList.filter(m => m.has_personal_url && m.personal_url);
+    const list = staffList.filter(m => m.has_personal_url !== false);
     if (list.length === 0) {
       alert('コピー対象の個別URLがありません。');
       return;
     }
-    const text = list.map(m => `${m.name} 扱い専用予約URL:\n${m.personal_url}`).join('\n\n');
+    const text = list.map(m => `【${m.name} 扱い専用予約URL】\n${getShortStaffUrl(m.name)}`).join('\n\n');
     navigator.clipboard.writeText(text);
     setCopiedAll(true);
     setTimeout(() => setCopiedAll(false), 2000);
@@ -247,7 +254,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
     }
 
     const targetProdId = productionId || (productions[0]?.id);
-    const pUrl = hasPersonalUrl ? `${window.location.origin}/r/${targetProdId}?staff=${encodeURIComponent(staffName.trim())}` : '';
+    const pUrl = hasPersonalUrl ? getShortStaffUrl(staffName.trim()) : '';
 
     if (editingMember) {
       await supabase.from('cast_staff').update({
@@ -444,77 +451,73 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
               まだキャスト・スタッフが登録されていません。
             </div>
           ) : (
-            staffList.map(member => (
-              <div key={member.id} className="form-card" style={{ marginBottom: 0 }}>
+            staffList.map(member => {
+              const shortUrl = getShortStaffUrl(member.name);
 
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ fontWeight: 700, fontSize: '16px', color: COLORS.text, fontFamily: FONTS.display }}>
-                      {member.name}
-                    </span>
+              return (
+                <div key={member.id} className="form-card" style={{ marginBottom: 0 }}>
 
-                    <span className="badge" style={{ backgroundColor: member.member_type === 'cast' ? 'rgba(184,100,26,0.15)' : 'rgba(84,87,214,0.15)', color: member.member_type === 'cast' ? COLORS.gold : COLORS.indigo }}>
-                      {member.member_type === 'cast' ? '役者' : 'スタッフ'}
-                    </span>
-
-                    {member.role === 'admin' && (
-                      <span className="badge" style={{ backgroundColor: 'rgba(232,90,69,0.1)', color: COLORS.danger, border: '1px solid rgba(232,90,69,0.2)' }}>
-                        <Shield size={11} /> 管理者
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 700, fontSize: '16px', color: COLORS.text, fontFamily: FONTS.display }}>
+                        {member.name}
                       </span>
-                    )}
 
-                    {member.team_tag && (
-                      <span className="badge" style={{ backgroundColor: COLORS.surfaceAlt, color: COLORS.text, border: `1px solid ${COLORS.border}` }}>
-                        <Tag size={10} color={COLORS.gold} /> {member.team_tag}
+                      <span className="badge" style={{ backgroundColor: member.member_type === 'cast' ? 'rgba(184,100,26,0.15)' : 'rgba(84,87,214,0.15)', color: member.member_type === 'cast' ? COLORS.gold : COLORS.indigo }}>
+                        {member.member_type === 'cast' ? '役者' : 'スタッフ'}
                       </span>
-                    )}
-                  </div>
 
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    <button onClick={() => handleOpenEditModal(member)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted, padding: '4px' }}>
-                      <Edit2 size={16} />
-                    </button>
-                    <button onClick={() => handleDeleteMember(member.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.danger, padding: '4px' }}>
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
+                      {member.role === 'admin' && (
+                        <span className="badge" style={{ backgroundColor: 'rgba(232,90,69,0.1)', color: COLORS.danger, border: '1px solid rgba(232,90,69,0.2)' }}>
+                          <Shield size={11} /> 管理者
+                        </span>
+                      )}
 
-                {member.has_personal_url ? (
-                  <div style={{ padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '10px', border: `1px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
-                    <div style={{ flex: 1, minWidth: '220px' }}>
-                      <div style={{ fontSize: '11px', color: COLORS.gold, fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-                        <Link2 size={12} /> {member.name} 扱い専用予約URL
-                      </div>
-                      {member.personal_url ? (
-                        <div style={{ fontSize: '12px', color: COLORS.text, wordBreak: 'break-all', fontFamily: 'monospace' }}>
-                          {member.personal_url}
-                        </div>
-                      ) : (
-                        <div style={{ fontSize: '12px', color: COLORS.muted, fontStyle: 'italic' }}>専用URL未発行</div>
+                      {member.team_tag && (
+                        <span className="badge" style={{ backgroundColor: COLORS.surfaceAlt, color: COLORS.text, border: `1px solid ${COLORS.border}` }}>
+                          <Tag size={10} color={COLORS.gold} /> {member.team_tag}
+                        </span>
                       )}
                     </div>
 
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      {member.personal_url ? (
-                        <>
-                          <button onClick={() => handleCopyUrl(member.id, member.personal_url)} className="btn-outline">
-                            {copiedId === member.id ? <Check size={14} color={COLORS.success} /> : <Copy size={14} />}
-                            {copiedId === member.id ? '完了' : 'コピー'}
-                          </button>
-                          <button onClick={() => handleShareLine(`${member.name} 扱い予約URL`, member.personal_url)} className="btn-line" style={{ padding: '6px 10px', fontSize: '12px' }}>
-                            <Share2 size={14} /> LINE送信
-                          </button>
-                        </>
-                      ) : null}
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button onClick={() => handleOpenEditModal(member)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted, padding: '4px' }}>
+                        <Edit2 size={16} />
+                      </button>
+                      <button onClick={() => handleDeleteMember(member.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.danger, padding: '4px' }}>
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   </div>
-                ) : (
-                  <div style={{ fontSize: '12px', color: COLORS.muted }}>※扱い窓口なし</div>
-                )}
 
-              </div>
-            ))
+                  {member.has_personal_url !== false ? (
+                    <div style={{ padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '10px', border: `1px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+                      <div style={{ flex: 1, minWidth: '220px' }}>
+                        <div style={{ fontSize: '11px', color: COLORS.gold, fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+                          <Link2 size={12} /> {member.name} 扱い専用予約URL
+                        </div>
+                        <div style={{ fontSize: '12px', color: COLORS.text, wordBreak: 'break-all', fontWeight: 600 }}>
+                          {shortUrl}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button onClick={() => handleCopyUrl(member.id, shortUrl)} className="btn-outline">
+                          {copiedId === member.id ? <Check size={14} color={COLORS.success} /> : <Copy size={14} />}
+                          {copiedId === member.id ? '完了' : 'コピー'}
+                        </button>
+                        <button onClick={() => handleShareLine(`【${member.name}扱い 予約URL】`, shortUrl)} className="btn-line" style={{ padding: '6px 10px', fontSize: '12px' }}>
+                          <Share2 size={14} /> LINE送信
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '12px', color: COLORS.muted }}>※扱い窓口なし</div>
+                  )}
+
+                </div>
+              );
+            })
           )}
         </div>
 
