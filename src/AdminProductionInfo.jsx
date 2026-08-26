@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { ArrowLeft, Save, MapPin, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Save, MapPin, FileText, CheckCircle2, AlertCircle, Link2, Copy, Check, Share2, ExternalLink } from 'lucide-react';
 import { COLORS, FONTS, RADIUS } from './theme';
 
 // 関西主要小劇場・ホール会場名プリセット
@@ -104,12 +104,16 @@ export default function AdminProductionInfo({ productionId, org, onBack }) {
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [copiedUrl, setCopiedUrl] = useState(false);
 
   // 公演情報ステート
   const [title, setTitle] = useState('');
   const [subtitle, setSubtitle] = useState('');
   const [venueName, setVenueName] = useState('');
   const [venueAddress, setVenueAddress] = useState('');
+
+  // 劇団公式予約URL (/r/公演ID)
+  const publicReservationUrl = `${window.location.origin}/r/${productionId || ''}`;
 
   useEffect(() => {
     async function fetchProduction() {
@@ -139,6 +143,17 @@ export default function AdminProductionInfo({ productionId, org, onBack }) {
 
     fetchProduction();
   }, [productionId]);
+
+  const handleCopyUrl = () => {
+    navigator.clipboard.writeText(publicReservationUrl);
+    setCopiedUrl(true);
+    setTimeout(() => setCopiedUrl(false), 2000);
+  };
+
+  const handleShareLine = () => {
+    const text = encodeURIComponent(`【${title || '公演'}】予約フォームはこちら\n${publicReservationUrl}`);
+    window.open(`https://line.me/R/msg/text/?${text}`, '_blank');
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -213,7 +228,7 @@ export default function AdminProductionInfo({ productionId, org, onBack }) {
         }
 
         .btn-gold {
-          padding: 12px 24px;
+          padding: 12px 20px;
           background-color: ${COLORS.gold};
           color: #ffffff;
           border: none;
@@ -226,12 +241,43 @@ export default function AdminProductionInfo({ productionId, org, onBack }) {
           align-items: center;
           justify-content: center;
           gap: 6px;
-          box-shadow: 0 2px 8px rgba(201,121,31,0.25);
         }
         .btn-gold:hover { filter: brightness(1.08); }
+
+        .btn-line {
+          padding: 10px 16px;
+          background-color: #06C755;
+          color: #ffffff;
+          border: none;
+          border-radius: ${RADIUS.sm};
+          font-size: 13px;
+          font-weight: 700;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          white-space: nowrap;
+        }
+        .btn-line:hover { filter: brightness(1.08); }
+
+        .btn-outline {
+          padding: 10px 14px;
+          background-color: ${COLORS.surface};
+          color: ${COLORS.gold};
+          border: 1px solid ${COLORS.border};
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 700;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          text-decoration: none;
+        }
+        .btn-outline:hover { background-color: ${COLORS.surfaceAlt}; }
       `}</style>
 
-      <div style={{ maxWidth: '720px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '760px', margin: '0 auto' }}>
 
         {/* ヘッダー */}
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '24px', borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '16px' }}>
@@ -245,6 +291,36 @@ export default function AdminProductionInfo({ productionId, org, onBack }) {
             公演基本情報・会場設定
           </h1>
           <div style={{ width: '80px' }} />
+        </div>
+
+        {/* 🎟️ 劇団公式 予約URLカード */}
+        <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: RADIUS.md, padding: '20px', marginBottom: '20px', boxShadow: '0 2px 6px rgba(33,26,44,0.05)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: COLORS.gold, fontWeight: 700, fontSize: '15px', marginBottom: '6px' }}>
+            <Link2 size={18} /> 劇団公式・共通予約URL（チラシ・SNS告知用）
+          </div>
+          <p style={{ fontSize: '12px', color: COLORS.muted, margin: '0 0 12px 0', lineHeight: '1.5' }}>
+            劇団公式SNSやチラシのQRコードにはこちらのURLをご使用ください。（扱いキャストなし／お客様が画面で選べる共通窓口です）
+          </p>
+
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              type="text"
+              readOnly
+              value={publicReservationUrl}
+              className="text-input"
+              style={{ flex: 1, minWidth: '240px', backgroundColor: COLORS.surfaceAlt, fontSize: '13px', fontFamily: 'monospace' }}
+            />
+            <button onClick={handleCopyUrl} className="btn-gold" style={{ padding: '10px 16px', fontSize: '13px', whiteSpace: 'nowrap' }}>
+              {copiedUrl ? <Check size={16} /> : <Copy size={16} />}
+              {copiedUrl ? 'コピー完了' : 'URLコピー'}
+            </button>
+            <button onClick={handleShareLine} className="btn-line">
+              <Share2 size={16} /> LINE共有
+            </button>
+            <a href={publicReservationUrl} target="_blank" rel="noreferrer" className="btn-outline">
+              <ExternalLink size={15} /> ページを開く
+            </a>
+          </div>
         </div>
 
         <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
