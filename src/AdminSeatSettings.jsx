@@ -1,41 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Upload, Sparkles, Check, RefreshCw, Shield, Video, Eye, RotateCcw, Tag } from 'lucide-react';
-import { supabase } from './supabaseClient'; // ⭐ Supabaseクライアントをインポート
+import { supabase } from './supabaseClient';
+import { ArrowLeft, Check, RefreshCw, Shield, Video, Eye, RotateCcw, Tag, Sparkles, Users, Calendar } from 'lucide-react';
+import { COLORS, FONTS, RADIUS } from './theme';
 
-const COLORS = {
-  bg: '#faf5ea',
-  surface: '#ffffff',
-  surfaceAlt: '#f7efe0',
-  border: 'rgba(201,121,31,0.22)',
-  gold: '#c9791f',
-  text: '#2b2438',
-  muted: '#8a8398',
-  success: '#1f9a56',
-  danger: '#e85a45',
-  indigo: '#5457d6',
-  sSeat: '#e69f00',
-  aSeat: '#0072b2'
-};
-
-// 布施PEベースの仕込み図面（PDF）に忠実な客席配置データ
+// 布施PEベース 基本客席グリッド（A列〜G列）
 const INITIAL_PE_BASE_MAP = () => {
   return {
     'A': [
-      { id: 'A-1', row: 'A', num: 1, status: 's_seat' },
-      { id: 'A-2', row: 'A', num: 2, status: 's_seat' },
-      { id: 'A-3', row: 'A', num: 3, status: 's_seat' },
-      { id: 'A-4', row: 'A', num: 4, status: 's_seat' },
-      { id: 'A-5', row: 'A', num: 5, status: 's_seat' },
-      { id: 'A-6', row: 'A', num: 6, status: 's_seat' },
+      { id: 'A-1', row: 'A', num: 1, status: 'front_row' },
+      { id: 'A-2', row: 'A', num: 2, status: 'front_row' },
+      { id: 'A-3', row: 'A', num: 3, status: 'front_row' },
+      { id: 'A-4', row: 'A', num: 4, status: 'front_row' },
+      { id: 'A-5', row: 'A', num: 5, status: 'front_row' },
+      { id: 'A-6', row: 'A', num: 6, status: 'front_row' },
     ],
     'B': [
-      { id: 'B-1', row: 'B', num: 1, status: 's_seat' },
-      { id: 'B-2', row: 'B', num: 2, status: 's_seat' },
+      { id: 'B-1', row: 'B', num: 1, status: 'reserved' },
+      { id: 'B-2', row: 'B', num: 2, status: 'reserved' },
       { id: 'B-3', row: 'B', num: 3, status: 'equipment' },
-      { id: 'B-4', row: 'B', num: 4, status: 's_seat' },
-      { id: 'B-5', row: 'B', num: 5, status: 's_seat' },
-      { id: 'B-6', row: 'B', num: 6, status: 's_seat' },
-      { id: 'B-7', row: 'B', num: 7, status: 's_seat' },
+      { id: 'B-4', row: 'B', num: 4, status: 'reserved' },
+      { id: 'B-5', row: 'B', num: 5, status: 'reserved' },
+      { id: 'B-6', row: 'B', num: 6, status: 'reserved' },
+      { id: 'B-7', row: 'B', num: 7, status: 'reserved' },
     ],
     'C': [
       { id: 'C-1', row: 'C', num: 1, status: 'available' },
@@ -56,122 +42,120 @@ const INITIAL_PE_BASE_MAP = () => {
       { id: 'D-7', row: 'D', num: 7, status: 'available' },
     ],
     'E': [
-      { id: 'E-1', row: 'E', num: 1, status: 'a_seat' },
-      { id: 'E-2', row: 'E', num: 2, status: 'a_seat' },
+      { id: 'E-1', row: 'E', num: 1, status: 'available' },
+      { id: 'E-2', row: 'E', num: 2, status: 'available' },
       { id: 'E-3', row: 'E', num: 3, status: 'equipment' },
-      { id: 'E-4', row: 'E', num: 4, status: 'a_seat' },
-      { id: 'E-5', row: 'E', num: 5, status: 'a_seat' },
-      { id: 'E-6', row: 'E', num: 6, status: 'a_seat' },
-      { id: 'E-7', row: 'E', num: 7, status: 'a_seat' },
+      { id: 'E-4', row: 'E', num: 4, status: 'available' },
+      { id: 'E-5', row: 'E', num: 5, status: 'available' },
+      { id: 'E-6', row: 'E', num: 6, status: 'available' },
+      { id: 'E-7', row: 'E', num: 7, status: 'available' },
     ],
     'F': [
-      { id: 'F-1', row: 'F', num: 1, status: 'a_seat' },
-      { id: 'F-2', row: 'F', num: 2, status: 'a_seat' },
+      { id: 'F-1', row: 'F', num: 1, status: 'available' },
+      { id: 'F-2', row: 'F', num: 2, status: 'available' },
       { id: 'F-3', row: 'F', num: 3, status: 'equipment' },
-      { id: 'F-4', row: 'F', num: 4, status: 'a_seat' },
-      { id: 'F-5', row: 'F', num: 5, status: 'a_seat' },
-      { id: 'F-6', row: 'F', num: 6, status: 'a_seat' },
-      { id: 'F-7', row: 'F', num: 7, status: 'a_seat' },
+      { id: 'F-4', row: 'F', num: 4, status: 'available' },
+      { id: 'F-5', row: 'F', num: 5, status: 'available' },
+      { id: 'F-6', row: 'F', num: 6, status: 'available' },
+      { id: 'F-7', row: 'F', num: 7, status: 'available' },
     ],
     'G': [
       { id: 'G-1', row: 'G', num: 1, status: 'reserved_staff' },
       { id: 'G-2', row: 'G', num: 2, status: 'reserved_staff' },
-      { id: 'G-3', row: 'G', num: 3, status: 'a_seat' },
+      { id: 'G-3', row: 'G', num: 3, status: 'available' },
       { id: 'G-4', row: 'G', num: 4, status: 'equipment' },
-      { id: 'G-5', row: 'G', num: 5, status: 'a_seat' },
-      { id: 'G-6', row: 'G', num: 6, status: 'a_seat' },
-      { id: 'G-7', row: 'G', num: 7, status: 'a_seat' },
+      { id: 'G-5', row: 'G', num: 5, status: 'available' },
+      { id: 'G-6', row: 'G', num: 6, status: 'available' },
+      { id: 'G-7', row: 'G', num: 7, status: 'available' },
     ],
   };
 };
 
-export default function AdminSeatSettings({ productionId, onBack }) {
-  const [seatMode, setSeatMode] = useState('movie_style');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isAnalyzed, setIsAnalyzed] = useState(true);
-  const [uploadedFileName, setUploadedFileName] = useState('オフィスナイト_布施PEベース客席(案).pdf');
+export default function AdminSeatSettings({ productionId, org, onBack }) {
+  const [stages, setStages] = useState([]);
+  const [selectedStageId, setSelectedStageId] = useState('master'); // 'master' または stage.id
+  const [seatMap, setSeatMap] = useState(INITIAL_PE_BASE_MAP());
+  const [reservations, setReservations] = useState([]);
+
+  // 編集ツール: 'front_row' | 'reserved' | 'available' | 'reserved_staff' | 'equipment'
+  const [activeTool, setActiveTool] = useState('front_row');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // 座席マップデータ
-  const [seatMap, setSeatMap] = useState(INITIAL_PE_BASE_MAP());
-  // 編集ツール: 'available' | 's_seat' | 'a_seat' | 'reserved_staff' | 'equipment'
-  const [activeTool, setActiveTool] = useState('s_seat');
-  const [showCustomerPreview, setShowCustomerPreview] = useState(false);
-
-  // 1. Supabaseから座席マップ設定を取得
-  const fetchSeatMap = async () => {
+  // データ取得
+  const fetchData = async () => {
     setLoading(true);
-    let query = supabase.from('seat_maps').select('*');
+    try {
+      if (!productionId) return;
 
-    if (productionId) {
-      query = query.eq('production_id', productionId);
+      // 1. ステージ一覧取得
+      const { data: stageData } = await supabase
+        .from('stages')
+        .select('*')
+        .eq('production_id', productionId)
+        .order('performance_date', { ascending: true })
+        .order('start_time', { ascending: true });
+
+      if (stageData) setStages(stageData);
+
+      // 2. マスタ座席表取得
+      const { data: mapData } = await supabase
+        .from('seat_maps')
+        .select('*')
+        .eq('production_id', productionId)
+        .maybeSingle();
+
+      if (mapData && mapData.seat_data) {
+        setSeatMap(mapData.seat_data);
+      } else {
+        setSeatMap(INITIAL_PE_BASE_MAP());
+      }
+
+      // 3. 予約データ取得（ステージごとの埋まり状況表示用）
+      const { data: resData } = await supabase
+        .from('reservations')
+        .select('id, stage_id, customer_name, count, memo')
+        .eq('production_id', productionId);
+
+      if (resData) setReservations(resData);
+    } catch (e) {
+      console.error('Fetch seat data error:', e);
+    } finally {
+      setLoading(false);
     }
-
-    const { data, error } = await query;
-
-    if (!error && data && data.length > 0) {
-      const record = data[0];
-      if (record.seat_data) setSeatMap(record.seat_data);
-      if (record.seat_mode) setSeatMode(record.seat_mode);
-      if (record.file_name) setUploadedFileName(record.file_name);
-    } else {
-      setSeatMap(INITIAL_PE_BASE_MAP());
-    }
-    setLoading(false);
   };
 
   useEffect(() => {
-    fetchSeatMap();
+    fetchData();
   }, [productionId]);
 
-  // 2. Supabaseへ座席マップを保存 (UPSERT)
-  const handleSaveSeatMap = async (newMap, newMode = seatMode) => {
+  // 座席保存 (マスタ設定)
+  const handleSaveSeatMap = async (newMap) => {
     setSaving(true);
-    const payload = {
-      production_id: productionId,
-      seat_data: newMap,
-      seat_mode: newMode,
-      file_name: uploadedFileName,
-    };
+    try {
+      const payload = {
+        production_id: productionId,
+        seat_data: newMap,
+      };
 
-    const { error } = await supabase
-      .from('seat_maps')
-      .upsert([payload], { onConflict: 'production_id' });
+      const { error } = await supabase
+        .from('seat_maps')
+        .upsert(payload, { onConflict: 'production_id' });
 
-    setSaving(false);
-    if (error) {
-      console.error('座席マップの保存に失敗しました:', error.message);
+      if (error) throw error;
+    } catch (e) {
+      console.error('Save seat map error:', e);
+    } finally {
+      setSaving(false);
     }
   };
 
-  // 全席リセット機能
-  const handleResetAllAvailable = () => {
-    if (window.confirm('すべてのエリア指定・キープ設定を解除して、全席通常（一般）に戻しますか？')) {
-      const newMap = { ...seatMap };
-      Object.keys(newMap).forEach(row => {
-        newMap[row] = newMap[row].map(seat => ({ ...seat, status: 'available' }));
-      });
-      setSeatMap(newMap);
-      handleSaveSeatMap(newMap);
-    }
-  };
-
-  // AI再解析シミュレーション
-  const handleSimulateAIAnalysis = () => {
-    setIsAnalyzing(true);
-    setTimeout(() => {
-      const defaultMap = INITIAL_PE_BASE_MAP();
-      setSeatMap(defaultMap);
-      setIsAnalyzing(false);
-      setIsAnalyzed(true);
-      handleSaveSeatMap(defaultMap);
-    }, 1200);
-  };
-
-  // 座席タップ時のステータス切り替え
+  // 座席クリック時の切り替え
   const handleSeatClick = (row, index) => {
-    if (showCustomerPreview) return;
+    if (selectedStageId !== 'master') {
+      alert('開演回別表示中は閲覧専用です。座席設定を変更する場合は「基本マップ設定（全ステージ共通）」を選択してください。');
+      return;
+    }
 
     setSeatMap(prev => {
       const newMap = { ...prev };
@@ -182,363 +166,295 @@ export default function AdminSeatSettings({ productionId, onBack }) {
     });
   };
 
-  const handleModeChange = (mode) => {
-    setSeatMode(mode);
-    handleSaveSeatMap(seatMap, mode);
-  };
-
-  const getSeatStyle = (status) => {
-    switch (status) {
-      case 'available':
-        return { bg: COLORS.surface, border: COLORS.border, color: COLORS.text, label: '通常/自由席' };
-      case 's_seat':
-        return { bg: 'rgba(230,159,0,0.2)', border: COLORS.sSeat, color: '#996300', label: '👑 S席エリア' };
-      case 'a_seat':
-        return { bg: 'rgba(0,114,178,0.15)', border: COLORS.aSeat, color: COLORS.aSeat, label: '🎟️ A席エリア' };
-      case 'reserved_staff':
-        return { bg: 'rgba(232,90,69,0.15)', border: COLORS.danger, color: COLORS.danger, label: '関係者留め' };
-      case 'equipment':
-        return { bg: 'rgba(84,87,214,0.15)', border: COLORS.indigo, color: COLORS.indigo, label: '機材卓・手すり' };
-      default:
-        return { bg: COLORS.surface, border: COLORS.border, color: COLORS.text, label: '' };
+  // 全席リセット
+  const handleResetAll = () => {
+    if (confirm('すべての座席指定をリセットして通常（自由席）に戻しますか？')) {
+      const newMap = { ...seatMap };
+      Object.keys(newMap).forEach(row => {
+        newMap[row] = newMap[row].map(seat => ({ ...seat, status: 'available' }));
+      });
+      setSeatMap(newMap);
+      handleSaveSeatMap(newMap);
     }
   };
 
+  // スタイル定義
+  const getSeatStyle = (status) => {
+    switch (status) {
+      case 'front_row':
+        return { bg: '#fef3c7', border: COLORS.gold, color: '#b45309', label: '👑 最前列指定席 (+500円)', short: '最' };
+      case 'reserved':
+        return { bg: '#e0e7ff', border: COLORS.indigo, color: COLORS.indigo, label: '🎟️ 指定席エリア', short: '指' };
+      case 'available':
+        return { bg: COLORS.surface, border: COLORS.border, color: COLORS.text, label: '通常 / 自由席', short: '' };
+      case 'reserved_staff':
+        return { bg: '#fee2e2', border: COLORS.danger, color: COLORS.danger, label: '関係者留め席', short: '留' };
+      case 'equipment':
+        return { bg: '#f3f4f6', border: '#9ca3af', color: '#4b5563', label: '機材卓・手すり', short: '卓' };
+      default:
+        return { bg: COLORS.surface, border: COLORS.border, color: COLORS.text, label: '', short: '' };
+    }
+  };
+
+  // 選択中ステージの予約情報
+  const currentStageReservations = reservations.filter(r => r.stage_id === selectedStageId);
+  const totalReservedCount = currentStageReservations.reduce((sum, r) => sum + (r.count || 1), 0);
+
+  // 座席数の集計
+  let frontRowCount = 0;
+  let reservedCount = 0;
+  let availableCount = 0;
+  let blockedCount = 0;
+
+  Object.values(seatMap).forEach(rowList => {
+    rowList.forEach(s => {
+      if (s.status === 'front_row') frontRowCount++;
+      else if (s.status === 'reserved') reservedCount++;
+      else if (s.status === 'available') availableCount++;
+      else blockedCount++;
+    });
+  });
+
+  const totalSeats = frontRowCount + reservedCount + availableCount;
+
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '24px', boxSizing: 'border-box' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: FONTS.body, padding: '20px 16px 60px 16px', boxSizing: 'border-box' }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap');
-
-        .form-card {
-          background-color: ${COLORS.surface};
-          border: 1px solid ${COLORS.border};
-          border-radius: 14px;
-          padding: 20px;
-          margin-bottom: 16px;
-          box-shadow: 0 2px 4px rgba(43, 36, 56, 0.04);
-        }
-
-        .input-label {
-          display: block;
-          font-size: 13px;
-          font-weight: 700;
-          color: ${COLORS.gold};
-          margin-bottom: 8px;
-        }
-
-        .mode-option {
-          padding: 12px 14px;
-          border-radius: 10px;
-          border: 1px solid ${COLORS.border};
-          background-color: ${COLORS.surface};
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          transition: all 0.15s ease;
-        }
-        .mode-option.active {
-          border-color: ${COLORS.gold};
-          background-color: ${COLORS.surfaceAlt};
-        }
-
-        .btn-gold {
-          padding: 12px 20px;
-          background-color: ${COLORS.gold};
-          color: #ffffff;
-          border: none;
-          border-radius: 10px;
-          font-size: 14px;
-          font-weight: 700;
-          cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          transition: filter 0.15s ease;
-        }
-        .btn-gold:hover { filter: brightness(1.08); }
-
-        .seat-btn {
-          width: 40px;
-          height: 40px;
-          border-radius: 8px;
-          font-size: 12px;
-          font-weight: 700;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: transform 0.1s ease;
-          border: 1px solid;
-        }
-        .seat-btn:hover { transform: scale(1.08); }
+        @import url('${FONTS.importUrl}');
 
         .tool-btn {
-          padding: 7px 11px;
+          padding: 8px 12px;
           border-radius: 8px;
-          border: 1px solid ${COLORS.border};
+          border: 1.5px solid ${COLORS.border};
           background-color: ${COLORS.surface};
           font-size: 12px;
           font-weight: 700;
           cursor: pointer;
           display: flex;
           align-items: center;
-          gap: 5px;
+          gap: 6px;
+          transition: all 0.15s ease;
         }
         .tool-btn.active {
           border-color: ${COLORS.gold};
-          background-color: ${COLORS.gold};
-          color: #ffffff;
+          background-color: #fff6e8;
+          color: ${COLORS.gold};
+          box-shadow: 0 2px 6px rgba(201,121,31,0.15);
+        }
+
+        .seat-box {
+          width: 38px;
+          height: 38px;
+          border-radius: 8px;
+          font-size: 11px;
+          font-weight: 800;
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          border: 1.5px solid;
+          transition: transform 0.1s ease;
+          user-select: none;
+        }
+        .seat-box:active { transform: scale(0.95); }
+
+        @media (max-width: 480px) {
+          .seat-box {
+            width: 32px;
+            height: 32px;
+            font-size: 10px;
+          }
         }
       `}</style>
 
-      <div style={{ maxWidth: '880px', margin: '0 auto' }}>
-        
+      <div style={{ maxWidth: '860px', margin: '0 auto' }}>
+
         {/* ヘッダー */}
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '24px', borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '16px' }}>
-          <button 
-            onClick={onBack} 
-            style={{ background: 'none', border: 'none', color: COLORS.gold, fontSize: '14px', cursor: 'pointer', padding: '4px 8px 4px 0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '14px' }}>
+          <button
+            onClick={onBack}
+            style={{ background: 'none', border: 'none', color: COLORS.gold, fontSize: '14px', cursor: 'pointer', padding: 0, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}
           >
             <ArrowLeft size={16} /> ホームへ戻る
           </button>
-          <h1 style={{ fontSize: '18px', margin: 0, flex: 1, textAlign: 'center', fontFamily: "'Shippori Mincho', serif", color: COLORS.text, fontWeight: 700 }}>
+          <h1 style={{ fontSize: '18px', margin: 0, fontFamily: FONTS.display, fontWeight: 700 }}>
             指定席・会場マップ設定
           </h1>
-          <div style={{ width: '80px', textAlign: 'right', fontSize: '12px', color: COLORS.muted }}>
+          <div style={{ fontSize: '12px', color: COLORS.gold, fontWeight: 700 }}>
             {saving ? '保存中...' : '自動保存済'}
           </div>
         </div>
 
-        {/* STEP 1: 運用モードの選択 */}
-        <div className="form-card">
-          <label className="input-label">STEP 1: 指定席の運用モードを選択</label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
-            
-            <div 
-              className={`mode-option ${seatMode === 'movie_style' ? 'active' : ''}`}
-              onClick={() => handleModeChange('movie_style')}
-            >
-              <input type="radio" checked={seatMode === 'movie_style'} readOnly style={{ accentColor: COLORS.gold }} />
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '14px', color: COLORS.text }}>🎬 映画館風（お客様が座席選択）</div>
-                <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>指定席オプション購入者がフォーム上で自由にお席ポチポチ選択</div>
-              </div>
-            </div>
+        {/* ステージ切り替えセレクター */}
+        <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '14px 16px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Calendar size={18} color={COLORS.gold} />
+            <span style={{ fontSize: '13px', fontWeight: 700 }}>表示・編集対象:</span>
+          </div>
 
-            <div 
-              className={`mode-option ${seatMode === 'zone_style' ? 'active' : ''}`}
-              onClick={() => handleModeChange('zone_style')}
-            >
-              <input type="radio" checked={seatMode === 'zone_style'} readOnly style={{ accentColor: COLORS.gold }} />
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '14px', color: COLORS.text }}>👑 エリア別指定席（S席 / A席など）</div>
-                <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>S席・A席などのゾーン塗り分け管理モード</div>
-              </div>
-            </div>
+          <select
+            value={selectedStageId}
+            onChange={(e) => setSelectedStageId(e.target.value)}
+            style={{ padding: '8px 12px', borderRadius: '8px', border: `1.5px solid ${COLORS.gold}`, fontSize: '13px', fontWeight: 700, backgroundColor: '#fffdf9', color: COLORS.text }}
+          >
+            <option value="master">⚙️ 基本マップ設定（全ステージ共通マスタ）</option>
+            {stages.map(st => (
+              <option key={st.id} value={st.id}>
+                📅 {st.performance_date} {st.start_time?.slice(0, 5)}開演 {st.team_name ? `(${st.team_name})` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
 
-            <div 
-              className={`mode-option ${seatMode === 'auto_assign' ? 'active' : ''}`}
-              onClick={() => handleModeChange('auto_assign')}
-            >
-              <input type="radio" checked={seatMode === 'auto_assign'} readOnly style={{ accentColor: COLORS.gold }} />
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '14px', color: COLORS.text }}>🤖 主催者おまかせ（AI自動配席）</div>
-                <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>購入後に主催者・AIが中央見やすい席から自動配置</div>
-              </div>
-            </div>
-
+        {/* 座席数サマリー */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px', marginBottom: '16px' }}>
+          <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
+            <div style={{ fontSize: '11px', color: COLORS.muted }}>総有効席数</div>
+            <div style={{ fontSize: '16px', fontWeight: 800, color: COLORS.text }}>{totalSeats} 席</div>
+          </div>
+          <div style={{ backgroundColor: '#fffbeb', border: `1px solid ${COLORS.gold}`, borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
+            <div style={{ fontSize: '11px', color: '#b45309', fontWeight: 700 }}>最前列指定席</div>
+            <div style={{ fontSize: '16px', fontWeight: 800, color: COLORS.gold }}>{frontRowCount} 席</div>
+          </div>
+          <div style={{ backgroundColor: '#eef2ff', border: `1px solid ${COLORS.indigo}`, borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
+            <div style={{ fontSize: '11px', color: COLORS.indigo, fontWeight: 700 }}>一般指定席</div>
+            <div style={{ fontSize: '16px', fontWeight: 800, color: COLORS.indigo }}>{reservedCount} 席</div>
+          </div>
+          <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
+            <div style={{ fontSize: '11px', color: COLORS.muted }}>自由席</div>
+            <div style={{ fontSize: '16px', fontWeight: 800, color: COLORS.text }}>{availableCount} 席</div>
           </div>
         </div>
 
-        {/* STEP 2: PDF図面アプローダー */}
-        <div className="form-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <label className="input-label" style={{ margin: 0 }}>STEP 2: 劇場の仕込み図・座席表PDFを取り込み</label>
-            <span style={{ fontSize: '11px', color: COLORS.gold, fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px' }}>
-              <Sparkles size={13} /> 布施PEベース仕込み図認識
+        {/* 塗り分けツールバー（マスタ編集時のみ有効） */}
+        {selectedStageId === 'master' ? (
+          <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '12px', marginBottom: '16px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Sparkles size={14} /> 塗り分けツールを選択して、下の座席をタップしてください
+            </div>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              <button
+                className={`tool-btn ${activeTool === 'front_row' ? 'active' : ''}`}
+                onClick={() => setActiveTool('front_row')}
+              >
+                <Tag size={13} color={COLORS.gold} /> 👑 最前列指定 (+500円)
+              </button>
+              <button
+                className={`tool-btn ${activeTool === 'reserved' ? 'active' : ''}`}
+                onClick={() => setActiveTool('reserved')}
+              >
+                <Tag size={13} color={COLORS.indigo} /> 🎟️ 一般指定席
+              </button>
+              <button
+                className={`tool-btn ${activeTool === 'available' ? 'active' : ''}`}
+                onClick={() => setActiveTool('available')}
+              >
+                <Check size={13} /> 通常/自由席
+              </button>
+              <button
+                className={`tool-btn ${activeTool === 'reserved_staff' ? 'active' : ''}`}
+                onClick={() => setActiveTool('reserved_staff')}
+              >
+                <Shield size={13} color={COLORS.danger} /> 関係者留め
+              </button>
+              <button
+                className={`tool-btn ${activeTool === 'equipment' ? 'active' : ''}`}
+                onClick={() => setActiveTool('equipment')}
+              >
+                <Video size={13} color="#4b5563" /> 機材卓・手すり
+              </button>
+              <button
+                onClick={handleResetAll}
+                className="tool-btn"
+                style={{ marginLeft: 'auto', color: COLORS.danger }}
+              >
+                <RotateCcw size={13} /> 一括クリア
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ backgroundColor: '#eef2ff', border: `1px solid ${COLORS.indigo}`, borderRadius: '12px', padding: '12px 16px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: COLORS.indigo }}>
+              👁️ 現在この開演回の配席状況を確認中（予約数: {totalReservedCount} 名）
+            </div>
+            <button
+              onClick={() => setSelectedStageId('master')}
+              style={{ padding: '6px 12px', borderRadius: '8px', border: `1px solid ${COLORS.indigo}`, backgroundColor: '#fff', color: COLORS.indigo, fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+            >
+              基本マップ編集に戻る
+            </button>
+          </div>
+        )}
+
+        {/* 🎭 客席マップ描画エリア */}
+        <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '14px', padding: '20px 16px', boxShadow: '0 2px 6px rgba(0,0,0,0.04)' }}>
+          
+          {/* 舞台 (STAGE) */}
+          <div style={{ width: '80%', margin: '0 auto 20px auto', padding: '8px', backgroundColor: COLORS.gold, color: '#ffffff', textAlign: 'center', fontWeight: 800, borderRadius: '6px', fontSize: '13px', letterSpacing: '2px' }}>
+            舞台 (STAGE) / 鏡幕側
+          </div>
+
+          {/* 座席グリッド */}
+          <div style={{ overflowX: 'auto', paddingBottom: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '380px', alignItems: 'center' }}>
+              {Object.keys(seatMap).map(row => (
+                <div key={row} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ width: '18px', fontWeight: 800, fontSize: '13px', color: COLORS.gold, textAlign: 'center' }}>
+                    {row}
+                  </span>
+
+                  <div style={{ display: 'flex', gap: '5px' }}>
+                    {seatMap[row].map((seat, idx) => {
+                      const style = getSeatStyle(seat.status);
+
+                      return (
+                        <button
+                          key={seat.id}
+                          onClick={() => handleSeatClick(row, idx)}
+                          className="seat-box"
+                          style={{
+                            backgroundColor: style.bg,
+                            borderColor: style.border,
+                            color: style.color,
+                          }}
+                          title={`${row}-${seat.num} (${style.label})`}
+                        >
+                          <span style={{ fontSize: '10px', opacity: 0.8 }}>{seat.num}</span>
+                          {style.short && <span style={{ fontSize: '9px', fontWeight: 900 }}>{style.short}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <span style={{ width: '18px', fontWeight: 800, fontSize: '13px', color: COLORS.gold, textAlign: 'center' }}>
+                    {row}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 凡例 */}
+          <div style={{ marginTop: '18px', paddingTop: '14px', borderTop: `1px solid ${COLORS.border}`, display: 'flex', justifyContent: 'center', gap: '14px', flexWrap: 'wrap', fontSize: '12px' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#fef3c7', border: `1px solid ${COLORS.gold}` }} /> 👑 最前列指定席 (+500円)
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#e0e7ff', border: `1px solid ${COLORS.indigo}` }} /> 🎟️ 指定席
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}` }} /> 自由席
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#fee2e2', border: `1px solid ${COLORS.danger}` }} /> 関係者留め
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#f3f4f6', border: '1px solid #9ca3af' }} /> 機材卓
             </span>
           </div>
 
-          <div style={{ border: `2px dashed ${COLORS.border}`, borderRadius: '12px', padding: '18px', textAlign: 'center', backgroundColor: COLORS.surfaceAlt }}>
-            <Upload size={26} color={COLORS.gold} style={{ marginBottom: '4px' }} />
-            <div style={{ fontSize: '13px', fontWeight: 700, color: COLORS.text, marginBottom: '2px' }}>
-              仕込み図PDFをドラッグ＆ドロップで即座にグリッド化
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', alignItems: 'center', marginTop: '10px' }}>
-              <button onClick={handleSimulateAIAnalysis} className="btn-gold" disabled={isAnalyzing}>
-                {isAnalyzing ? (
-                  <>
-                    <RefreshCw size={15} className="animate-spin" /> 図面を解析中...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={15} /> 図面PDFを再解析する
-                  </>
-                )}
-              </button>
-            </div>
-
-            {uploadedFileName && (
-              <div style={{ marginTop: '8px', fontSize: '12px', color: COLORS.gold, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                <Check size={14} color={COLORS.success} /> 解析済みデータ: {uploadedFileName}
-              </div>
-            )}
-          </div>
         </div>
-
-        {/* STEP 3: 座席マップ ＆ エリア・キープ設定 */}
-        {isAnalyzed && (
-          <div className="form-card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
-              <div>
-                <label className="input-label" style={{ margin: 0 }}>
-                  STEP 3: 座席エリア塗り分け ＆ キープ席設定
-                  {showCustomerPreview ? <span style={{ color: COLORS.danger, marginLeft: '8px' }}>[お客様プレビュー中]</span> : <span style={{ color: COLORS.success, marginLeft: '8px' }}>[編集モード]</span>}
-                </label>
-                <div style={{ fontSize: '12px', color: COLORS.muted }}>
-                  {showCustomerPreview 
-                    ? 'お客様予約フォームでの見え方です。「編集モードへ戻る」で変更が再開できます。'
-                    : 'ツールの選択 ➔ 席をタップして「S席」「A席」「関係者留め」「機材卓」をサクサク塗り分け！'}
-                </div>
-              </div>
-
-              <button 
-                onClick={() => setShowCustomerPreview(!showCustomerPreview)} 
-                className="btn-gold"
-                style={{ padding: '6px 12px', fontSize: '12px' }}
-              >
-                <Eye size={14} /> {showCustomerPreview ? '編集モードへ戻る' : 'お客様予約画面を体験'}
-              </button>
-            </div>
-
-            {/* ツールバー */}
-            {!showCustomerPreview && (
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '18px', padding: '10px', backgroundColor: COLORS.surfaceAlt, borderRadius: '10px', border: `1px solid ${COLORS.border}` }}>
-                <button 
-                  className={`tool-btn ${activeTool === 's_seat' ? 'active' : ''}`}
-                  onClick={() => setActiveTool('s_seat')}
-                >
-                  <Tag size={13} color={COLORS.sSeat} /> S席エリアに指定
-                </button>
-                <button 
-                  className={`tool-btn ${activeTool === 'a_seat' ? 'active' : ''}`}
-                  onClick={() => setActiveTool('a_seat')}
-                >
-                  <Tag size={13} color={COLORS.aSeat} /> A席エリアに指定
-                </button>
-                <button 
-                  className={`tool-btn ${activeTool === 'available' ? 'active' : ''}`}
-                  onClick={() => setActiveTool('available')}
-                >
-                  <Check size={13} /> 通常/自由席（クリア）
-                </button>
-                <button 
-                  className={`tool-btn ${activeTool === 'reserved_staff' ? 'active' : ''}`}
-                  onClick={() => setActiveTool('reserved_staff')}
-                >
-                  <Shield size={13} /> 関係者留め
-                </button>
-                <button 
-                  className={`tool-btn ${activeTool === 'equipment' ? 'active' : ''}`}
-                  onClick={() => setActiveTool('equipment')}
-                >
-                  <Video size={13} /> 機材卓・手すり
-                </button>
-                <button 
-                  onClick={handleResetAllAvailable} 
-                  className="tool-btn" 
-                  style={{ marginLeft: 'auto' }}
-                  title="全席を初期に戻す"
-                >
-                  <RotateCcw size={13} /> 一括クリア
-                </button>
-              </div>
-            )}
-
-            {/* 舞台 (STAGE) 表示 */}
-            <div style={{ width: '85%', margin: '0 auto 20px auto', padding: '8px', backgroundColor: COLORS.gold, color: '#ffffff', textAlign: 'center', fontWeight: 700, borderRadius: '6px', fontSize: '13px', letterSpacing: '2px' }}>
-              舞台 (STAGE) / 鏡幕側
-            </div>
-
-            {/* 客席グリッド */}
-            <div style={{ overflowX: 'auto', paddingBottom: '12px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '480px', alignItems: 'center' }}>
-                {Object.keys(seatMap).map(row => (
-                  <div key={row} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ width: '20px', fontWeight: '700', fontSize: '13px', color: COLORS.gold, textAlign: 'center' }}>{row}</span>
-                    
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      {seatMap[row].map((seat, idx) => {
-                        const style = getSeatStyle(seat.status);
-                        
-                        if (showCustomerPreview) {
-                          const isSelectable = seat.status !== 'reserved_staff' && seat.status !== 'equipment';
-                          return (
-                            <button
-                              key={seat.id}
-                              disabled={!isSelectable}
-                              style={{
-                                width: '40px',
-                                height: '40px',
-                                borderRadius: '8px',
-                                fontSize: '12px',
-                                fontWeight: '700',
-                                border: `1px solid ${isSelectable ? style.border : '#e0e0e0'}`,
-                                backgroundColor: isSelectable ? style.bg : '#f2f0f5',
-                                color: isSelectable ? style.color : COLORS.muted,
-                                cursor: isSelectable ? 'pointer' : 'not-allowed'
-                              }}
-                              title={isSelectable ? `${row}-${seat.num} (${style.label}) 席を選択` : `${row}-${seat.num} は選択できません`}
-                            >
-                              {isSelectable ? seat.num : '✕'}
-                            </button>
-                          );
-                        }
-
-                        return (
-                          <button
-                            key={seat.id}
-                            onClick={() => handleSeatClick(row, idx)}
-                            className="seat-btn"
-                            style={{ backgroundColor: style.bg, borderColor: style.border, color: style.color }}
-                            title={`${row}-${seat.num} (現在: ${style.label}) ➔ タップで変更`}
-                          >
-                            {seat.status === 's_seat' ? 'S' : seat.status === 'a_seat' ? 'A' : seat.status === 'reserved_staff' ? '留' : seat.status === 'equipment' ? '卓' : seat.num}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <span style={{ width: '20px', fontWeight: '700', fontSize: '13px', color: COLORS.gold, textAlign: 'center' }}>{row}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* 凡例 */}
-            <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: `1px solid ${COLORS.border}`, display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap', fontSize: '12px' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: 'rgba(230,159,0,0.2)', border: `1px solid ${COLORS.sSeat}` }} /> 👑 S席エリア
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: 'rgba(0,114,178,0.15)', border: `1px solid ${COLORS.aSeat}` }} /> 🎟️ A席エリア
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}` }} /> 通常/自由席
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: 'rgba(232,90,69,0.2)', border: `1px solid ${COLORS.danger}` }} /> 関係者留め
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: 'rgba(84,87,214,0.2)', border: `1px solid ${COLORS.indigo}` }} /> 機材卓・手すり
-              </span>
-            </div>
-
-          </div>
-        )}
 
       </div>
     </div>
