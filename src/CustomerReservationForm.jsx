@@ -8,14 +8,13 @@ const COLORS = {
   surfaceAlt: '#f7efe0',
   border: 'rgba(201,121,31,0.22)',
   gold: '#c9791f',
-  indigo: '#5457d6',
+  indigo: '#4338ca',
   text: '#2b2438',
   muted: '#8a8398',
   success: '#1f9a56',
   danger: '#e85a45',
 };
 
-// ステップキーを reservationMode から組み立てる
 function buildSteps(reservationMode) {
   const steps = ['select'];
   if (reservationMode === 'both') {
@@ -30,43 +29,31 @@ function buildSteps(reservationMode) {
 }
 
 export default function CustomerReservationForm({ productionId }) {
-  const [currentProd, setCurrentProd] = useState(null);
   const [productions, setProductions] = useState([]);
   const [stagesMap, setStagesMap] = useState({});
   const [ticketTypesMap, setTicketTypesMap] = useState({});
   const [allStaff, setAllStaff] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // 選択モード: 'single_0' (A公演) | 'single_1' (B公演) | 'both' (両方) | '' (未選択)
   const [reservationMode, setReservationMode] = useState('');
   const [stepIndex, setStepIndex] = useState(0);
 
-  // お客様基本情報
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerMemo, setCustomerMemo] = useState('');
 
-  // 公演ごとの選択ステート [A公演, B公演]
   const [selectedStageIds, setSelectedStageIds] = useState(['', '']);
   const [selectedTicketTypeIds, setSelectedTicketTypeIds] = useState(['', '']);
   const [ticketCounts, setTicketCounts] = useState([1, 1]);
   const [selectedStaffNames, setSelectedStaffNames] = useState(['', '']);
-
-  // 追加オプション選択 [A公演のopts, B公演のopts]
   const [selectedOptions, setSelectedOptions] = useState([[], []]);
 
-  // 応援カンパ（下限500円・100円刻み）
   const [hasDonation, setHasDonation] = useState(false);
   const [donationAmount, setDonationAmount] = useState(500);
-
-  // 両公演で同じ扱いに設定するフラグ
   const [isSameStaff, setIsSameStaff] = useState(true);
 
-  // ステップごとのバリデーションエラー
   const [stepError, setStepError] = useState('');
-
-  // 予約送信ステート
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [mypageToken, setMypageToken] = useState(null);
@@ -79,7 +66,6 @@ export default function CustomerReservationForm({ productionId }) {
         const urlParams = new URLSearchParams(window.location.search);
         const staffParam = urlParams.get('staff') || '';
 
-        // 1. 公演情報の取得
         const { data: thisProd, error: prodErr } = await supabase
           .from('productions')
           .select('*')
@@ -87,9 +73,7 @@ export default function CustomerReservationForm({ productionId }) {
           .single();
 
         if (prodErr || !thisProd) throw prodErr;
-        setCurrentProd(thisProd);
 
-        // 2. 同じ劇団の全公演を取得
         let prodList = [thisProd];
         if (thisProd.organization_id) {
           const { data: orgProds } = await supabase
@@ -100,15 +84,14 @@ export default function CustomerReservationForm({ productionId }) {
 
           if (orgProds && orgProds.length > 0) {
             prodList = orgProds.sort((a, b) => {
-              if (a.title.includes('あなたとコンビ')) return -1;
-              if (b.title.includes('あなたとコンビ')) return 1;
+              if (a.title?.includes('あなたとコンビ')) return -1;
+              if (b.title?.includes('あなたとコンビ')) return 1;
               return 0;
             });
           }
         }
         setProductions(prodList);
 
-        // 3. 全公演のステージ・券種・キャストを取得
         const prodIds = prodList.map(p => p.id);
         const [{ data: stageData }, { data: ticketData }, { data: staffData }] = await Promise.all([
           supabase.from('stages').select('*').in('production_id', prodIds).order('performance_date', { ascending: true }).order('start_time', { ascending: true }),
@@ -128,8 +111,6 @@ export default function CustomerReservationForm({ productionId }) {
           tMap[p.id] = pTickets;
 
           if (pStages.length > 0) initialStages[idx] = pStages[0].id;
-
-          // 基本券種（オプション以外）を優先選択
           const baseTk = pTickets.find(t => !t.is_donation && !t.description?.includes('【オプション】'));
           if (baseTk) initialTickets[idx] = baseTk.id;
           else if (pTickets.length > 0) initialTickets[idx] = pTickets[0].id;
@@ -140,7 +121,6 @@ export default function CustomerReservationForm({ productionId }) {
         setSelectedStageIds(initialStages);
         setSelectedTicketTypeIds(initialTickets);
 
-        // 重複排除したキャストリスト
         const uniqueStaff = [];
         const seenNames = new Set();
         (staffData || []).forEach(st => {
@@ -175,7 +155,6 @@ export default function CustomerReservationForm({ productionId }) {
     });
   };
 
-  // オプション選択のトグル
   const handleToggleOption = (prodIdx, optId) => {
     setSelectedOptions(prev => {
       const next = [...prev];
@@ -189,25 +168,15 @@ export default function CustomerReservationForm({ productionId }) {
     });
   };
 
-  // キャストの優先2段ソート（A/B/チームタグのゆらぎに対応）
   const getSortedStaffOptions = (prod) => {
     if (!prod) return { currentProdStaff: allStaff, otherStaff: [] };
-
     const isA = prod.title?.includes('あなたとコンビ');
 
     const currentProdStaff = allStaff.filter((s) => {
       const tag = s.team_tag || '';
-
       if (tag.includes('スタッフ')) return false;
-
-      if (tag === '共通・両公演' || tag === 'チームなし（共通・シングル）' || !tag) {
-        return true;
-      }
-
-      if (isA) {
-        return tag.includes('A公演') || tag.includes('Aチーム') || tag.includes('A班') || tag.includes('コンビ');
-      }
-
+      if (tag === '共通・両公演' || tag === 'チームなし（共通・シングル）' || !tag) return true;
+      if (isA) return tag.includes('A公演') || tag.includes('Aチーム') || tag.includes('A班') || tag.includes('コンビ');
       return tag.includes('B公演') || tag.includes('Bチーム') || tag.includes('B班') || tag.includes('爆弾');
     });
 
@@ -215,7 +184,6 @@ export default function CustomerReservationForm({ productionId }) {
     return { currentProdStaff, otherStaff };
   };
 
-  // 合計金額の計算
   const calculateTotal = () => {
     let total = 0;
     const targetIndices = reservationMode === 'both' ? [0, 1] : [parseInt(reservationMode.replace('single_', ''))];
@@ -255,7 +223,6 @@ export default function CustomerReservationForm({ productionId }) {
     return total;
   };
 
-  // --- ステップ管理 ---
   const steps = reservationMode ? buildSteps(reservationMode) : ['select'];
   const currentStepKey = steps[stepIndex] || 'select';
 
@@ -329,7 +296,6 @@ export default function CustomerReservationForm({ productionId }) {
         const ticketTypeId = selectedTicketTypeIds[idx];
         const count = isBoth ? ticketCounts[0] : ticketCounts[idx];
 
-        // 選択されたオプション
         const allOpts = ticketTypesMap[prod.id] || [];
         const chosenOptNames = (selectedOptions[idx] || [])
           .map(optId => allOpts.find(t => t.id === optId)?.name)
@@ -402,7 +368,6 @@ export default function CustomerReservationForm({ productionId }) {
     );
   }
 
-  // --- 共通UIパーツ ---
   const inputStyle = { width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '14px', backgroundColor: COLORS.surface };
   const labelStyle = { display: 'block', fontSize: '12px', fontWeight: 700, color: COLORS.gold, marginBottom: '4px' };
 
@@ -451,7 +416,6 @@ export default function CustomerReservationForm({ productionId }) {
     </div>
   );
 
-  // --- ステップ: 公演選択カード ---
   const renderSelectStep = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <p style={{ textAlign: 'center', fontSize: '14px', fontWeight: 700, color: COLORS.text, margin: '0 0 4px 0' }}>
@@ -459,9 +423,9 @@ export default function CustomerReservationForm({ productionId }) {
       </p>
 
       {productions.map((prod, idx) => {
-        const isA = prod.title.includes('あなたとコンビ');
+        const isA = prod.title?.includes('あなたとコンビ');
         const label = isA ? 'A公演' : 'B公演';
-        const subtitle = prod.title;
+        const tagCol = isA ? COLORS.gold : COLORS.indigo;
 
         return (
           <button
@@ -477,10 +441,15 @@ export default function CustomerReservationForm({ productionId }) {
               cursor: 'pointer',
             }}
           >
-            <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.gold, backgroundColor: COLORS.surfaceAlt, display: 'inline-block', padding: '2px 8px', borderRadius: '4px', marginBottom: '6px' }}>
-              {label}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, color: '#ffffff', backgroundColor: tagCol, padding: '2px 8px', borderRadius: '4px' }}>
+                {label}
+              </span>
+              <span style={{ fontSize: '12px', color: COLORS.muted, display: 'flex', alignItems: 'center', gap: '2px' }}>
+                <MapPin size={12} color={tagCol} /> {prod.venue_name || '会場未設定'}
+              </span>
             </div>
-            <div style={{ fontSize: '15px', fontWeight: 700, color: COLORS.text }}>{subtitle}</div>
+            <div style={{ fontSize: '15px', fontWeight: 700, color: COLORS.text }}>{prod.title}</div>
           </button>
         );
       })}
@@ -498,14 +467,13 @@ export default function CustomerReservationForm({ productionId }) {
             cursor: 'pointer',
           }}
         >
-          <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.gold, marginBottom: '6px' }}>⭐ セット予約（お得な通し券）</div>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.gold, marginBottom: '6px' }}>⭐ セット予約（通し券）</div>
           <div style={{ fontSize: '15px', fontWeight: 700, color: COLORS.text }}>両方観劇する（A公演 ＆ B公演）</div>
         </button>
       )}
     </div>
   );
 
-  // --- ステップ: 各公演の詳細入力 ---
   const renderDetailStep = (idx) => {
     const prod = productions[idx];
     if (!prod) return null;
@@ -516,23 +484,27 @@ export default function CustomerReservationForm({ productionId }) {
     const optionTickets = allTickets.filter(t => !t.is_donation && t.description?.includes('【オプション】'));
 
     const { currentProdStaff, otherStaff } = getSortedStaffOptions(prod);
-    const isA = prod.title.includes('あなたとコンビ');
+    const isA = prod.title?.includes('あなたとコンビ');
     const isFirstOfBoth = reservationMode === 'both' && idx === 0;
     const isSecondOfBoth = reservationMode === 'both' && idx === 1;
 
     return (
       <CardWrap>
-        <div style={{ borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '8px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold, backgroundColor: COLORS.surfaceAlt, padding: '2px 8px', borderRadius: '4px' }}>
-            {isA ? 'A公演' : 'B公演'}
-          </span>
-          <h3 style={{ fontSize: '15px', fontWeight: 700, margin: 0, color: COLORS.text }}>
-            {prod.title}
-          </h3>
+        <div style={{ borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '10px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <span style={{ fontSize: '11px', fontWeight: 800, color: '#ffffff', backgroundColor: isA ? COLORS.gold : COLORS.indigo, padding: '2px 8px', borderRadius: '4px' }}>
+              {isA ? 'A公演' : 'B公演'}
+            </span>
+            <h3 style={{ fontSize: '15px', fontWeight: 700, margin: '4px 0 0 0', color: COLORS.text }}>
+              {prod.title}
+            </h3>
+          </div>
+          <div style={{ fontSize: '12px', color: COLORS.gold, fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px' }}>
+            <MapPin size={13} /> {prod.venue_name || '布施PEベース'}
+          </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {/* 日時選択 */}
           <div>
             <label style={labelStyle}>観劇日時（ステージ）</label>
             <select
@@ -552,7 +524,6 @@ export default function CustomerReservationForm({ productionId }) {
             </select>
           </div>
 
-          {/* 基本券種と枚数 */}
           <div style={{ display: 'flex', gap: '8px' }}>
             <div style={{ flex: 2 }}>
               <label style={labelStyle}>基本券種</label>
@@ -597,7 +568,6 @@ export default function CustomerReservationForm({ productionId }) {
             )}
           </div>
 
-          {/* ✨ 追加オプション（指定席など） */}
           {optionTickets.length > 0 && (
             <div style={{ padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '8px', border: `1px solid ${COLORS.border}` }}>
               <div style={{ fontSize: '12px', fontWeight: 700, color: COLORS.indigo, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -625,10 +595,8 @@ export default function CustomerReservationForm({ productionId }) {
             </div>
           )}
 
-          {/* 扱いキャスト選択 */}
           <div>
             <label style={labelStyle}>扱いキャスト・スタッフ</label>
-
             {isSecondOfBoth && isSameStaff ? (
               <div style={{ padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '8px', border: `1px solid ${COLORS.border}`, fontSize: '13px', color: COLORS.muted }}>
                 A公演と同じ扱い（{selectedStaffNames[0] || '劇団扱い'}）
@@ -680,7 +648,6 @@ export default function CustomerReservationForm({ productionId }) {
     );
   };
 
-  // --- ステップ: お客様情報 ＆ カンパ ---
   const renderCustomerStep = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <CardWrap>
@@ -707,7 +674,6 @@ export default function CustomerReservationForm({ productionId }) {
         </div>
       </CardWrap>
 
-      {/* 💖 劇団・キャスト応援カンパ（下限500円・100円刻み） */}
       <CardWrap>
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '13px', color: COLORS.text }}>
           <input
@@ -744,7 +710,6 @@ export default function CustomerReservationForm({ productionId }) {
     </div>
   );
 
-  // --- ステップ: 最終確認 ---
   const renderConfirmStep = () => {
     const targetIndices = reservationMode === 'both' ? [0, 1] : [parseInt(reservationMode.replace('single_', ''))];
     const total = calculateTotal();
@@ -754,7 +719,7 @@ export default function CustomerReservationForm({ productionId }) {
         {targetIndices.map(idx => {
           const prod = productions[idx];
           if (!prod) return null;
-          const isA = prod.title.includes('あなたとコンビ');
+          const isA = prod.title?.includes('あなたとコンビ');
           const stage = (stagesMap[prod.id] || []).find(s => s.id === selectedStageIds[idx]);
           const ticket = (ticketTypesMap[prod.id] || []).find(t => t.id === selectedTicketTypeIds[idx]);
           const allOpts = ticketTypesMap[prod.id] || [];
@@ -762,7 +727,15 @@ export default function CustomerReservationForm({ productionId }) {
 
           return (
             <CardWrap key={prod.id}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.gold, marginBottom: '6px' }}>{isA ? 'A公演' : 'B公演'}：{prod.title}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#ffffff', backgroundColor: isA ? COLORS.gold : COLORS.indigo, padding: '2px 8px', borderRadius: '4px' }}>
+                  {isA ? 'A公演' : 'B公演'}
+                </span>
+                <span style={{ fontSize: '12px', color: COLORS.gold, fontWeight: 700 }}>
+                  <MapPin size={12} /> {prod.venue_name || '布施PEベース'}
+                </span>
+              </div>
+              <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '6px' }}>{prod.title}</div>
               <div style={{ fontSize: '13px', lineHeight: '1.9', color: COLORS.text }}>
                 <div>日時：{stage ? `${stage.performance_date} ${stage.start_time?.slice(0, 5)}開演` : '未選択'}</div>
                 <div>券種：{ticket?.name || '未選択'}（¥{ticket?.price?.toLocaleString()} × {ticketCounts[idx]}枚）</div>
@@ -792,7 +765,6 @@ export default function CustomerReservationForm({ productionId }) {
           </div>
         </CardWrap>
 
-        {/* 💰 合計金額 */}
         <div style={{ backgroundColor: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontWeight: 700, fontSize: '14px' }}>合計お支払い予定額（当日精算）</span>
           <span style={{ fontSize: '20px', fontWeight: 800, color: COLORS.gold }}>¥{total.toLocaleString()}</span>
@@ -842,9 +814,6 @@ export default function CustomerReservationForm({ productionId }) {
           <h1 style={{ fontSize: '19px', fontWeight: 700, margin: '0 0 6px 0', color: COLORS.text }}>
             vol.3 & vol.3.5 『秋の大笑会-ダイエンカイ-』
           </h1>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: COLORS.gold }}>
-            <MapPin size={13} /> 布施PEベース
-          </div>
         </div>
 
         <ProgressDots />

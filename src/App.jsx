@@ -40,7 +40,6 @@ export default function App() {
       const urlParams = new URLSearchParams(window.location.search);
       const inviteOrgId = urlParams.get('invite_org_id');
 
-      // 1. 招待リンク経由の場合、所属メンバーに追加
       if (inviteOrgId) {
         await supabase
           .from('organization_members')
@@ -50,7 +49,6 @@ export default function App() {
           );
       }
 
-      // 2. ユーザーの所属劇団を取得
       const { data: memberData } = await supabase
         .from('organization_members')
         .select('organization_id, role')
@@ -72,15 +70,10 @@ export default function App() {
             name: orgData.name,
             role: memberData.role || 'staff',
           });
-        } else {
-          setCurrentOrg(null);
         }
-      } else {
-        setCurrentOrg(null);
       }
     } catch (e) {
       console.error('Organization fetch error:', e);
-      setCurrentOrg(null);
     } finally {
       setCheckingOrg(false);
     }
@@ -111,8 +104,8 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleNavigate = (view, productionId = null) => {
-    if (productionId) setSelectedProductionId(productionId);
+  const handleNavigate = (view, prodId = null) => {
+    if (prodId) setSelectedProductionId(prodId);
     setCurrentView(view);
   };
 
@@ -148,32 +141,30 @@ export default function App() {
   const renderView = () => {
     switch (currentView) {
       case 'home':
-        return <TicketPochiAdminHome onNavigate={handleNavigate} user={session.user} org={currentOrg} />;
+        return <TicketPochiAdminHome onNavigate={handleNavigate} user={session.user} org={currentOrg} activeProdId={selectedProductionId} />;
       case 'info':
-        return <AdminProductionInfo productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home')} />;
+        return <AdminProductionInfo productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home', selectedProductionId)} />;
       case 'staff':
-        return <AdminStaffSettings productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home')} />;
+        return <AdminStaffSettings productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home', selectedProductionId)} />;
       case 'reservations':
-        return <AdminReservationList productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home')} />;
+        return <AdminReservationList productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home', selectedProductionId)} />;
       case 'tickets':
-        return <AdminTicketSettings productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home')} />;
+        return <AdminTicketSettings productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home', selectedProductionId)} />;
       case 'dates':
-        return <AdminStageSettings productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home')} />;
+        return <AdminStageSettings productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home', selectedProductionId)} />;
       case 'seats':
-        return <AdminSeatSettings productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home')} />;
+        return <AdminSeatSettings productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home', selectedProductionId)} />;
       case 'payments':
-        return <AdminPaymentSettings productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home')} />;
+        return <AdminPaymentSettings productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home', selectedProductionId)} />;
       case 'messages':
-        return <AdminMessageSettings productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home')} />;
+        return <AdminMessageSettings productionId={selectedProductionId} org={currentOrg} onBack={() => handleNavigate('home', selectedProductionId)} />;
       case 'tablet':
-        return <TabletReception productionId={selectedProductionId} org={currentOrg} onBackToAdmin={() => handleNavigate('home')} />;
+        return <TabletReception productionId={selectedProductionId} org={currentOrg} onBackToAdmin={() => handleNavigate('home', selectedProductionId)} />;
       default:
         return (
           <div style={{ padding: '40px', textAlign: 'center', fontFamily: 'sans-serif' }}>
-            <h2>「{currentView}」画面は準備中です</h2>
-            <button onClick={() => handleNavigate('home')} style={{ padding: '10px 20px', cursor: 'pointer', marginTop: '20px' }}>
-              ホームへ戻る
-            </button>
+            <h2>準備中</h2>
+            <button onClick={() => handleNavigate('home', selectedProductionId)}>ホームへ戻る</button>
           </div>
         );
     }
@@ -181,13 +172,12 @@ export default function App() {
 
   return (
     <div style={{ position: 'relative' }}>
-      <div style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 9999, backgroundColor: '#ffffff', border: '1px solid rgba(201,121,31,0.22)', padding: '8px 14px', borderRadius: '30px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12px' }}>
+      <div style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 9999, backgroundColor: '#ffffff', border: '1px solid rgba(201,121,31,0.22)', padding: '6px 12px', borderRadius: '30px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px' }}>
         <span style={{ color: '#c9791f', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <Building2 size={13} /> {currentOrg.name} ({currentOrg.role === 'owner' ? '所有者' : 'スタッフ'})
+          <Building2 size={12} /> {currentOrg.name}
         </span>
-        <span style={{ color: '#8a8398' }}>| {session.user.email}</span>
-        <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#e85a45', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 'bold', padding: 0, marginLeft: '4px' }}>
-          <LogOut size={14} /> ログアウト
+        <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#e85a45', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px', fontWeight: 'bold', padding: 0 }}>
+          <LogOut size={12} /> ログアウト
         </button>
       </div>
 
