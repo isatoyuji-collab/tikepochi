@@ -18,22 +18,13 @@ import Myreservationspag from './Myreservationspag';
 import { LogOut, Building2 } from 'lucide-react';
 
 export default function App() {
-  // 1. お客様向け合同予約ポータル（/p/劇団ID）の判定
   const portalMatch = window.location.pathname.match(/^\/p\/([a-zA-Z0-9-]+)$/);
-  if (portalMatch) {
-    return <CustomerPortal orgId={portalMatch[1]} />;
-  }
+  if (portalMatch) return <CustomerPortal orgId={portalMatch[1]} />;
 
-  // 2. お客様向け個別予約フォーム（/r/公演ID）の判定
   const reservationMatch = window.location.pathname.match(/^\/r\/([a-zA-Z0-9-]+)$/);
-  if (reservationMatch) {
-    return <CustomerReservationForm productionId={reservationMatch[1]} />;
-  }
+  if (reservationMatch) return <CustomerReservationForm productionId={reservationMatch[1]} />;
 
-  // 3. お客様向けマイページ（/mypage）の判定
-  if (window.location.pathname === '/mypage') {
-    return <Myreservationspag />;
-  }
+  if (window.location.pathname === '/mypage') return <Myreservationspag />;
 
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -46,10 +37,26 @@ export default function App() {
   const fetchUserOrganization = async (userId) => {
     setCheckingOrg(true);
     try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const inviteOrgId = urlParams.get('invite_org_id');
+
+      // 1. 招待リンク経由の場合、所属メンバーに追加
+      if (inviteOrgId) {
+        await supabase
+          .from('organization_members')
+          .upsert(
+            { organization_id: inviteOrgId, user_id: userId, role: 'staff' },
+            { onConflict: 'organization_id,user_id' }
+          );
+      }
+
+      // 2. ユーザーの所属劇団を取得
       const { data: memberData } = await supabase
         .from('organization_members')
         .select('organization_id, role')
         .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (memberData && memberData.organization_id) {
@@ -63,7 +70,7 @@ export default function App() {
           setCurrentOrg({
             id: orgData.id,
             name: orgData.name,
-            role: memberData.role,
+            role: memberData.role || 'staff',
           });
         } else {
           setCurrentOrg(null);
@@ -176,7 +183,7 @@ export default function App() {
     <div style={{ position: 'relative' }}>
       <div style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 9999, backgroundColor: '#ffffff', border: '1px solid rgba(201,121,31,0.22)', padding: '8px 14px', borderRadius: '30px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12px' }}>
         <span style={{ color: '#c9791f', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <Building2 size={13} /> {currentOrg.name} ({currentOrg.role === 'owner' ? '所有者' : 'メンバー'})
+          <Building2 size={13} /> {currentOrg.name} ({currentOrg.role === 'owner' ? '所有者' : 'スタッフ'})
         </span>
         <span style={{ color: '#8a8398' }}>| {session.user.email}</span>
         <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#e85a45', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 'bold', padding: 0, marginLeft: '4px' }}>
