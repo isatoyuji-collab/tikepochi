@@ -1,80 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { ArrowLeft, Check, RefreshCw, Shield, Video, Eye, RotateCcw, Tag, Sparkles, Users, Calendar } from 'lucide-react';
+import { ArrowLeft, Check, Plus, Minus, Trash2, Shield, Video, RotateCcw, Tag, Sparkles, Calendar } from 'lucide-react';
 import { COLORS, FONTS, RADIUS } from './theme';
 
-// 布施PEベース 基本客席グリッド（A列〜G列）
-const INITIAL_PE_BASE_MAP = () => {
+// 布施PEベース 65席構成（A〜H列）
+const INITIAL_65_SEATS_MAP = () => {
   return {
-    'A': [
-      { id: 'A-1', row: 'A', num: 1, status: 'front_row' },
-      { id: 'A-2', row: 'A', num: 2, status: 'front_row' },
-      { id: 'A-3', row: 'A', num: 3, status: 'front_row' },
-      { id: 'A-4', row: 'A', num: 4, status: 'front_row' },
-      { id: 'A-5', row: 'A', num: 5, status: 'front_row' },
-      { id: 'A-6', row: 'A', num: 6, status: 'front_row' },
-    ],
-    'B': [
-      { id: 'B-1', row: 'B', num: 1, status: 'reserved' },
-      { id: 'B-2', row: 'B', num: 2, status: 'reserved' },
-      { id: 'B-3', row: 'B', num: 3, status: 'equipment' },
-      { id: 'B-4', row: 'B', num: 4, status: 'reserved' },
-      { id: 'B-5', row: 'B', num: 5, status: 'reserved' },
-      { id: 'B-6', row: 'B', num: 6, status: 'reserved' },
-      { id: 'B-7', row: 'B', num: 7, status: 'reserved' },
-    ],
-    'C': [
-      { id: 'C-1', row: 'C', num: 1, status: 'available' },
-      { id: 'C-2', row: 'C', num: 2, status: 'available' },
-      { id: 'C-3', row: 'C', num: 3, status: 'equipment' },
-      { id: 'C-4', row: 'C', num: 4, status: 'available' },
-      { id: 'C-5', row: 'C', num: 5, status: 'available' },
-      { id: 'C-6', row: 'C', num: 6, status: 'available' },
-      { id: 'C-7', row: 'C', num: 7, status: 'available' },
-    ],
-    'D': [
-      { id: 'D-1', row: 'D', num: 1, status: 'available' },
-      { id: 'D-2', row: 'D', num: 2, status: 'available' },
-      { id: 'D-3', row: 'D', num: 3, status: 'equipment' },
-      { id: 'D-4', row: 'D', num: 4, status: 'available' },
-      { id: 'D-5', row: 'D', num: 5, status: 'available' },
-      { id: 'D-6', row: 'D', num: 6, status: 'available' },
-      { id: 'D-7', row: 'D', num: 7, status: 'available' },
-    ],
-    'E': [
-      { id: 'E-1', row: 'E', num: 1, status: 'available' },
-      { id: 'E-2', row: 'E', num: 2, status: 'available' },
-      { id: 'E-3', row: 'E', num: 3, status: 'equipment' },
-      { id: 'E-4', row: 'E', num: 4, status: 'available' },
-      { id: 'E-5', row: 'E', num: 5, status: 'available' },
-      { id: 'E-6', row: 'E', num: 6, status: 'available' },
-      { id: 'E-7', row: 'E', num: 7, status: 'available' },
-    ],
-    'F': [
-      { id: 'F-1', row: 'F', num: 1, status: 'available' },
-      { id: 'F-2', row: 'F', num: 2, status: 'available' },
-      { id: 'F-3', row: 'F', num: 3, status: 'equipment' },
-      { id: 'F-4', row: 'F', num: 4, status: 'available' },
-      { id: 'F-5', row: 'F', num: 5, status: 'available' },
-      { id: 'F-6', row: 'F', num: 6, status: 'available' },
-      { id: 'F-7', row: 'F', num: 7, status: 'available' },
-    ],
-    'G': [
-      { id: 'G-1', row: 'G', num: 1, status: 'reserved_staff' },
-      { id: 'G-2', row: 'G', num: 2, status: 'reserved_staff' },
-      { id: 'G-3', row: 'G', num: 3, status: 'available' },
-      { id: 'G-4', row: 'G', num: 4, status: 'equipment' },
-      { id: 'G-5', row: 'G', num: 5, status: 'available' },
-      { id: 'G-6', row: 'G', num: 6, status: 'available' },
-      { id: 'G-7', row: 'G', num: 7, status: 'available' },
-    ],
+    'A': Array.from({ length: 8 }, (_, i) => ({ id: `A-${i+1}`, row: 'A', num: i + 1, status: 'front_row' })),
+    'B': Array.from({ length: 8 }, (_, i) => ({ id: `B-${i+1}`, row: 'B', num: i + 1, status: i === 2 ? 'equipment' : 'reserved' })),
+    'C': Array.from({ length: 8 }, (_, i) => ({ id: `C-${i+1}`, row: 'C', num: i + 1, status: i === 2 ? 'equipment' : 'available' })),
+    'D': Array.from({ length: 9 }, (_, i) => ({ id: `D-${i+1}`, row: 'D', num: i + 1, status: i === 2 ? 'equipment' : 'available' })),
+    'E': Array.from({ length: 9 }, (_, i) => ({ id: `E-${i+1}`, row: 'E', num: i + 1, status: i === 2 ? 'equipment' : 'available' })),
+    'F': Array.from({ length: 9 }, (_, i) => ({ id: `F-${i+1}`, row: 'F', num: i + 1, status: i === 2 ? 'equipment' : 'available' })),
+    'G': Array.from({ length: 8 }, (_, i) => ({ id: `G-${i+1}`, row: 'G', num: i + 1, status: i < 2 ? 'reserved_staff' : 'available' })),
+    'H': Array.from({ length: 6 }, (_, i) => ({ id: `H-${i+1}`, row: 'H', num: i + 1, status: 'available' })),
   };
 };
 
 export default function AdminSeatSettings({ productionId, org, onBack }) {
   const [stages, setStages] = useState([]);
-  const [selectedStageId, setSelectedStageId] = useState('master'); // 'master' または stage.id
-  const [seatMap, setSeatMap] = useState(INITIAL_PE_BASE_MAP());
+  const [selectedStageId, setSelectedStageId] = useState('master');
+  const [seatMap, setSeatMap] = useState(INITIAL_65_SEATS_MAP());
   const [reservations, setReservations] = useState([]);
 
   // 編集ツール: 'front_row' | 'reserved' | 'available' | 'reserved_staff' | 'equipment'
@@ -82,13 +28,11 @@ export default function AdminSeatSettings({ productionId, org, onBack }) {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // データ取得
   const fetchData = async () => {
     setLoading(true);
     try {
       if (!productionId) return;
 
-      // 1. ステージ一覧取得
       const { data: stageData } = await supabase
         .from('stages')
         .select('*')
@@ -98,7 +42,6 @@ export default function AdminSeatSettings({ productionId, org, onBack }) {
 
       if (stageData) setStages(stageData);
 
-      // 2. マスタ座席表取得
       const { data: mapData } = await supabase
         .from('seat_maps')
         .select('*')
@@ -108,10 +51,9 @@ export default function AdminSeatSettings({ productionId, org, onBack }) {
       if (mapData && mapData.seat_data) {
         setSeatMap(mapData.seat_data);
       } else {
-        setSeatMap(INITIAL_PE_BASE_MAP());
+        setSeatMap(INITIAL_65_SEATS_MAP());
       }
 
-      // 3. 予約データ取得（ステージごとの埋まり状況表示用）
       const { data: resData } = await supabase
         .from('reservations')
         .select('id, stage_id, customer_name, count, memo')
@@ -129,7 +71,6 @@ export default function AdminSeatSettings({ productionId, org, onBack }) {
     fetchData();
   }, [productionId]);
 
-  // 座席保存 (マスタ設定)
   const handleSaveSeatMap = async (newMap) => {
     setSaving(true);
     try {
@@ -150,10 +91,9 @@ export default function AdminSeatSettings({ productionId, org, onBack }) {
     }
   };
 
-  // 座席クリック時の切り替え
   const handleSeatClick = (row, index) => {
     if (selectedStageId !== 'master') {
-      alert('開演回別表示中は閲覧専用です。座席設定を変更する場合は「基本マップ設定（全ステージ共通）」を選択してください。');
+      alert('開演回別表示中は閲覧専用です。「基本マップ設定」を選択して変更してください。');
       return;
     }
 
@@ -166,25 +106,87 @@ export default function AdminSeatSettings({ productionId, org, onBack }) {
     });
   };
 
-  // 全席リセット
-  const handleResetAll = () => {
-    if (confirm('すべての座席指定をリセットして通常（自由席）に戻しますか？')) {
-      const newMap = { ...seatMap };
-      Object.keys(newMap).forEach(row => {
-        newMap[row] = newMap[row].map(seat => ({ ...seat, status: 'available' }));
-      });
-      setSeatMap(newMap);
+  // 席の追加（末尾に1席プラス）
+  const handleAddSeatToRow = (row) => {
+    setSeatMap(prev => {
+      const newMap = { ...prev };
+      const currentSeats = newMap[row] || [];
+      const newNum = currentSeats.length + 1;
+      newMap[row] = [...currentSeats, { id: `${row}-${newNum}`, row: row, num: newNum, status: 'available' }];
       handleSaveSeatMap(newMap);
+      return { ...newMap };
+    });
+  };
+
+  // 席の削除（末尾の1席マイナス）
+  const handleRemoveSeatFromRow = (row) => {
+    setSeatMap(prev => {
+      const newMap = { ...prev };
+      if (!newMap[row] || newMap[row].length === 0) return prev;
+      newMap[row] = newMap[row].slice(0, -1);
+      handleSaveSeatMap(newMap);
+      return { ...newMap };
+    });
+  };
+
+  // 新しい行（列）を追加（例: I列）
+  const handleAddRow = () => {
+    const existingRows = Object.keys(seatMap);
+    const lastRowChar = existingRows[existingRows.length - 1] || '@';
+    const nextRowChar = String.fromCharCode(lastRowChar.charCodeAt(0) + 1);
+
+    if (nextRowChar > 'Z') {
+      alert('これ以上行を追加できません');
+      return;
+    }
+
+    setSeatMap(prev => {
+      const newMap = { ...prev };
+      newMap[nextRowChar] = Array.from({ length: 8 }, (_, i) => ({
+        id: `${nextRowChar}-${i + 1}`,
+        row: nextRowChar,
+        num: i + 1,
+        status: 'available'
+      }));
+      handleSaveSeatMap(newMap);
+      return { ...newMap };
+    });
+  };
+
+  // 最後の行を削除
+  const handleRemoveLastRow = () => {
+    const existingRows = Object.keys(seatMap);
+    if (existingRows.length <= 1) {
+      alert('これ以上行を削除できません');
+      return;
+    }
+    const lastRowChar = existingRows[existingRows.length - 1];
+
+    if (confirm(`${lastRowChar}列を削除してよろしいですか？`)) {
+      setSeatMap(prev => {
+        const newMap = { ...prev };
+        delete newMap[lastRowChar];
+        handleSaveSeatMap(newMap);
+        return { ...newMap };
+      });
     }
   };
 
-  // スタイル定義
+  // 65席初期配置にリセット
+  const handleResetTo65 = () => {
+    if (confirm('布施PEベース標準の65席マップにリセットしますか？')) {
+      const defaultMap = INITIAL_65_SEATS_MAP();
+      setSeatMap(defaultMap);
+      handleSaveSeatMap(defaultMap);
+    }
+  };
+
   const getSeatStyle = (status) => {
     switch (status) {
       case 'front_row':
-        return { bg: '#fef3c7', border: COLORS.gold, color: '#b45309', label: '👑 最前列指定席 (+500円)', short: '最' };
+        return { bg: '#fef3c7', border: COLORS.gold, color: '#b45309', label: '👑 最前列指定 (+500円)', short: '最' };
       case 'reserved':
-        return { bg: '#e0e7ff', border: COLORS.indigo, color: COLORS.indigo, label: '🎟️ 指定席エリア', short: '指' };
+        return { bg: '#e0e7ff', border: COLORS.indigo, color: COLORS.indigo, label: '🎟️ 一般指定席', short: '指' };
       case 'available':
         return { bg: COLORS.surface, border: COLORS.border, color: COLORS.text, label: '通常 / 自由席', short: '' };
       case 'reserved_staff':
@@ -196,26 +198,25 @@ export default function AdminSeatSettings({ productionId, org, onBack }) {
     }
   };
 
-  // 選択中ステージの予約情報
-  const currentStageReservations = reservations.filter(r => r.stage_id === selectedStageId);
-  const totalReservedCount = currentStageReservations.reduce((sum, r) => sum + (r.count || 1), 0);
-
-  // 座席数の集計
+  // 集計
   let frontRowCount = 0;
   let reservedCount = 0;
   let availableCount = 0;
-  let blockedCount = 0;
+  let staffKeepCount = 0;
+  let equipmentCount = 0;
 
   Object.values(seatMap).forEach(rowList => {
     rowList.forEach(s => {
       if (s.status === 'front_row') frontRowCount++;
       else if (s.status === 'reserved') reservedCount++;
       else if (s.status === 'available') availableCount++;
-      else blockedCount++;
+      else if (s.status === 'reserved_staff') staffKeepCount++;
+      else if (s.status === 'equipment') equipmentCount++;
     });
   });
 
-  const totalSeats = frontRowCount + reservedCount + availableCount;
+  const totalCapacity = frontRowCount + reservedCount + availableCount + staffKeepCount;
+  const totalSalesSeats = frontRowCount + reservedCount + availableCount;
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: FONTS.body, padding: '20px 16px 60px 16px', boxSizing: 'border-box' }}>
@@ -243,8 +244,8 @@ export default function AdminSeatSettings({ productionId, org, onBack }) {
         }
 
         .seat-box {
-          width: 38px;
-          height: 38px;
+          width: 36px;
+          height: 36px;
           border-radius: 8px;
           font-size: 11px;
           font-weight: 800;
@@ -259,16 +260,33 @@ export default function AdminSeatSettings({ productionId, org, onBack }) {
         }
         .seat-box:active { transform: scale(0.95); }
 
+        .btn-row-action {
+          width: 24px;
+          height: 24px;
+          border-radius: 6px;
+          border: 1px solid ${COLORS.border};
+          background-color: ${COLORS.surface};
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          color: ${COLORS.muted};
+        }
+        .btn-row-action:hover {
+          border-color: ${COLORS.gold};
+          color: ${COLORS.gold};
+        }
+
         @media (max-width: 480px) {
           .seat-box {
-            width: 32px;
-            height: 32px;
+            width: 30px;
+            height: 30px;
             font-size: 10px;
           }
         }
       `}</style>
 
-      <div style={{ maxWidth: '860px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '880px', margin: '0 auto' }}>
 
         {/* ヘッダー */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '14px' }}>
@@ -286,8 +304,8 @@ export default function AdminSeatSettings({ productionId, org, onBack }) {
           </div>
         </div>
 
-        {/* ステージ切り替えセレクター */}
-        <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '14px 16px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+        {/* ステージ切り替え */}
+        <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '12px 16px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Calendar size={18} color={COLORS.gold} />
             <span style={{ fontSize: '13px', fontWeight: 700 }}>表示・編集対象:</span>
@@ -307,50 +325,54 @@ export default function AdminSeatSettings({ productionId, org, onBack }) {
           </select>
         </div>
 
-        {/* 座席数サマリー */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px', marginBottom: '16px' }}>
+        {/* 座席数・留め数サマリー */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px', marginBottom: '16px' }}>
           <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
-            <div style={{ fontSize: '11px', color: COLORS.muted }}>総有効席数</div>
-            <div style={{ fontSize: '16px', fontWeight: 800, color: COLORS.text }}>{totalSeats} 席</div>
+            <div style={{ fontSize: '11px', color: COLORS.muted }}>総座席（キャパ）</div>
+            <div style={{ fontSize: '17px', fontWeight: 800, color: COLORS.text }}>{totalCapacity} 席</div>
           </div>
           <div style={{ backgroundColor: '#fffbeb', border: `1px solid ${COLORS.gold}`, borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
-            <div style={{ fontSize: '11px', color: '#b45309', fontWeight: 700 }}>最前列指定席</div>
-            <div style={{ fontSize: '16px', fontWeight: 800, color: COLORS.gold }}>{frontRowCount} 席</div>
+            <div style={{ fontSize: '11px', color: '#b45309', fontWeight: 700 }}>最前列指定 (+500円)</div>
+            <div style={{ fontSize: '17px', fontWeight: 800, color: COLORS.gold }}>{frontRowCount} 席</div>
           </div>
           <div style={{ backgroundColor: '#eef2ff', border: `1px solid ${COLORS.indigo}`, borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
-            <div style={{ fontSize: '11px', color: COLORS.indigo, fontWeight: 700 }}>一般指定席</div>
-            <div style={{ fontSize: '16px', fontWeight: 800, color: COLORS.indigo }}>{reservedCount} 席</div>
+            <div style={{ fontSize: '11px', color: COLORS.indigo, fontWeight: 700 }}>指定席</div>
+            <div style={{ fontSize: '17px', fontWeight: 800, color: COLORS.indigo }}>{reservedCount} 席</div>
           </div>
           <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
             <div style={{ fontSize: '11px', color: COLORS.muted }}>自由席</div>
-            <div style={{ fontSize: '16px', fontWeight: 800, color: COLORS.text }}>{availableCount} 席</div>
+            <div style={{ fontSize: '17px', fontWeight: 800, color: COLORS.text }}>{availableCount} 席</div>
+          </div>
+          <div style={{ backgroundColor: '#fee2e2', border: `1px solid ${COLORS.danger}`, borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
+            <div style={{ fontSize: '11px', color: COLORS.danger, fontWeight: 700 }}>関係者留め</div>
+            <div style={{ fontSize: '17px', fontWeight: 800, color: COLORS.danger }}>{staffKeepCount} 席</div>
           </div>
         </div>
 
-        {/* 塗り分けツールバー（マスタ編集時のみ有効） */}
-        {selectedStageId === 'master' ? (
+        {/* 塗り分けツールバー */}
+        {selectedStageId === 'master' && (
           <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '12px', marginBottom: '16px' }}>
             <div style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Sparkles size={14} /> 塗り分けツールを選択して、下の座席をタップしてください
+              <Sparkles size={14} /> ツールを選択して席をタップすると塗り分けできます
             </div>
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
               <button
                 className={`tool-btn ${activeTool === 'front_row' ? 'active' : ''}`}
                 onClick={() => setActiveTool('front_row')}
               >
-                <Tag size={13} color={COLORS.gold} /> 👑 最前列指定 (+500円)
+                <Tag size={13} color={COLORS.gold} /> 👑 最前列 (+500円)
               </button>
               <button
                 className={`tool-btn ${activeTool === 'reserved' ? 'active' : ''}`}
                 onClick={() => setActiveTool('reserved')}
               >
-                <Tag size={13} color={COLORS.indigo} /> 🎟️ 一般指定席
+                <Tag size={13} color={COLORS.indigo} /> 🎟️ 指定席
               </button>
               <button
                 className={`tool-btn ${activeTool === 'available' ? 'active' : ''}`}
                 onClick={() => setActiveTool('available')}
               >
-                <Check size={13} /> 通常/自由席
+                <Check size={13} /> 自由席
               </button>
               <button
                 className={`tool-btn ${activeTool === 'reserved_staff' ? 'active' : ''}`}
@@ -362,48 +384,49 @@ export default function AdminSeatSettings({ productionId, org, onBack }) {
                 className={`tool-btn ${activeTool === 'equipment' ? 'active' : ''}`}
                 onClick={() => setActiveTool('equipment')}
               >
-                <Video size={13} color="#4b5563" /> 機材卓・手すり
+                <Video size={13} color="#4b5563" /> 機材卓
               </button>
+
               <button
-                onClick={handleResetAll}
+                onClick={handleResetTo65}
                 className="tool-btn"
-                style={{ marginLeft: 'auto', color: COLORS.danger }}
+                style={{ marginLeft: 'auto', color: COLORS.gold }}
+                title="布施PEベース65席にリセット"
               >
-                <RotateCcw size={13} /> 一括クリア
+                <RotateCcw size={13} /> 65席に初期化
               </button>
             </div>
-          </div>
-        ) : (
-          <div style={{ backgroundColor: '#eef2ff', border: `1px solid ${COLORS.indigo}`, borderRadius: '12px', padding: '12px 16px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontSize: '13px', fontWeight: 700, color: COLORS.indigo }}>
-              👁️ 現在この開演回の配席状況を確認中（予約数: {totalReservedCount} 名）
-            </div>
-            <button
-              onClick={() => setSelectedStageId('master')}
-              style={{ padding: '6px 12px', borderRadius: '8px', border: `1px solid ${COLORS.indigo}`, backgroundColor: '#fff', color: COLORS.indigo, fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
-            >
-              基本マップ編集に戻る
-            </button>
           </div>
         )}
 
-        {/* 🎭 客席マップ描画エリア */}
-        <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '14px', padding: '20px 16px', boxShadow: '0 2px 6px rgba(0,0,0,0.04)' }}>
+        {/* 客席グリッド描画エリア */}
+        <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '14px', padding: '20px 14px', boxShadow: '0 2px 6px rgba(0,0,0,0.04)' }}>
           
           {/* 舞台 (STAGE) */}
           <div style={{ width: '80%', margin: '0 auto 20px auto', padding: '8px', backgroundColor: COLORS.gold, color: '#ffffff', textAlign: 'center', fontWeight: 800, borderRadius: '6px', fontSize: '13px', letterSpacing: '2px' }}>
-            舞台 (STAGE) / 鏡幕側
+            舞台 (STAGE)
           </div>
 
-          {/* 座席グリッド */}
+          {/* 各列の座席並び */}
           <div style={{ overflowX: 'auto', paddingBottom: '12px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '380px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '420px', alignItems: 'center' }}>
               {Object.keys(seatMap).map(row => (
                 <div key={row} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  
+                  {/* 左側の席数操作（＋／−） */}
+                  {selectedStageId === 'master' && (
+                    <div style={{ display: 'flex', gap: '2px' }}>
+                      <button onClick={() => handleRemoveSeatFromRow(row)} className="btn-row-action" title="末尾の1席を削除">
+                        <Minus size={11} />
+                      </button>
+                    </div>
+                  )}
+
                   <span style={{ width: '18px', fontWeight: 800, fontSize: '13px', color: COLORS.gold, textAlign: 'center' }}>
                     {row}
                   </span>
 
+                  {/* 席ボタン一覧 */}
                   <div style={{ display: 'flex', gap: '5px' }}>
                     {seatMap[row].map((seat, idx) => {
                       const style = getSeatStyle(seat.status);
@@ -430,27 +453,55 @@ export default function AdminSeatSettings({ productionId, org, onBack }) {
                   <span style={{ width: '18px', fontWeight: 800, fontSize: '13px', color: COLORS.gold, textAlign: 'center' }}>
                     {row}
                   </span>
+
+                  {/* 右側の席追加（＋） */}
+                  {selectedStageId === 'master' && (
+                    <div style={{ display: 'flex', gap: '2px' }}>
+                      <button onClick={() => handleAddSeatToRow(row)} className="btn-row-action" title="この行に1席追加">
+                        <Plus size={11} />
+                      </button>
+                    </div>
+                  )}
+
                 </div>
               ))}
             </div>
           </div>
 
+          {/* 行（列）自体の追加・削除ボタン */}
+          {selectedStageId === 'master' && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '14px', borderTop: `1px dashed ${COLORS.border}`, paddingTop: '12px' }}>
+              <button
+                onClick={handleAddRow}
+                style={{ padding: '6px 12px', borderRadius: '8px', border: `1px solid ${COLORS.gold}`, backgroundColor: '#fff6e8', color: COLORS.gold, fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+              >
+                <Plus size={13} /> 行を追加（後ろに1列増やす）
+              </button>
+              <button
+                onClick={handleRemoveLastRow}
+                style={{ padding: '6px 12px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, backgroundColor: COLORS.surface, color: COLORS.danger, fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+              >
+                <Trash2 size={13} /> 最後の行を削除
+              </button>
+            </div>
+          )}
+
           {/* 凡例 */}
-          <div style={{ marginTop: '18px', paddingTop: '14px', borderTop: `1px solid ${COLORS.border}`, display: 'flex', justifyContent: 'center', gap: '14px', flexWrap: 'wrap', fontSize: '12px' }}>
+          <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: `1px solid ${COLORS.border}`, display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', fontSize: '11px' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#fef3c7', border: `1px solid ${COLORS.gold}` }} /> 👑 最前列指定席 (+500円)
+              <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#fef3c7', border: `1px solid ${COLORS.gold}` }} /> 👑 最前列指定
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#e0e7ff', border: `1px solid ${COLORS.indigo}` }} /> 🎟️ 指定席
+              <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#e0e7ff', border: `1px solid ${COLORS.indigo}` }} /> 🎟️ 指定席
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}` }} /> 自由席
+              <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}` }} /> 自由席
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#fee2e2', border: `1px solid ${COLORS.danger}` }} /> 関係者留め
+              <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#fee2e2', border: `1px solid ${COLORS.danger}` }} /> 関係者留め
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#f3f4f6', border: '1px solid #9ca3af' }} /> 機材卓
+              <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#f3f4f6', border: '1px solid #9ca3af' }} /> 機材卓
             </span>
           </div>
 
