@@ -104,12 +104,25 @@ export default function TicketPochiAdminHome({ onNavigate, user, org, activeProd
       <style>{`
         @import url('${FONTS.importUrl}');
 
+        /* 横2列グリッド（スマホでは縦1列に自動切替） */
+        .menu-grid-2col {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 12px;
+        }
+
+        @media (max-width: 680px) {
+          .menu-grid-2col {
+            grid-template-columns: 1fr;
+            gap: 10px;
+          }
+        }
+
         .menu-card {
           background-color: ${COLORS.surface};
           border: 1px solid ${COLORS.border};
           border-radius: 14px;
           padding: 16px 18px;
-          margin-bottom: 10px;
           cursor: pointer;
           display: flex;
           align-items: center;
@@ -142,7 +155,7 @@ export default function TicketPochiAdminHome({ onNavigate, user, org, activeProd
         .modal-input:focus { outline: none; border-color: ${COLORS.gold}; }
       `}</style>
 
-      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '860px', margin: '0 auto' }}>
         
         {/* ヘッダー・劇団名 */}
         <div style={{ marginBottom: '16px' }}>
@@ -159,7 +172,7 @@ export default function TicketPochiAdminHome({ onNavigate, user, org, activeProd
           )}
         </div>
 
-        {/* 🎭 スマホ・タブレット両対応 公演切替タブ & 新規作成ボタン */}
+        {/* 🎭 公演切替タブ & 新規作成ボタン */}
         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '16px', alignItems: 'center' }}>
           {productions.map((p) => {
             const isThisA = p.title?.includes('あなたとコンビ');
@@ -244,140 +257,144 @@ export default function TicketPochiAdminHome({ onNavigate, user, org, activeProd
             </button>
           </div>
         ) : (
-          /* 全9種類の管理機能カード */
+          /* 全9種類の管理機能カード（横2列グリッド） */
           <div>
             {/* ① 予約・当日運用 */}
-            <div style={{ fontSize: '12px', fontWeight: 800, color: COLORS.gold, marginBottom: '8px', letterSpacing: '0.05em' }}>
+            <div style={{ fontSize: '12px', fontWeight: 800, color: COLORS.gold, marginBottom: '10px', letterSpacing: '0.05em' }}>
               🎟️ 予約・当日運用
             </div>
 
-            <div className="menu-card" onClick={() => onNavigate('reservations', selectedProdId)}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Users size={18} />
+            <div className="menu-grid-2col" style={{ marginBottom: '24px' }}>
+              <div className="menu-card" onClick={() => onNavigate('reservations', selectedProdId)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Users size={18} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '14px' }}>予約一覧・動員状況</div>
+                    <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>予約一覧・動員数・メール</div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '15px' }}>予約一覧・動員状況</div>
-                  <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '1px' }}>予約データの閲覧・編集・お礼メール</div>
-                </div>
+                <ChevronRight size={16} color={COLORS.muted} />
               </div>
-              <ChevronRight size={18} color={COLORS.muted} />
-            </div>
 
-            <div className="menu-card" onClick={() => onNavigate('tablet', selectedProdId)}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: 'rgba(31,154,86,0.1)', color: COLORS.success, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Tablet size={18} />
+              <div className="menu-card" onClick={() => onNavigate('tablet', selectedProdId)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: 'rgba(31,154,86,0.1)', color: COLORS.success, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Tablet size={18} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '14px' }}>当日受付</div>
+                    <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>50音検索・チェックイン・精算</div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '15px' }}>当日受付（フロントシステム）</div>
-                  <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '1px' }}>50音検索・チェックイン・当日精算</div>
-                </div>
+                <ChevronRight size={16} color={COLORS.muted} />
               </div>
-              <ChevronRight size={18} color={COLORS.muted} />
             </div>
 
             {/* ② 公演の準備・各種設定 */}
-            <div style={{ fontSize: '12px', fontWeight: 800, color: COLORS.gold, margin: '22px 0 8px 0', letterSpacing: '0.05em' }}>
+            <div style={{ fontSize: '12px', fontWeight: 800, color: COLORS.gold, marginBottom: '10px', letterSpacing: '0.05em' }}>
               ⚙️ 公演の準備・各種設定
             </div>
 
-            <div className="menu-card" onClick={() => onNavigate('info', selectedProdId)}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Settings size={18} />
+            <div className="menu-grid-2col">
+              <div className="menu-card" onClick={() => onNavigate('info', selectedProdId)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Settings size={18} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '14px' }}>公演基本情報</div>
+                    <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>公演名・煽り文・会場設定</div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '15px' }}>公演基本情報・会場設定</div>
-                  <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '1px' }}>公演名・煽り文・会場サジェスト選択</div>
-                </div>
+                <ChevronRight size={16} color={COLORS.muted} />
               </div>
-              <ChevronRight size={18} color={COLORS.muted} />
-            </div>
 
-            <div className="menu-card" onClick={() => onNavigate('tickets', selectedProdId)}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Ticket size={18} />
+              <div className="menu-card" onClick={() => onNavigate('tickets', selectedProdId)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Ticket size={18} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '14px' }}>券種 ＆ オプション設定</div>
+                    <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>前売り・学割・指定席・カンパ</div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '15px' }}>券種 ＆ オプション設定</div>
-                  <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '1px' }}>一般前売り・学割・指定席・カンパ</div>
-                </div>
+                <ChevronRight size={16} color={COLORS.muted} />
               </div>
-              <ChevronRight size={18} color={COLORS.muted} />
-            </div>
 
-            <div className="menu-card" onClick={() => onNavigate('dates', selectedProdId)}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Calendar size={18} />
+              <div className="menu-card" onClick={() => onNavigate('dates', selectedProdId)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Calendar size={18} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '14px' }}>日程・キャパ設定</div>
+                    <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>ステージ日時・席数上限</div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '15px' }}>日程・キャパ設定</div>
-                  <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '1px' }}>ステージ日時・開演時間・席数上限</div>
-                </div>
+                <ChevronRight size={16} color={COLORS.muted} />
               </div>
-              <ChevronRight size={18} color={COLORS.muted} />
-            </div>
 
-            <div className="menu-card" onClick={() => onNavigate('seats', selectedProdId)}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Grid size={18} />
+              <div className="menu-card" onClick={() => onNavigate('seats', selectedProdId)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Grid size={18} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '14px' }}>指定席・会場マップ設定</div>
+                    <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>座席配置図・ゾーン分け</div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '15px' }}>指定席・会場マップ設定</div>
-                  <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '1px' }}>座席配置図・ゾーン分け</div>
-                </div>
+                <ChevronRight size={16} color={COLORS.muted} />
               </div>
-              <ChevronRight size={18} color={COLORS.muted} />
-            </div>
 
-            <div className="menu-card" onClick={() => onNavigate('staff', selectedProdId)}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <UserCheck size={18} />
+              <div className="menu-card" onClick={() => onNavigate('staff', selectedProdId)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <UserCheck size={18} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '14px' }}>キャスト・スタッフ管理</div>
+                    <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>メンバー登録・個人予約URL発行</div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '15px' }}>キャスト・スタッフ管理</div>
-                  <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '1px' }}>メンバー登録・個人予約URL発行（全27名）</div>
-                </div>
+                <ChevronRight size={16} color={COLORS.muted} />
               </div>
-              <ChevronRight size={18} color={COLORS.muted} />
-            </div>
 
-            <div className="menu-card" onClick={() => onNavigate('payments', selectedProdId)}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <CreditCard size={18} />
+              <div className="menu-card" onClick={() => onNavigate('payments', selectedProdId)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <CreditCard size={18} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '14px' }}>決済連携設定</div>
+                    <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>Stripe / PayPay / 銀行振込</div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '15px' }}>決済連携設定</div>
-                  <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '1px' }}>Stripe / PayPay / 銀行振込</div>
-                </div>
+                <ChevronRight size={16} color={COLORS.muted} />
               </div>
-              <ChevronRight size={18} color={COLORS.muted} />
-            </div>
 
-            <div className="menu-card" onClick={() => onNavigate('messages', selectedProdId)}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Mail size={18} />
+              <div className="menu-card" onClick={() => onNavigate('messages', selectedProdId)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: themeBg, color: themeColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Mail size={18} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '14px' }}>メール・LINE通知設定</div>
+                    <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>自動返信・一斉送信文言</div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '15px' }}>メール・LINE通知設定</div>
-                  <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '1px' }}>自動返信・一斉送信文言</div>
-                </div>
+                <ChevronRight size={16} color={COLORS.muted} />
               </div>
-              <ChevronRight size={18} color={COLORS.muted} />
             </div>
           </div>
         )}
 
       </div>
 
-      {/* 🎪 新規公演作成専用モーダル */}
+      {/* 新規公演作成専用モーダル */}
       {showModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
           <div style={{ width: '100%', maxWidth: '480px', backgroundColor: COLORS.surface, borderRadius: '18px', padding: '28px', border: `1px solid ${COLORS.border}`, boxShadow: '0 10px 30px rgba(0,0,0,0.15)', position: 'relative' }}>
