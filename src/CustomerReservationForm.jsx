@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { Calendar, User, Ticket, CheckCircle2, AlertCircle, Sparkles, MapPin, Check } from 'lucide-react';
+import { User, CheckCircle2, AlertCircle, Sparkles, MapPin, ChevronLeft, ChevronRight, HeartHandshake, Ticket } from 'lucide-react';
 
 const COLORS = {
   bg: '#faf5ea',
@@ -8,11 +8,26 @@ const COLORS = {
   surfaceAlt: '#f7efe0',
   border: 'rgba(201,121,31,0.22)',
   gold: '#c9791f',
+  indigo: '#5457d6',
   text: '#2b2438',
   muted: '#8a8398',
   success: '#1f9a56',
   danger: '#e85a45',
 };
+
+// ステップキーを reservationMode から組み立てる
+function buildSteps(reservationMode) {
+  const steps = ['select'];
+  if (reservationMode === 'both') {
+    steps.push('detail_0', 'detail_1');
+  } else if (reservationMode === 'single_0') {
+    steps.push('detail_0');
+  } else if (reservationMode === 'single_1') {
+    steps.push('detail_1');
+  }
+  steps.push('customer', 'confirm');
+  return steps;
+}
 
 export default function CustomerReservationForm({ productionId }) {
   const [currentProd, setCurrentProd] = useState(null);
@@ -22,8 +37,9 @@ export default function CustomerReservationForm({ productionId }) {
   const [allStaff, setAllStaff] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // 選択モード: 'single_0' (A公演) | 'single_1' (B公演) | 'both' (両方)
-  const [reservationMode, setReservationMode] = useState('single_0');
+  // 選択モード: 'single_0' (A公演) | 'single_1' (B公演) | 'both' (両方) | '' (未選択)
+  const [reservationMode, setReservationMode] = useState('');
+  const [stepIndex, setStepIndex] = useState(0);
 
   // お客様基本情報
   const [customerName, setCustomerName] = useState('');
@@ -35,11 +51,20 @@ export default function CustomerReservationForm({ productionId }) {
   const [selectedStageIds, setSelectedStageIds] = useState(['', '']);
   const [selectedTicketTypeIds, setSelectedTicketTypeIds] = useState(['', '']);
   const [ticketCounts, setTicketCounts] = useState([1, 1]);
-  const [donationAmounts, setDonationAmounts] = useState([500, 500]);
   const [selectedStaffNames, setSelectedStaffNames] = useState(['', '']);
+
+  // 追加オプション選択 [A公演のopts, B公演のopts]
+  const [selectedOptions, setSelectedOptions] = useState([[], []]);
+
+  // 応援カンパ（下限500円・100円刻み）
+  const [hasDonation, setHasDonation] = useState(false);
+  const [donationAmount, setDonationAmount] = useState(500);
 
   // 両公演で同じ扱いに設定するフラグ
   const [isSameStaff, setIsSameStaff] = useState(true);
+
+  // ステップごとのバリデーションエラー
+  const [stepError, setStepError] = useState('');
 
   // 予約送信ステート
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -83,9 +108,6 @@ export default function CustomerReservationForm({ productionId }) {
         }
         setProductions(prodList);
 
-        const initialIdx = prodList.findIndex(p => p.id === productionId);
-        setReservationMode(initialIdx >= 0 ? `single_${initialIdx}` : 'single_0');
-
         // 3. 全公演のステージ・券種・キャストを取得
         const prodIds = prodList.map(p => p.id);
         const [{ data: stageData }, { data: ticketData }, { data: staffData }] = await Promise.all([
@@ -106,7 +128,11 @@ export default function CustomerReservationForm({ productionId }) {
           tMap[p.id] = pTickets;
 
           if (pStages.length > 0) initialStages[idx] = pStages[0].id;
-          if (pTickets.length > 0) initialTickets[idx] = pTickets[0].id;
+
+          // 基本券種（オプション以外）を優先選択
+          const baseTk = pTickets.find(t => !t.is_donation && !t.description?.includes('【オプション】'));
+          if (baseTk) initialTickets[idx] = baseTk.id;
+          else if (pTickets.length > 0) initialTickets[idx] = pTickets[0].id;
         });
 
         setStagesMap(sMap);
@@ -149,6 +175,20 @@ export default function CustomerReservationForm({ productionId }) {
     });
   };
 
+  // オプション選択のトグル
+  const handleToggleOption = (prodIdx, optId) => {
+    setSelectedOptions(prev => {
+      const next = [...prev];
+      const currentOpts = next[prodIdx] || [];
+      if (currentOpts.includes(optId)) {
+        next[prodIdx] = currentOpts.filter(id => id !== optId);
+      } else {
+        next[prodIdx] = [...currentOpts, optId];
+      }
+      return next;
+    });
+  };
+
   // キャストの優先2段ソート（A/B/チームタグのゆらぎに対応）
   const getSortedStaffOptions = (prod) => {
     if (!prod) return { currentProdStaff: allStaff, otherStaff: [] };
@@ -157,21 +197,17 @@ export default function CustomerReservationForm({ productionId }) {
 
     const currentProdStaff = allStaff.filter((s) => {
       const tag = s.team_tag || '';
-      
-      // スタッフタグのみは下段
+
       if (tag.includes('スタッフ')) return false;
 
-      // 共通・両公演・タグなしの場合は上段
       if (tag === '共通・両公演' || tag === 'チームなし（共通・シングル）' || !tag) {
         return true;
       }
 
-      // A公演の場合
       if (isA) {
         return tag.includes('A公演') || tag.includes('Aチーム') || tag.includes('A班') || tag.includes('コンビ');
       }
 
-      // B公演の場合
       return tag.includes('B公演') || tag.includes('Bチーム') || tag.includes('B班') || tag.includes('爆弾');
     });
 
@@ -179,13 +215,101 @@ export default function CustomerReservationForm({ productionId }) {
     return { currentProdStaff, otherStaff };
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!customerName.trim() || !customerEmail.trim()) {
-      alert('お名前とメールアドレスは必須です。');
-      return;
+  // 合計金額の計算
+  const calculateTotal = () => {
+    let total = 0;
+    const targetIndices = reservationMode === 'both' ? [0, 1] : [parseInt(reservationMode.replace('single_', ''))];
+
+    if (reservationMode === 'both') {
+      const prodA = productions[0];
+      const tkA = (ticketTypesMap[prodA?.id] || []).find(t => t.id === selectedTicketTypeIds[0]);
+      const count = ticketCounts[0] || 1;
+      total += (tkA?.price || 0) * count;
+
+      [0, 1].forEach(idx => {
+        const prod = productions[idx];
+        const allOpts = ticketTypesMap[prod?.id] || [];
+        (selectedOptions[idx] || []).forEach(optId => {
+          const opt = allOpts.find(t => t.id === optId);
+          if (opt) total += (opt.price || 0) * count;
+        });
+      });
+    } else {
+      const idx = targetIndices[0];
+      const prod = productions[idx];
+      const tk = (ticketTypesMap[prod?.id] || []).find(t => t.id === selectedTicketTypeIds[idx]);
+      const count = ticketCounts[idx] || 1;
+      total += (tk?.price || 0) * count;
+
+      const allOpts = ticketTypesMap[prod?.id] || [];
+      (selectedOptions[idx] || []).forEach(optId => {
+        const opt = allOpts.find(t => t.id === optId);
+        if (opt) total += (opt.price || 0) * count;
+      });
     }
 
+    if (hasDonation) {
+      total += (parseInt(donationAmount, 10) || 500);
+    }
+
+    return total;
+  };
+
+  // --- ステップ管理 ---
+  const steps = reservationMode ? buildSteps(reservationMode) : ['select'];
+  const currentStepKey = steps[stepIndex] || 'select';
+
+  const goNext = () => {
+    setStepError('');
+    setStepIndex(i => Math.min(i + 1, steps.length - 1));
+  };
+
+  const goBack = () => {
+    setStepError('');
+    setStepIndex(i => Math.max(i - 1, 0));
+  };
+
+  const selectProduction = (mode) => {
+    setReservationMode(mode);
+    setStepIndex(1);
+  };
+
+  const validateDetailStep = (idx) => {
+    const prod = productions[idx];
+    if (!prod) return '公演情報が見つかりません。';
+    if (!selectedStageIds[idx]) return '観劇日時を選択してください。';
+    if (!selectedTicketTypeIds[idx]) return '券種を選択してください。';
+    return '';
+  };
+
+  const validateCustomerStep = () => {
+    if (!customerName.trim()) return 'お名前を入力してください。';
+    if (!customerEmail.trim()) return 'メールアドレスを入力してください。';
+    if (hasDonation && (!donationAmount || donationAmount < 500)) {
+      return '応援カンパは500円以上でご入力ください。';
+    }
+    return '';
+  };
+
+  const handleDetailNext = (idx) => {
+    const err = validateDetailStep(idx);
+    if (err) {
+      setStepError(err);
+      return;
+    }
+    goNext();
+  };
+
+  const handleCustomerNext = () => {
+    const err = validateCustomerStep();
+    if (err) {
+      setStepError(err);
+      return;
+    }
+    goNext();
+  };
+
+  const handleSubmit = async () => {
     setIsSubmitting(true);
     setErrorMessage('');
 
@@ -193,15 +317,31 @@ export default function CustomerReservationForm({ productionId }) {
       const sharedMypageToken = crypto.randomUUID();
       const recordsToInsert = [];
 
-      const targetIndices = reservationMode === 'both' ? [0, 1] : [parseInt(reservationMode.replace('single_', ''))];
+      const isBoth = reservationMode === 'both';
+      const targetIndices = isBoth ? [0, 1] : [parseInt(reservationMode.replace('single_', ''))];
 
-      for (const idx of targetIndices) {
+      for (let i = 0; i < targetIndices.length; i++) {
+        const idx = targetIndices[i];
         const prod = productions[idx];
         if (!prod) continue;
 
         const stageId = selectedStageIds[idx];
         const ticketTypeId = selectedTicketTypeIds[idx];
-        const ticketType = (ticketTypesMap[prod.id] || []).find(t => t.id === ticketTypeId);
+        const count = isBoth ? ticketCounts[0] : ticketCounts[idx];
+
+        // 選択されたオプション
+        const allOpts = ticketTypesMap[prod.id] || [];
+        const chosenOptNames = (selectedOptions[idx] || [])
+          .map(optId => allOpts.find(t => t.id === optId)?.name)
+          .filter(Boolean);
+
+        let fullMemo = customerMemo.trim();
+        if (chosenOptNames.length > 0) {
+          fullMemo = `【選択オプション】: ${chosenOptNames.join(', ')}\n${fullMemo}`.trim();
+        }
+        if (isBoth) {
+          fullMemo = `【両公演セット予約】\n${fullMemo}`.trim();
+        }
 
         recordsToInsert.push({
           production_id: prod.id,
@@ -210,10 +350,10 @@ export default function CustomerReservationForm({ productionId }) {
           customer_name: customerName.trim(),
           customer_phone: customerPhone.trim(),
           customer_email: customerEmail.trim(),
-          count: ticketCounts[idx],
+          count: count,
           staff_name: selectedStaffNames[idx] || null,
-          memo: customerMemo.trim() || null,
-          donation_amount: ticketType?.is_donation ? donationAmounts[idx] : null,
+          memo: fullMemo || null,
+          donation_amount: (hasDonation && i === 0) ? (parseInt(donationAmount, 10) || 500) : null,
           mypage_token: sharedMypageToken,
           notification_method: 'email',
         });
@@ -248,6 +388,7 @@ export default function CustomerReservationForm({ productionId }) {
           <h2 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 10px 0' }}>ご予約が完了いたしました</h2>
           <p style={{ fontSize: '14px', color: COLORS.muted, lineHeight: '1.6', margin: '0 0 24px 0' }}>
             ご登録のメールアドレス（{customerEmail}）宛に予約確認メールを送信いたしました。
+            {reservationMode === 'both' && <><br /><strong>※両公演（A公演・B公演）ともにお席を確保いたしました。</strong></>}
           </p>
 
           <a
@@ -261,12 +402,440 @@ export default function CustomerReservationForm({ productionId }) {
     );
   }
 
+  // --- 共通UIパーツ ---
+  const inputStyle = { width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '14px', backgroundColor: COLORS.surface };
+  const labelStyle = { display: 'block', fontSize: '12px', fontWeight: 700, color: COLORS.gold, marginBottom: '4px' };
+
+  const ProgressDots = () => (
+    <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginBottom: '18px' }}>
+      {steps.map((s, i) => (
+        <div
+          key={s}
+          style={{
+            width: i === stepIndex ? '20px' : '7px',
+            height: '7px',
+            borderRadius: '4px',
+            backgroundColor: i <= stepIndex ? COLORS.gold : COLORS.border,
+            transition: 'all 0.2s ease',
+          }}
+        />
+      ))}
+    </div>
+  );
+
+  const NavButtons = ({ onNext, nextLabel = '次へ', nextDisabled = false, showBack = true }) => (
+    <div style={{ display: 'flex', gap: '10px', marginTop: '18px' }}>
+      {showBack && (
+        <button
+          type="button"
+          onClick={goBack}
+          style={{ flex: '0 0 88px', padding: '14px 0', borderRadius: '12px', border: `1px solid ${COLORS.border}`, backgroundColor: COLORS.surface, color: COLORS.text, fontWeight: 700, fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}
+        >
+          <ChevronLeft size={16} /> 戻る
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={nextDisabled}
+        style={{ flex: 1, padding: '14px 0', borderRadius: '12px', border: 'none', backgroundColor: COLORS.gold, color: '#fff', fontWeight: 700, fontSize: '15px', cursor: nextDisabled ? 'not-allowed' : 'pointer', opacity: nextDisabled ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', boxShadow: '0 4px 12px rgba(201,121,31,0.25)' }}
+      >
+        {nextLabel} {nextLabel === '次へ' && <ChevronRight size={16} />}
+      </button>
+    </div>
+  );
+
+  const CardWrap = ({ children }) => (
+    <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '14px', padding: '18px' }}>
+      {children}
+    </div>
+  );
+
+  // --- ステップ: 公演選択カード ---
+  const renderSelectStep = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <p style={{ textAlign: 'center', fontSize: '14px', fontWeight: 700, color: COLORS.text, margin: '0 0 4px 0' }}>
+        観劇する公演をお選びください
+      </p>
+
+      {productions.map((prod, idx) => {
+        const isA = prod.title.includes('あなたとコンビ');
+        const label = isA ? 'A公演' : 'B公演';
+        const subtitle = prod.title;
+
+        return (
+          <button
+            key={prod.id}
+            type="button"
+            onClick={() => selectProduction(`single_${idx}`)}
+            style={{
+              textAlign: 'left',
+              padding: '18px',
+              borderRadius: '14px',
+              border: `2px solid ${COLORS.border}`,
+              backgroundColor: COLORS.surface,
+              cursor: 'pointer',
+            }}
+          >
+            <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.gold, backgroundColor: COLORS.surfaceAlt, display: 'inline-block', padding: '2px 8px', borderRadius: '4px', marginBottom: '6px' }}>
+              {label}
+            </div>
+            <div style={{ fontSize: '15px', fontWeight: 700, color: COLORS.text }}>{subtitle}</div>
+          </button>
+        );
+      })}
+
+      {productions.length >= 2 && (
+        <button
+          type="button"
+          onClick={() => selectProduction('both')}
+          style={{
+            textAlign: 'left',
+            padding: '18px',
+            borderRadius: '14px',
+            border: `2px solid ${COLORS.gold}`,
+            backgroundColor: COLORS.surfaceAlt,
+            cursor: 'pointer',
+          }}
+        >
+          <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.gold, marginBottom: '6px' }}>⭐ セット予約（お得な通し券）</div>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: COLORS.text }}>両方観劇する（A公演 ＆ B公演）</div>
+        </button>
+      )}
+    </div>
+  );
+
+  // --- ステップ: 各公演の詳細入力 ---
+  const renderDetailStep = (idx) => {
+    const prod = productions[idx];
+    if (!prod) return null;
+
+    const stages = stagesMap[prod.id] || [];
+    const allTickets = ticketTypesMap[prod.id] || [];
+    const baseTickets = allTickets.filter(t => !t.is_donation && !t.description?.includes('【オプション】'));
+    const optionTickets = allTickets.filter(t => !t.is_donation && t.description?.includes('【オプション】'));
+
+    const { currentProdStaff, otherStaff } = getSortedStaffOptions(prod);
+    const isA = prod.title.includes('あなたとコンビ');
+    const isFirstOfBoth = reservationMode === 'both' && idx === 0;
+    const isSecondOfBoth = reservationMode === 'both' && idx === 1;
+
+    return (
+      <CardWrap>
+        <div style={{ borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '8px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold, backgroundColor: COLORS.surfaceAlt, padding: '2px 8px', borderRadius: '4px' }}>
+            {isA ? 'A公演' : 'B公演'}
+          </span>
+          <h3 style={{ fontSize: '15px', fontWeight: 700, margin: 0, color: COLORS.text }}>
+            {prod.title}
+          </h3>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* 日時選択 */}
+          <div>
+            <label style={labelStyle}>観劇日時（ステージ）</label>
+            <select
+              value={selectedStageIds[idx]}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedStageIds(prev => { const n = [...prev]; n[idx] = val; return n; });
+              }}
+              style={inputStyle}
+            >
+              <option value="">-- 選択してください --</option>
+              {stages.map(st => (
+                <option key={st.id} value={st.id}>
+                  {st.performance_date} {st.start_time?.slice(0, 5)}開演 {st.team_name ? `(${st.team_name})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 基本券種と枚数 */}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ flex: 2 }}>
+              <label style={labelStyle}>基本券種</label>
+              <select
+                value={selectedTicketTypeIds[idx]}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedTicketTypeIds(prev => { const n = [...prev]; n[idx] = val; return n; });
+                }}
+                style={inputStyle}
+              >
+                <option value="">-- 選択してください --</option>
+                {baseTickets.map(tk => (
+                  <option key={tk.id} value={tk.id}>
+                    {tk.name} (¥{tk.price?.toLocaleString()})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {(reservationMode !== 'both' || idx === 0) && (
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>枚数</label>
+                <select
+                  value={ticketCounts[idx]}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    setTicketCounts(prev => {
+                      const n = [...prev];
+                      n[idx] = val;
+                      if (reservationMode === 'both') n[1] = val;
+                      return n;
+                    });
+                  }}
+                  style={inputStyle}
+                >
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(cnt => (
+                    <option key={cnt} value={cnt}>{cnt}枚</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* ✨ 追加オプション（指定席など） */}
+          {optionTickets.length > 0 && (
+            <div style={{ padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '8px', border: `1px solid ${COLORS.border}` }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: COLORS.indigo, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Sparkles size={13} /> 追加オプション（任意）
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {optionTickets.map(opt => {
+                  const isChecked = (selectedOptions[idx] || []).includes(opt.id);
+                  return (
+                    <label key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', fontWeight: isChecked ? 700 : 400 }}>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => handleToggleOption(idx, opt.id)}
+                        style={{ accentColor: COLORS.indigo, width: '16px', height: '16px' }}
+                      />
+                      <span>{opt.name}</span>
+                      <span style={{ fontSize: '12px', color: COLORS.gold, marginLeft: 'auto' }}>
+                        +¥{opt.price?.toLocaleString()}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 扱いキャスト選択 */}
+          <div>
+            <label style={labelStyle}>扱いキャスト・スタッフ</label>
+
+            {isSecondOfBoth && isSameStaff ? (
+              <div style={{ padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '8px', border: `1px solid ${COLORS.border}`, fontSize: '13px', color: COLORS.muted }}>
+                A公演と同じ扱い（{selectedStaffNames[0] || '劇団扱い'}）
+              </div>
+            ) : (
+              <select
+                value={selectedStaffNames[idx]}
+                onChange={(e) => handleStaffChange(idx, e.target.value)}
+                style={inputStyle}
+              >
+                <option value="">-- 劇団扱い --</option>
+                {currentProdStaff.length > 0 && (
+                  <optgroup label="【この公演の出演キャスト】">
+                    {currentProdStaff.map(st => (
+                      <option key={st.id} value={st.name}>{st.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {otherStaff.length > 0 && (
+                  <optgroup label="【その他の関係者・スタッフ】">
+                    {otherStaff.map(st => (
+                      <option key={st.id} value={st.name}>{st.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            )}
+          </div>
+
+          {isFirstOfBoth && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+              <input
+                type="checkbox"
+                id="sameStaffCheck"
+                checked={isSameStaff}
+                onChange={(e) => {
+                  setIsSameStaff(e.target.checked);
+                  if (e.target.checked) setSelectedStaffNames(prev => [prev[0], prev[0]]);
+                }}
+                style={{ accentColor: COLORS.gold, width: '16px', height: '16px', cursor: 'pointer' }}
+              />
+              <label htmlFor="sameStaffCheck" style={{ fontSize: '12px', color: COLORS.text, cursor: 'pointer', fontWeight: 700 }}>
+                B公演も同じ扱いに設定する
+              </label>
+            </div>
+          )}
+        </div>
+      </CardWrap>
+    );
+  };
+
+  // --- ステップ: お客様情報 ＆ カンパ ---
+  const renderCustomerStep = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <CardWrap>
+        <div style={{ fontSize: '14px', fontWeight: 700, color: COLORS.gold, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
+          <User size={15} /> お客様情報
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>お名前（必須）</label>
+            <input type="text" required placeholder="例: 山田 太郎" value={customerName} onChange={(e) => setCustomerName(e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>メールアドレス（必須）</label>
+            <input type="email" required placeholder="example@domain.com" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>お電話番号</label>
+            <input type="tel" placeholder="090-0000-0000" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>備考</label>
+            <textarea rows={2} placeholder="ご要望や車椅子利用などがあればご記入ください" value={customerMemo} onChange={(e) => setCustomerMemo(e.target.value)} style={{ ...inputStyle, fontSize: '13px' }} />
+          </div>
+        </div>
+      </CardWrap>
+
+      {/* 💖 劇団・キャスト応援カンパ（下限500円・100円刻み） */}
+      <CardWrap>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '13px', color: COLORS.text }}>
+          <input
+            type="checkbox"
+            checked={hasDonation}
+            onChange={(e) => setHasDonation(e.target.checked)}
+            style={{ accentColor: COLORS.gold, width: '16px', height: '16px' }}
+          />
+          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: COLORS.gold }}>
+            <HeartHandshake size={15} /> 劇団・キャスト応援カンパを送る（任意）
+          </span>
+        </label>
+
+        {hasDonation && (
+          <div style={{ marginTop: '12px', padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '8px', border: `1px solid ${COLORS.border}` }}>
+            <div style={{ fontSize: '12px', color: COLORS.muted, marginBottom: '6px' }}>
+              下限500円から、100円刻みでお好きな金額をご入力いただけます。
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '15px', fontWeight: 700 }}>¥</span>
+              <input
+                type="number"
+                min={500}
+                step={100}
+                value={donationAmount}
+                onChange={(e) => setDonationAmount(e.target.value)}
+                style={{ width: '150px', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${COLORS.border}`, fontSize: '14px', backgroundColor: COLORS.surface }}
+              />
+              <span style={{ fontSize: '13px', fontWeight: 700 }}>円</span>
+            </div>
+          </div>
+        )}
+      </CardWrap>
+    </div>
+  );
+
+  // --- ステップ: 最終確認 ---
+  const renderConfirmStep = () => {
+    const targetIndices = reservationMode === 'both' ? [0, 1] : [parseInt(reservationMode.replace('single_', ''))];
+    const total = calculateTotal();
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {targetIndices.map(idx => {
+          const prod = productions[idx];
+          if (!prod) return null;
+          const isA = prod.title.includes('あなたとコンビ');
+          const stage = (stagesMap[prod.id] || []).find(s => s.id === selectedStageIds[idx]);
+          const ticket = (ticketTypesMap[prod.id] || []).find(t => t.id === selectedTicketTypeIds[idx]);
+          const allOpts = ticketTypesMap[prod.id] || [];
+          const chosenOpts = (selectedOptions[idx] || []).map(optId => allOpts.find(t => t.id === optId)).filter(Boolean);
+
+          return (
+            <CardWrap key={prod.id}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.gold, marginBottom: '6px' }}>{isA ? 'A公演' : 'B公演'}：{prod.title}</div>
+              <div style={{ fontSize: '13px', lineHeight: '1.9', color: COLORS.text }}>
+                <div>日時：{stage ? `${stage.performance_date} ${stage.start_time?.slice(0, 5)}開演` : '未選択'}</div>
+                <div>券種：{ticket?.name || '未選択'}（¥{ticket?.price?.toLocaleString()} × {ticketCounts[idx]}枚）</div>
+                {chosenOpts.length > 0 && (
+                  <div>オプション：{chosenOpts.map(o => `${o.name} (+¥${o.price?.toLocaleString()})`).join(', ')}</div>
+                )}
+                <div>扱い：{selectedStaffNames[idx] || '劇団扱い'}</div>
+              </div>
+            </CardWrap>
+          );
+        })}
+
+        {hasDonation && (
+          <CardWrap>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.gold, marginBottom: '4px' }}>応援カンパ</div>
+            <div style={{ fontSize: '14px', fontWeight: 700 }}>¥{(parseInt(donationAmount, 10) || 500).toLocaleString()}</div>
+          </CardWrap>
+        )}
+
+        <CardWrap>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.gold, marginBottom: '6px' }}>お客様情報</div>
+          <div style={{ fontSize: '13px', lineHeight: '1.9', color: COLORS.text }}>
+            <div>お名前：{customerName}</div>
+            <div>メール：{customerEmail}</div>
+            {customerPhone && <div>電話：{customerPhone}</div>}
+            {customerMemo && <div>備考：{customerMemo}</div>}
+          </div>
+        </CardWrap>
+
+        {/* 💰 合計金額 */}
+        <div style={{ backgroundColor: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontWeight: 700, fontSize: '14px' }}>合計お支払い予定額（当日精算）</span>
+          <span style={{ fontSize: '20px', fontWeight: 800, color: COLORS.gold }}>¥{total.toLocaleString()}</span>
+        </div>
+
+        {errorMessage && (
+          <div style={{ padding: '12px', backgroundColor: 'rgba(232,90,69,0.1)', color: COLORS.danger, borderRadius: '8px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <AlertCircle size={16} /> {errorMessage}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  let stepContent;
+  let footer;
+
+  if (currentStepKey === 'select') {
+    stepContent = renderSelectStep();
+    footer = null;
+  } else if (currentStepKey.startsWith('detail_')) {
+    const idx = parseInt(currentStepKey.split('_')[1]);
+    stepContent = renderDetailStep(idx);
+    footer = <NavButtons onNext={() => handleDetailNext(idx)} />;
+  } else if (currentStepKey === 'customer') {
+    stepContent = renderCustomerStep();
+    footer = <NavButtons onNext={handleCustomerNext} />;
+  } else if (currentStepKey === 'confirm') {
+    stepContent = renderConfirmStep();
+    footer = (
+      <NavButtons
+        onNext={handleSubmit}
+        nextLabel={isSubmitting ? '予約処理中...' : '予約を確定する'}
+        nextDisabled={isSubmitting}
+      />
+    );
+  }
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '24px 16px 60px 16px', boxSizing: 'border-box' }}>
       <div style={{ maxWidth: '580px', margin: '0 auto' }}>
 
-        {/* 公演ヘッダー */}
-        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '16px' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: COLORS.gold, fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>
             <Sparkles size={13} /> office Knight プロデュース公演
           </div>
@@ -278,322 +847,16 @@ export default function CustomerReservationForm({ productionId }) {
           </div>
         </div>
 
-        {/* 🎭 演目選択カードタブ */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-          {productions.map((prod, idx) => {
-            const isA = prod.title.includes('あなたとコンビ');
-            const label = isA ? 'A公演: あなたとコンビ、に' : 'B公演: 爆弾よりもハードです';
-            const isSelected = reservationMode === `single_${idx}`;
+        <ProgressDots />
 
-            return (
-              <button
-                key={prod.id}
-                type="button"
-                onClick={() => setReservationMode(`single_${idx}`)}
-                style={{
-                  flex: 1,
-                  padding: '12px 6px',
-                  borderRadius: '10px',
-                  border: `2px solid ${isSelected ? COLORS.gold : COLORS.border}`,
-                  backgroundColor: isSelected ? COLORS.surfaceAlt : COLORS.surface,
-                  color: isSelected ? COLORS.gold : COLORS.text,
-                  fontWeight: 700,
-                  fontSize: '12px',
-                  cursor: 'pointer',
-                  lineHeight: '1.3',
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
-
-          {productions.length >= 2 && (
-            <button
-              type="button"
-              onClick={() => setReservationMode('both')}
-              style={{
-                flex: 1,
-                padding: '12px 6px',
-                borderRadius: '10px',
-                border: `2px solid ${reservationMode === 'both' ? COLORS.gold : COLORS.border}`,
-                backgroundColor: reservationMode === 'both' ? COLORS.surfaceAlt : COLORS.surface,
-                color: reservationMode === 'both' ? COLORS.gold : COLORS.text,
-                fontWeight: 700,
-                fontSize: '12px',
-                cursor: 'pointer',
-                lineHeight: '1.3',
-              }}
-            >
-              ⭐ 両方観劇<br />（セット予約）
-            </button>
-          )}
-        </div>
-
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-          {/* 各演目の入力エリア */}
-          {productions.map((prod, idx) => {
-            const isVisible = reservationMode === 'both' || reservationMode === `single_${idx}`;
-            if (!isVisible) return null;
-
-            const stages = stagesMap[prod.id] || [];
-            const tickets = ticketTypesMap[prod.id] || [];
-            const { currentProdStaff, otherStaff } = getSortedStaffOptions(prod);
-            const currentTicket = tickets.find(t => t.id === selectedTicketTypeIds[idx]);
-            const isA = prod.title.includes('あなたとコンビ');
-
-            return (
-              <div key={prod.id} style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '14px', padding: '18px' }}>
-                <div style={{ borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '8px', marginBottom: '14px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: COLORS.gold, backgroundColor: COLORS.surfaceAlt, padding: '2px 8px', borderRadius: '4px' }}>
-                    {isA ? 'A公演' : 'B公演'}
-                  </span>
-                  <h3 style={{ fontSize: '16px', fontWeight: 700, margin: '4px 0 0 0', color: COLORS.text }}>
-                    {prod.title}
-                  </h3>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-
-                  {/* 日時選択 */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: COLORS.gold, marginBottom: '4px' }}>
-                      観劇日時（ステージ）
-                    </label>
-                    <select
-                      value={selectedStageIds[idx]}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setSelectedStageIds(prev => {
-                          const n = [...prev];
-                          n[idx] = val;
-                          return n;
-                        });
-                      }}
-                      style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, fontSize: '14px', backgroundColor: COLORS.surface }}
-                    >
-                      {stages.map(st => (
-                        <option key={st.id} value={st.id}>
-                          {st.performance_date} {st.start_time?.slice(0, 5)}開演 {st.team_name ? `(${st.team_name})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* 券種と枚数 */}
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <div style={{ flex: 2 }}>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: COLORS.gold, marginBottom: '4px' }}>
-                        券種
-                      </label>
-                      <select
-                        value={selectedTicketTypeIds[idx]}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setSelectedTicketTypeIds(prev => {
-                            const n = [...prev];
-                            n[idx] = val;
-                            return n;
-                          });
-                        }}
-                        style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, fontSize: '14px', backgroundColor: COLORS.surface }}
-                      >
-                        {tickets.map(tk => (
-                          <option key={tk.id} value={tk.id}>
-                            {tk.name} ({tk.is_donation ? 'カンパ制' : `¥${tk.price?.toLocaleString()}`})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: COLORS.gold, marginBottom: '4px' }}>
-                        枚数
-                      </label>
-                      <select
-                        value={ticketCounts[idx]}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value);
-                          setTicketCounts(prev => {
-                            const n = [...prev];
-                            n[idx] = val;
-                            return n;
-                          });
-                        }}
-                        style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, fontSize: '14px', backgroundColor: COLORS.surface }}
-                      >
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(cnt => (
-                          <option key={cnt} value={cnt}>{cnt}枚</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* カンパ制金額 */}
-                  {currentTicket?.is_donation && (
-                    <div style={{ padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '8px', border: `1px solid ${COLORS.border}` }}>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: COLORS.gold, marginBottom: '4px' }}>
-                        カンパ金額（1枚あたり下限500円〜）
-                      </label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '14px', fontWeight: 700 }}>¥</span>
-                        <input
-                          type="number"
-                          min={500}
-                          step={100}
-                          value={donationAmounts[idx]}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value) || 500;
-                            setDonationAmounts(prev => {
-                              const n = [...prev];
-                              n[idx] = val;
-                              return n;
-                            });
-                          }}
-                          style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${COLORS.border}`, fontSize: '14px' }}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 扱いキャスト選択 */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: COLORS.gold, marginBottom: '4px' }}>
-                      扱いキャスト・スタッフ
-                    </label>
-
-                    {idx === 1 && reservationMode === 'both' && isSameStaff ? (
-                      <div style={{ padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '8px', border: `1px solid ${COLORS.border}`, fontSize: '13px', color: COLORS.muted }}>
-                        A公演と同じ扱い（{selectedStaffNames[0] || '劇団扱い'}）
-                      </div>
-                    ) : (
-                      <select
-                        value={selectedStaffNames[idx]}
-                        onChange={(e) => handleStaffChange(idx, e.target.value)}
-                        style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, fontSize: '14px', backgroundColor: COLORS.surface }}
-                      >
-                        <option value="">-- 劇団扱い --</option>
-                        {currentProdStaff.length > 0 && (
-                          <optgroup label="【この公演の出演キャスト】">
-                            {currentProdStaff.map(st => (
-                              <option key={st.id} value={st.name}>{st.name}</option>
-                            ))}
-                          </optgroup>
-                        )}
-                        {otherStaff.length > 0 && (
-                          <optgroup label="【その他の関係者・スタッフ】">
-                            {otherStaff.map(st => (
-                              <option key={st.id} value={st.name}>{st.name}</option>
-                            ))}
-                          </optgroup>
-                        )}
-                      </select>
-                    )}
-                  </div>
-
-                  {/* 両方予約時：A公演の下に同一設定チェックを配置 */}
-                  {idx === 0 && reservationMode === 'both' && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
-                      <input
-                        type="checkbox"
-                        id="sameStaffCheck"
-                        checked={isSameStaff}
-                        onChange={(e) => {
-                          setIsSameStaff(e.target.checked);
-                          if (e.target.checked) setSelectedStaffNames(prev => [prev[0], prev[0]]);
-                        }}
-                        style={{ accentColor: COLORS.gold, width: '16px', height: '16px', cursor: 'pointer' }}
-                      />
-                      <label htmlFor="sameStaffCheck" style={{ fontSize: '12px', color: COLORS.text, cursor: 'pointer', fontWeight: 700 }}>
-                        B公演（『爆弾よりもハードです』）も同じ扱いに設定する
-                      </label>
-                    </div>
-                  )}
-
-                </div>
-              </div>
-            );
-          })}
-
-          {/* お客様情報 */}
-          <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '14px', padding: '18px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: COLORS.gold, display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <User size={15} /> お客様情報
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>お名前（必須）</label>
-              <input
-                type="text"
-                required
-                placeholder="例: 山田 太郎"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '14px' }}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>メールアドレス（必須）</label>
-              <input
-                type="email"
-                required
-                placeholder="example@domain.com"
-                value={customerEmail}
-                onChange={(e) => setCustomerEmail(e.target.value)}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '14px' }}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>お電話番号</label>
-              <input
-                type="tel"
-                placeholder="090-0000-0000"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '14px' }}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>備考</label>
-              <textarea
-                rows={2}
-                placeholder="ご要望等あればご記入ください"
-                value={customerMemo}
-                onChange={(e) => setCustomerMemo(e.target.value)}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '13px' }}
-              />
-            </div>
+        {stepError && (
+          <div style={{ padding: '10px 12px', backgroundColor: 'rgba(232,90,69,0.1)', color: COLORS.danger, borderRadius: '8px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
+            <AlertCircle size={16} /> {stepError}
           </div>
+        )}
 
-          {errorMessage && (
-            <div style={{ padding: '12px', backgroundColor: 'rgba(232,90,69,0.1)', color: COLORS.danger, borderRadius: '8px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <AlertCircle size={16} /> {errorMessage}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            style={{
-              width: '100%',
-              padding: '16px',
-              backgroundColor: COLORS.gold,
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '12px',
-              fontSize: '16px',
-              fontWeight: 700,
-              cursor: isSubmitting ? 'not-allowed' : 'pointer',
-              boxShadow: '0 4px 12px rgba(201,121,31,0.25)',
-            }}
-          >
-            {isSubmitting ? '予約処理中...' : (reservationMode === 'both' ? '2公演まとめて予約を確定する' : '予約を確定する')}
-          </button>
-        </form>
+        {stepContent}
+        {footer}
 
       </div>
     </div>
