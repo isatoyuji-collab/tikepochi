@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { ArrowLeft, Plus, Edit2, Trash2, X, Ticket, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, X, Ticket, Sparkles, CheckCircle2, AlertCircle, Layers, HeartHandshake } from 'lucide-react';
 import { COLORS, FONTS, RADIUS } from './theme';
 
 export default function AdminTicketSettings({ productionId, org, onBack }) {
   const [ticketTypes, setTicketTypes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('tickets'); // 'tickets' | 'options'
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTicket, setEditingTicket] = useState(null);
 
   // フォーム入力ステート
   const [name, setName] = useState('');
-  const [price, setPrice] = useState('3000');
+  const [price, setPrice] = useState('3700');
   const [isDonation, setIsDonation] = useState(false);
   const [description, setDescription] = useState('');
+  const [categoryType, setCategoryType] = useState('ticket'); // 'ticket' (基本券種) | 'option' (オプション)
 
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -42,10 +45,15 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
     fetchTickets();
   }, [productionId]);
 
-  const handleOpenAdd = () => {
+  // 基本券種とオプションに分類
+  const baseTickets = ticketTypes.filter(t => !t.is_donation && !t.description?.includes('【オプション】'));
+  const optionTickets = ticketTypes.filter(t => t.is_donation || t.description?.includes('【オプション】'));
+
+  const handleOpenAdd = (type = 'ticket') => {
     setEditingTicket(null);
-    setName('');
-    setPrice('3000');
+    setCategoryType(type);
+    setName(type === 'ticket' ? '一般前売り' : '最前列指定席');
+    setPrice(type === 'ticket' ? '3700' : '500');
     setIsDonation(false);
     setDescription('');
     setErrorMessage('');
@@ -54,10 +62,12 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
 
   const handleOpenEdit = (tk) => {
     setEditingTicket(tk);
+    const isOpt = tk.is_donation || tk.description?.includes('【オプション】');
+    setCategoryType(isOpt ? 'option' : 'ticket');
     setName(tk.name || '');
     setPrice(tk.price ? String(tk.price) : '0');
     setIsDonation(tk.is_donation || false);
-    setDescription(tk.description || '');
+    setDescription(tk.description ? tk.description.replace('【オプション】', '').trim() : '');
     setErrorMessage('');
     setIsModalOpen(true);
   };
@@ -65,20 +75,25 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
   const handleSave = async (e) => {
     e.preventDefault();
     if (!name.trim()) {
-      alert('券種名を入力してください。');
+      alert('名称を入力してください。');
       return;
     }
 
     setSaving(true);
     setErrorMessage('');
 
-    // DBに確実に存在する基本カラムのみ送信
+    // オプションの場合は説明文の先頭にタグを付与して安全に識別
+    let finalDesc = description.trim();
+    if (categoryType === 'option' && !isDonation) {
+      finalDesc = `【オプション】${finalDesc}`;
+    }
+
     const payload = {
       production_id: productionId,
       name: name.trim(),
       price: isDonation ? 0 : (parseInt(price, 10) || 0),
       is_donation: isDonation,
-      description: description.trim() || null,
+      description: finalDesc || null,
     };
 
     try {
@@ -101,14 +116,14 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
       fetchTickets();
     } catch (err) {
       console.error('Save ticket type error:', err);
-      setErrorMessage('券種の保存に失敗しました: ' + err.message);
+      setErrorMessage('保存に失敗しました: ' + err.message);
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (id) => {
-    if (confirm('この券種を削除してよろしいですか？')) {
+    if (confirm('この項目を削除してよろしいですか？')) {
       try {
         const { error } = await supabase
           .from('ticket_types')
@@ -148,18 +163,15 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
           font-family: ${FONTS.body};
           box-sizing: border-box;
         }
-        .text-input:focus {
-          outline: none;
-          border-color: ${COLORS.gold};
-        }
+        .text-input:focus { outline: none; border-color: ${COLORS.gold}; }
 
         .btn-gold {
-          padding: 12px 20px;
+          padding: 10px 18px;
           background-color: ${COLORS.gold};
           color: #ffffff;
           border: none;
           border-radius: ${RADIUS.sm};
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 700;
           cursor: pointer;
           font-family: ${FONTS.body};
@@ -184,12 +196,32 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
           gap: 4px;
         }
         .btn-outline:hover { background-color: ${COLORS.surfaceAlt}; }
+
+        .tab-btn {
+          flex: 1;
+          padding: 12px;
+          font-size: 14px;
+          font-weight: 700;
+          border: none;
+          cursor: pointer;
+          background: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          border-bottom: 3px solid transparent;
+        }
+        .tab-btn.active {
+          color: ${COLORS.gold};
+          border-bottom: 3px solid ${COLORS.gold};
+          background-color: ${COLORS.surfaceAlt};
+        }
       `}</style>
 
-      <div style={{ maxWidth: '720px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '750px', margin: '0 auto' }}>
 
         {/* ヘッダー */}
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '24px', borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '20px', borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '16px' }}>
           <button
             onClick={onBack}
             style={{ background: 'none', border: 'none', color: COLORS.gold, fontSize: '14px', cursor: 'pointer', padding: '4px 8px 4px 0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}
@@ -197,65 +229,121 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
             <ArrowLeft size={16} /> ホームへ戻る
           </button>
           <h1 style={{ fontSize: '18px', margin: 0, flex: 1, textAlign: 'center', fontFamily: FONTS.display, color: COLORS.text, fontWeight: 700 }}>
-            予約フォーム・券種設定
+            券種 ＆ オプション設定
           </h1>
           <div style={{ width: '80px' }} />
         </div>
 
-        {/* 新規追加ボタン */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <div>
-            <h2 style={{ fontSize: '16px', margin: 0, fontFamily: FONTS.display, fontWeight: 700 }}>販売券種リスト</h2>
-            <span style={{ fontSize: '12px', color: COLORS.muted }}>登録中: {ticketTypes.length} 件</span>
-          </div>
-          <button onClick={handleOpenAdd} className="btn-gold">
-            <Plus size={16} /> 券種を追加する
+        {/* タブ切り替え（基本券種 / 追加オプション） */}
+        <div style={{ display: 'flex', backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '12px', overflow: 'hidden', marginBottom: '20px' }}>
+          <button
+            className={`tab-btn ${activeTab === 'tickets' ? 'active' : ''}`}
+            onClick={() => setActiveTab('tickets')}
+          >
+            <Ticket size={17} /> 基本券種 ({baseTickets.length})
+          </button>
+          <button
+            className={`tab-btn ${activeTab === 'options' ? 'active' : ''}`}
+            onClick={() => setActiveTab('options')}
+          >
+            <Sparkles size={17} /> 追加オプション・席種 ({optionTickets.length})
           </button>
         </div>
 
-        {/* 券種リスト */}
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '30px', color: COLORS.muted }}>データを読み込み中...</div>
-        ) : ticketTypes.length === 0 ? (
-          <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '36px', textAlign: 'center', color: COLORS.muted, fontSize: '13px' }}>
-            まだ券種が登録されていません。<br />上の「券種を追加する」ボタンから前売り券や当日券を登録してください。
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {ticketTypes.map(tk => (
-              <div key={tk.id} className="form-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: COLORS.surfaceAlt, display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.gold, border: `1px solid ${COLORS.border}` }}>
-                    <Ticket size={20} />
-                  </div>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontWeight: 700, fontSize: '15px', color: COLORS.text }}>{tk.name}</span>
-                      {tk.is_donation && (
-                        <span style={{ fontSize: '11px', fontWeight: 700, backgroundColor: 'rgba(201,121,31,0.15)', color: COLORS.gold, padding: '2px 6px', borderRadius: '4px' }}>
-                          カンパ制
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: '14px', fontWeight: 700, color: COLORS.gold, marginTop: '2px' }}>
-                      {tk.is_donation ? 'お客様任意金額（下限500円〜）' : `¥${tk.price?.toLocaleString()}`}
-                    </div>
-                    {tk.description && (
-                      <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '2px' }}>{tk.description}</div>
-                    )}
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <button onClick={() => handleOpenEdit(tk)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted, padding: '6px' }}>
-                    <Edit2 size={16} />
-                  </button>
-                  <button onClick={() => handleDelete(tk.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.danger, padding: '6px' }}>
-                    <Trash2 size={16} />
-                  </button>
-                </div>
+        {/* --- 基本券種タブ --- */}
+        {activeTab === 'tickets' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div>
+                <h2 style={{ fontSize: '16px', margin: 0, fontWeight: 700 }}>基本券種（一般・学割・セットなど）</h2>
+                <span style={{ fontSize: '12px', color: COLORS.muted }}>※お客様が1枚につき必ず1つ選択する入場券</span>
               </div>
-            ))}
+              <button onClick={() => handleOpenAdd('ticket')} className="btn-gold">
+                <Plus size={16} /> 基本券種を追加
+              </button>
+            </div>
+
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '30px', color: COLORS.muted }}>読み込み中...</div>
+            ) : baseTickets.length === 0 ? (
+              <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '30px', textAlign: 'center', color: COLORS.muted, fontSize: '13px' }}>
+                基本券種が登録されていません。「一般前売り」「セットチケット」「学割チケット」などを登録してください。
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {baseTickets.map(tk => (
+                  <div key={tk.id} className="form-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: COLORS.surfaceAlt, display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.gold, border: `1px solid ${COLORS.border}` }}>
+                        <Ticket size={20} />
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: '15px', color: COLORS.text }}>{tk.name}</div>
+                        <div style={{ fontSize: '14px', fontWeight: 700, color: COLORS.gold, marginTop: '2px' }}>
+                          ¥{tk.price?.toLocaleString()}
+                        </div>
+                        {tk.description && <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '2px' }}>{tk.description}</div>}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button onClick={() => handleOpenEdit(tk)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted, padding: '6px' }}><Edit2 size={16} /></button>
+                      <button onClick={() => handleDelete(tk.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.danger, padding: '6px' }}><Trash2 size={16} /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* --- 追加オプションタブ --- */}
+        {activeTab === 'options' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div>
+                <h2 style={{ fontSize: '16px', margin: 0, fontWeight: 700 }}>追加オプション（指定席・カンパなど）</h2>
+                <span style={{ fontSize: '12px', color: COLORS.muted }}>※基本券種に上乗せして選択できる追加メニュー</span>
+              </div>
+              <button onClick={() => handleOpenAdd('option')} className="btn-gold">
+                <Plus size={16} /> オプションを追加
+              </button>
+            </div>
+
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '30px', color: COLORS.muted }}>読み込み中...</div>
+            ) : optionTickets.length === 0 ? (
+              <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '30px', textAlign: 'center', color: COLORS.muted, fontSize: '13px' }}>
+                オプションが登録されていません。「最前列指定席（+500円）」「指定席」「応援カンパ」などを追加できます。
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {optionTickets.map(tk => (
+                  <div key={tk.id} className="form-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: 'rgba(84,87,214,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.indigo, border: `1px solid rgba(84,87,214,0.2)` }}>
+                        {tk.is_donation ? <HeartHandshake size={20} color={COLORS.gold} /> : <Sparkles size={20} />}
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontWeight: 700, fontSize: '15px', color: COLORS.text }}>{tk.name}</span>
+                          <span style={{ fontSize: '11px', fontWeight: 700, backgroundColor: tk.is_donation ? 'rgba(201,121,31,0.15)' : 'rgba(84,87,214,0.15)', color: tk.is_donation ? COLORS.gold : COLORS.indigo, padding: '2px 6px', borderRadius: '4px' }}>
+                            {tk.is_donation ? 'カンパ制' : '追加オプション'}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '14px', fontWeight: 700, color: COLORS.gold, marginTop: '2px' }}>
+                          {tk.is_donation ? 'お客様任意金額（下限500円〜）' : `+¥${tk.price?.toLocaleString()}`}
+                        </div>
+                        {tk.description && <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '2px' }}>{tk.description.replace('【オプション】', '')}</div>}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button onClick={() => handleOpenEdit(tk)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted, padding: '6px' }}><Edit2 size={16} /></button>
+                      <button onClick={() => handleDelete(tk.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.danger, padding: '6px' }}><Trash2 size={16} /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -267,7 +355,7 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
           <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '480px', backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: '24px', border: `1px solid ${COLORS.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ margin: 0, color: COLORS.text, fontFamily: FONTS.display, fontWeight: 700, fontSize: '18px' }}>
-                {editingTicket ? '券種の編集' : '新しい券種の追加'}
+                {editingTicket ? '設定の編集' : (categoryType === 'ticket' ? '基本券種の追加' : 'オプションの追加')}
               </h3>
               <button onClick={() => setIsModalOpen(false)} style={{ background: 'none', border: 'none', color: COLORS.muted, cursor: 'pointer' }}><X size={18} /></button>
             </div>
@@ -275,12 +363,12 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
             <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: COLORS.gold, marginBottom: '4px' }}>
-                  券種名（例: 前売り、一般、U-25割引、当日券など）
+                  {categoryType === 'ticket' ? '券種名（例: 一般前売り、学割、セット券など）' : 'オプション名（例: 最前列指定席、応援カンパなど）'}
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="例: 前売り"
+                  placeholder={categoryType === 'ticket' ? '例: 一般前売り' : '例: 最前列指定席'}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="text-input"
@@ -289,7 +377,7 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
 
               <div>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: COLORS.gold, marginBottom: '4px' }}>
-                  価格（円）
+                  {categoryType === 'ticket' ? '価格（円）' : '追加料金（円）'}
                 </label>
                 <input
                   type="number"
@@ -303,18 +391,20 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
                 />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input
-                  type="checkbox"
-                  id="donationCheck"
-                  checked={isDonation}
-                  onChange={(e) => setIsDonation(e.target.checked)}
-                  style={{ accentColor: COLORS.gold, width: '16px', height: '16px', cursor: 'pointer' }}
-                />
-                <label htmlFor="donationCheck" style={{ fontSize: '13px', color: COLORS.text, cursor: 'pointer', fontWeight: 700 }}>
-                  カンパ制（お客様が金額を自由に指定）にする
-                </label>
-              </div>
+              {categoryType === 'option' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="checkbox"
+                    id="donationCheck"
+                    checked={isDonation}
+                    onChange={(e) => setIsDonation(e.target.checked)}
+                    style={{ accentColor: COLORS.gold, width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                  <label htmlFor="donationCheck" style={{ fontSize: '13px', color: COLORS.text, cursor: 'pointer', fontWeight: 700 }}>
+                    カンパ制（お客様が金額を自由に指定）にする
+                  </label>
+                </div>
+              )}
 
               <div>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: COLORS.gold, marginBottom: '4px' }}>
@@ -322,7 +412,7 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
                 </label>
                 <input
                   type="text"
-                  placeholder="例: 25歳以下対象（当日要証明書）"
+                  placeholder="例: 特典付き、または当日要学生証"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="text-input"
