@@ -22,41 +22,40 @@ const COLORS = {
   danger: '#e11d48',
 };
 
-// 座標ズレが起きないSVGビューボックス切り抜き
-// 左上：黄色ポチ君 (x: 40, y: 30, w: 280, h: 280)
+// 元画像シートから左上の黄色ポチ君（4% 4%）を確実に表示
 const TikepochiHeroSprite = ({ size = 48, borderRadius = '14px' }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="40 30 280 280"
+  <div
     style={{
+      width: `${size}px`,
+      height: `${size}px`,
       borderRadius: borderRadius,
+      backgroundImage: 'url(/tikepochi-sheet.png)',
+      backgroundSize: '345% auto',
+      backgroundPosition: '4.5% 4%',
+      backgroundRepeat: 'no-repeat',
       border: '1.5px solid #f59e0b',
-      backgroundColor: '#fef3c7',
       flexShrink: 0,
-      display: 'block'
+      backgroundColor: '#fef3c7',
     }}
-  >
-    <image href="/tikepochi-sheet.png" x="0" y="0" width="1000" height="667" />
-  </svg>
+  />
 );
 
-// 右上：秋の大笑会ポチ君 (x: 680, y: 30, w: 280, h: 280)
+// 元画像シートから右上の秋の大笑会ポチ君（96% 4%）を確実に表示
 const TikepochiDaienkaiSprite = ({ size = 48, borderRadius = '12px' }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="680 30 280 280"
+  <div
     style={{
+      width: `${size}px`,
+      height: `${size}px`,
       borderRadius: borderRadius,
+      backgroundImage: 'url(/tikepochi-sheet.png)',
+      backgroundSize: '345% auto',
+      backgroundPosition: '95.5% 4%',
+      backgroundRepeat: 'no-repeat',
       border: '1.5px solid #fbbf24',
-      backgroundColor: '#1e1b4b',
       flexShrink: 0,
-      display: 'block'
+      backgroundColor: '#1e1b4b',
     }}
-  >
-    <image href="/tikepochi-sheet.png" x="0" y="0" width="1000" height="667" />
-  </svg>
+  />
 );
 
 export default function Myreservationspag() {
@@ -383,8 +382,6 @@ export default function Myreservationspag() {
 
         {/* 📲 ホーム画面追加（PWA）＆ LINE連携 */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '18px' }}>
-          
-          {/* ホーム画面追加 */}
           <div style={{ backgroundColor: '#ffffff', border: `1.5px dashed #f59e0b`, borderRadius: '16px', padding: '12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 800, color: '#d97706' }}>
               <Smartphone size={15} /> ホーム画面追加
@@ -394,7 +391,6 @@ export default function Myreservationspag() {
             </div>
           </div>
 
-          {/* LINE連携 */}
           <div style={{ backgroundColor: '#ffffff', border: `1.5px solid ${isLineLinked ? '#86efac' : '#bbf7d0'}`, borderRadius: '16px', padding: '12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 800, color: '#15803d' }}>
               <div style={{ width: '16px', height: '16px', borderRadius: '4px', backgroundColor: '#06c755', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: 900 }}>L</div>
@@ -413,7 +409,6 @@ export default function Myreservationspag() {
               </button>
             )}
           </div>
-
         </div>
 
         {/* 🎟️ ご予約中のチケット一覧 */}
@@ -441,7 +436,6 @@ export default function Myreservationspag() {
 
                 return (
                   <div key={res.id} className="ticket-card">
-                    
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ fontSize: '11px', fontWeight: 900, color: '#ffffff', backgroundColor: badgeColor, padding: '3px 8px', borderRadius: '6px' }}>
@@ -507,12 +501,11 @@ export default function Myreservationspag() {
                           setActiveModal('cancel');
                         }}
                         className="btn-bounce"
-                        style={{ padding: '10px 14px', borderRadius: '12px', border: `1px solid #fecdd3`, backgroundColor: '#fff', color: COLORS.danger, fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
+                        style={{ padding: '10px 14px', borderRadius: '12px', border: `1.5px solid #fecdd3`, backgroundColor: '#fff', color: COLORS.danger, fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
                       >
                         取消
                       </button>
                     </div>
-
                   </div>
                 );
               })}
