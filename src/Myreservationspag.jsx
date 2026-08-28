@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Check, Plus, Search } from 'lucide-react';
-import { supabase } from './supabaseClient'; // ⭐ Supabaseクライアントをインポート
+import { supabase } from './supabaseClient';
+import { 
+  Ticket, Calendar, MapPin, Bell, MessageSquare, ExternalLink, 
+  Smartphone, Share2, Star, CheckCircle2, AlertCircle, X, 
+  User, Send, Edit3, Heart
+} from 'lucide-react';
 
 const COLORS = {
   bg: '#faf5ea',
@@ -8,395 +12,569 @@ const COLORS = {
   surfaceAlt: '#f7efe0',
   border: 'rgba(201,121,31,0.22)',
   gold: '#c9791f',
-  coral: '#e85a45',
-  indigo: '#5457d6',
-  success: '#1f9a56',
+  indigo: '#4338ca',
   text: '#2b2438',
   muted: '#8a8398',
+  success: '#1f9a56',
+  danger: '#e85a45',
 };
 
-const CASTS = [
-  { name: '山田 太郎', ticketVisibility: 'assigned_only' },
-  { name: '鈴木 次郎', ticketVisibility: 'all_stages' },
-  { name: '田中 三郎', ticketVisibility: 'assigned_only' },
-];
-
-const STAGES = [
-  { id: 's1', date: '8/1', time: '15:00' },
-  { id: 's2', date: '8/1', time: '19:00' },
-  { id: 's3', date: '8/2', time: '15:00' },
-];
-
-const INITIAL_RESERVATIONS = [
-  { id: '1', groupId: 'g1', name: '山田 花子', stageId: 's1', ticketType: '指定席オプション', count: 2, cast: '山田 太郎', isCheckedIn: false },
-  { id: '2', groupId: 'g2', name: '山本 尚子', stageId: 's1', ticketType: '自由席', count: 1, cast: '鈴木 次郎', isCheckedIn: false },
-  { id: '3', groupId: 'g3', name: '高橋 美咲', stageId: 's2', ticketType: '自由席', count: 2, cast: '山田 太郎', isCheckedIn: true },
-  { id: '4', groupId: 'g4', name: '中村 一郎', stageId: 's3', ticketType: '自由席', count: 4, cast: '鈴木 次郎', isCheckedIn: false },
-  { id: '5', groupId: 'g5', leg: 'A公演', name: '佐藤 健太', stageId: 's2', ticketType: 'セット券', count: 3, cast: '山田 太郎', isCheckedIn: false },
-  { id: '6', groupId: 'g5', leg: 'B公演', name: '佐藤 健太', stageId: 's3', ticketType: 'セット券', count: 3, cast: '田中 三郎', isCheckedIn: false },
-];
-
-export default function MyReservationsPage({ productionId }) {
-  const [currentCast, setCurrentCast] = useState('山田 太郎');
-  const allTabVisible = CASTS.find(c => c.name === currentCast)?.ticketVisibility === 'all_stages';
-  const [activeTab, setActiveTab] = useState('mine');
+export default function Myreservationspag() {
+  const [token, setToken] = useState('');
   const [reservations, setReservations] = useState([]);
+  const [stages, setStages] = useState({});
+  const [productions, setProductions] = useState({});
+  const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [selectedStageId, setSelectedStageId] = useState(null);
-  const [editingId, setEditingId] = useState(null);
-  const [editDraft, setEditDraft] = useState({ count: 1, stageId: STAGES[0].id });
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newEntry, setNewEntry] = useState({ name: '', stageId: STAGES[0].id, ticketType: '自由席', count: 1 });
+  // 変更・キャンセル・アンケート用モーダル
+  const [activeModal, setActiveModal] = useState(null); // 'edit' | 'cancel' | 'survey'
+  const [selectedRes, setSelectedRes] = useState(null);
+  const [editCount, setEditCount] = useState(1);
+  const [editMemo, setEditMemo] = useState('');
 
-  const [allSearch, setAllSearch] = useState('');
-  const [allStageFilter, setAllStageFilter] = useState('');
+  // アンケート・評価用
+  const [rating, setRating] = useState(5);
+  const [surveyText, setSurveyText] = useState('');
+  const [surveySent, setSurveySent] = useState(false);
 
-  // 1. Supabaseから予約一覧を取得
-  const fetchReservations = async () => {
-    setLoading(true);
-    let query = supabase.from('reservations').select('*').order('created_at', { ascending: false });
-
-    if (productionId) {
-      query = query.eq('production_id', productionId);
-    }
-
-    const { data, error } = await query;
-
-    if (!error && data && data.length > 0) {
-      const formatted = data.map(item => ({
-        id: item.id,
-        groupId: item.group_id || item.id,
-        name: item.customer_name || '',
-        stageId: item.stage_id || 's1',
-        ticketType: item.ticket_type || '自由席',
-        count: item.ticket_count || 1,
-        cast: item.cast_name || '指定なし',
-        isCheckedIn: item.is_checked_in || false,
-      }));
-      setReservations(formatted);
-    } else {
-      setReservations(INITIAL_RESERVATIONS);
-    }
-    setLoading(false);
-  };
+  // PWA / 通知 / LINE
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [isLineLinked, setIsLineLinked] = useState(false);
 
   useEffect(() => {
-    fetchReservations();
-  }, [productionId]);
+    const urlParams = new URLSearchParams(window.location.search);
+    const t = urlParams.get('token') || localStorage.getItem('tp_mypage_token') || '';
+    setToken(t);
 
-  const stageLabel = (id) => { const s = STAGES.find(x => x.id === id); return s ? `${s.date} ${s.time}` : ''; };
-  const reservedCount = (stageId) => reservations.filter(r => r.stageId === stageId).reduce((s, r) => s + r.count, 0);
-
-  const myGroupIds = new Set(
-    reservations.filter(r => r.cast === currentCast).map(r => r.groupId)
-  );
-  const myRowsAll = reservations.filter(r => myGroupIds.has(r.groupId));
-  const myRows = selectedStageId ? myRowsAll.filter(r => r.stageId === selectedStageId) : myRowsAll;
-  const myAttendanceCount = reservations.filter(r => r.cast === currentCast).reduce((s, r) => s + r.count, 0);
-
-  const rowsByStage = (rows) => {
-    const map = {};
-    rows.forEach(r => { (map[r.stageId] = map[r.stageId] || []).push(r); });
-    return map;
-  };
-  const myRowsByStage = rowsByStage(myRows);
-
-  // 来場チェックイン切り替え (UPDATE)
-  const toggleCheckIn = async (id) => {
-    const target = reservations.find(r => r.id === id);
-    if (!target) return;
-
-    const nextStatus = !target.isCheckedIn;
-    setReservations(prev => prev.map(r => r.id === id ? { ...r, isCheckedIn: nextStatus } : r));
-
-    await supabase.from('reservations').update({ is_checked_in: nextStatus }).eq('id', id);
-  };
-
-  const startEdit = (r) => {
-    if (editingId === r.id) { setEditingId(null); return; }
-    setEditingId(r.id);
-    setEditDraft({ count: r.count, stageId: r.stageId });
-  };
-
-  // 予約変更の保存 (UPDATE)
-  const handleInlineSave = async (id, patch) => {
-    setReservations(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r));
-    setEditingId(null);
-
-    await supabase.from('reservations').update({
-      ticket_count: patch.count,
-      stage_id: patch.stageId,
-    }).eq('id', id);
-  };
-
-  // 代理予約の追加 (INSERT)
-  const handleAddEntry = async () => {
-    if (!newEntry.name) return;
-
-    const payload = {
-      production_id: productionId,
-      customer_name: newEntry.name,
-      stage_id: newEntry.stageId,
-      ticket_type: newEntry.ticketType,
-      ticket_count: Number(newEntry.count),
-      cast_name: currentCast,
-      is_checked_in: false,
-    };
-
-    const { error } = await supabase.from('reservations').insert([payload]);
-
-    if (error) {
-      alert('予約追加に失敗しました: ' + error.message);
+    if (t) {
+      localStorage.setItem('tp_mypage_token', t);
+      fetchMypageData(t);
     } else {
-      fetchReservations();
-      setNewEntry({ name: '', stageId: STAGES[0].id, ticketType: '自由席', count: 1 });
-      setShowAddForm(false);
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchMypageData = async (mypageToken) => {
+    setLoading(true);
+    try {
+      // 1. 予約データの取得
+      const { data: resData, error: resErr } = await supabase
+        .from('reservations')
+        .select('*, ticket_types(name, price)')
+        .eq('mypage_token', mypageToken)
+        .order('created_at', { ascending: false });
+
+      if (resErr) throw resErr;
+      setReservations(resData || []);
+
+      if (resData && resData.length > 0) {
+        if (resData[0].line_user_id) setIsLineLinked(true);
+
+        const prodIds = [...new Set(resData.map(r => r.production_id).filter(Boolean))];
+        const stageIds = [...new Set(resData.map(r => r.stage_id).filter(Boolean))];
+
+        // 2. 公演・ステージ・お知らせの並列取得
+        const [{ data: prodList }, { data: stageList }, { data: msgList }] = await Promise.all([
+          supabase.from('productions').select('*').in('id', prodIds),
+          supabase.from('stages').select('*').in('id', stageIds),
+          supabase.from('announcements').select('*').in('production_id', prodIds).order('created_at', { ascending: false }).limit(5)
+        ]);
+
+        const pMap = {};
+        (prodList || []).forEach(p => { pMap[p.id] = p; });
+        setProductions(pMap);
+
+        const sMap = {};
+        (stageList || []).forEach(s => { sMap[s.id] = s; });
+        setStages(sMap);
+
+        setAnnouncements(msgList || []);
+      }
+    } catch (e) {
+      console.error('Mypage fetch error:', e);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const allFiltered = reservations.filter(r =>
-    (!allSearch || r.name.includes(allSearch)) &&
-    (!allStageFilter || r.stageId === allStageFilter)
-  );
+  // Push通知
+  const handleTogglePush = async () => {
+    if (!('Notification' in window)) {
+      alert('お使いのブラウザはプッシュ通知に対応していません。');
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      setPushEnabled(true);
+      alert('開演前リマインドや重要なお知らせのプッシュ通知をONにしました！');
+    } else {
+      alert('通知がブロックされました。ブラウザの設定から許可してください。');
+    }
+  };
 
-  const Row = ({ r, editable }) => {
-    const isEditing = editingId === r.id;
+  // LINE連携
+  const handleLineLink = () => {
+    const liffUrl = `https://line.me/R/`; 
+    alert('LINE連携画面へ進みます。連携すると別サイトの特典コンテンツが自動アンロックされます。');
+    window.location.href = liffUrl;
+  };
 
+  // 予約変更の送信
+  const handleUpdateReservation = async () => {
+    if (!selectedRes) return;
+    try {
+      const { error } = await supabase
+        .from('reservations')
+        .update({
+          count: editCount,
+          memo: editMemo,
+        })
+        .eq('id', selectedRes.id);
+
+      if (error) throw error;
+      alert('予約内容を変更しました。');
+      setActiveModal(null);
+      fetchMypageData(token);
+    } catch (e) {
+      alert('変更に失敗しました: ' + e.message);
+    }
+  };
+
+  // 予約キャンセルの送信
+  const handleCancelReservation = async () => {
+    if (!selectedRes) return;
+    if (confirm('本当にこの予約をキャンセルしますか？')) {
+      try {
+        const { error } = await supabase
+          .from('reservations')
+          .delete()
+          .eq('id', selectedRes.id);
+
+        if (error) throw error;
+        alert('予約をキャンセルしました。');
+        setActiveModal(null);
+        fetchMypageData(token);
+      } catch (e) {
+        alert('キャンセルに失敗しました: ' + e.message);
+      }
+    }
+  };
+
+  // 匿名アンケート送信
+  const handleSubmitSurvey = async () => {
+    if (!surveyText.trim()) return;
+    try {
+      await supabase.from('feedbacks').insert([{
+        production_id: selectedRes?.production_id,
+        rating: rating,
+        comment: surveyText.trim(),
+        is_anonymous: true
+      }]);
+      setSurveySent(true);
+      setTimeout(() => {
+        setSurveySent(false);
+        setActiveModal(null);
+        setSurveyText('');
+      }, 2000);
+    } catch (e) {
+      alert('送信に失敗しました');
+    }
+  };
+
+  // GoogleカレンダーURL生成
+  const getGoogleCalendarUrl = (prod, stage) => {
+    if (!stage || !prod) return '#';
+    const dStr = stage.performance_date || stage.stage_date || '';
+    const dateFormatted = dStr.replace(/-/g, '');
+    const startTime = (stage.start_time || '18:00').replace(':', '') + '00';
+    return `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(prod.title)}&dates=${dateFormatted}T${startTime}/${dateFormatted}T${startTime}&location=${encodeURIComponent(prod.venue_name || '劇場')}`;
+  };
+
+  const today = new Date().toISOString().slice(0, 10);
+  const currentReservations = [];
+  const pastReservations = [];
+
+  reservations.forEach(r => {
+    const stage = stages[r.stage_id];
+    const sDate = stage?.performance_date || stage?.stage_date || '9999-99-99';
+    if (sDate >= today) {
+      currentReservations.push(r);
+    } else {
+      pastReservations.push(r);
+    }
+  });
+
+  if (loading) {
     return (
-      <div className="row-card">
-        <div className="row-main" onClick={() => editable && startEdit(r)}>
+      <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.text, fontFamily: 'sans-serif' }}>
+        マイページを読み込み中...
+      </div>
+    );
+  }
+
+  if (!token && reservations.length === 0) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, padding: '32px 16px', boxSizing: 'border-box', fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+        <div style={{ maxWidth: '480px', margin: '40px auto', backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '16px', padding: '24px', textAlign: 'center' }}>
+          <Ticket size={48} color={COLORS.gold} style={{ margin: '0 auto 12px auto' }} />
+          <h2 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 8px 0' }}>予約確認トークンが見つかりません</h2>
+          <p style={{ fontSize: '13px', color: COLORS.muted, lineHeight: '1.6' }}>
+            予約完了時にお送りしたメールに記載されている「マイページ確認URL」からアクセスしてください。
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '16px 12px 60px 12px', boxSizing: 'border-box' }}>
+      <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+
+        {/* ヘッダー */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
           <div>
-            <span className="row-name">{r.name}</span>
-            {r.leg && <span className="leg-badge">{r.leg}</span>}
+            <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.gold }}>office Knight チケットポータル</div>
+            <h1 style={{ fontSize: '20px', fontWeight: 800, margin: '2px 0 0 0' }}>お客様マイページ</h1>
           </div>
-          <span className="row-detail">{r.ticketType} × {r.count}枚</span>
-          {editable && <span className="cast-badge">{r.cast}</span>}
           <button
-            className={`checkin-chip ${r.isCheckedIn ? 'done' : ''}`}
-            onClick={(e) => { e.stopPropagation(); toggleCheckIn(r.id); }}
+            onClick={handleTogglePush}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '20px',
+              border: `1px solid ${pushEnabled ? COLORS.success : COLORS.border}`,
+              backgroundColor: pushEnabled ? '#f0fdf4' : COLORS.surface,
+              color: pushEnabled ? COLORS.success : COLORS.text,
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
           >
-            {r.isCheckedIn ? <><Check size={13} /> 来場済</> : '未来場'}
+            <Bell size={13} /> {pushEnabled ? '通知ON' : '通知設定'}
           </button>
         </div>
 
-        {isEditing && (
-          <div className="row-edit" onClick={(e) => e.stopPropagation()}>
-            <div>
-              <label className="edit-label">枚数</label>
-              <input type="number" min="1" className="edit-input" value={editDraft.count} onChange={(e) => setEditDraft({ ...editDraft, count: Number(e.target.value) })} />
-            </div>
-            <div>
-              <label className="edit-label">回</label>
-              <select className="edit-input" value={editDraft.stageId} onChange={(e) => setEditDraft({ ...editDraft, stageId: e.target.value })}>
-                {STAGES.map(s => <option key={s.id} value={s.id}>{s.date} {s.time}</option>)}
-              </select>
-            </div>
-            <button className="edit-save" onClick={() => handleInlineSave(r.id, editDraft)}>保存</button>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  return (
-    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '22px' }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap');
-
-        .tab-btn {
-          padding: 9px 18px; border-radius: 999px; border: 1px solid ${COLORS.border}; cursor: pointer;
-          font-size: 13px; font-weight: 700; background: ${COLORS.surface}; color: ${COLORS.muted};
-        }
-        .tab-btn.active { background: ${COLORS.gold}; color: #fff; border-color: ${COLORS.gold}; }
-
-        .row-card { border-bottom: 1px solid rgba(201,121,31,0.1); }
-        .row-card:last-child { border-bottom: none; }
-        .row-main {
-          display: grid; grid-template-columns: 1.4fr 1.4fr 1fr 0.9fr; align-items: center; gap: 10px;
-          padding: 12px 14px; cursor: pointer; font-size: 13px;
-        }
-        .row-main:hover { background: #fff6e8; }
-        .row-name { font-weight: 700; font-size: 14px; }
-        .row-detail { color: ${COLORS.text}; }
-        .leg-badge {
-          margin-left: 6px; font-size: 10px; color: ${COLORS.coral}; background: ${COLORS.coral}15;
-          padding: 1px 7px; border-radius: 999px;
-        }
-        .cast-badge {
-          font-size: 11px; color: ${COLORS.indigo}; background: ${COLORS.indigo}15;
-          padding: 2px 8px; border-radius: 999px; justify-self: start;
-        }
-        .checkin-chip {
-          font-size: 11px; padding: 5px 10px; border-radius: 999px; border: 1px solid ${COLORS.border};
-          background: ${COLORS.surface}; color: ${COLORS.muted}; cursor: pointer;
-          display: flex; align-items: center; gap: 4px; justify-self: end;
-        }
-        .checkin-chip.done { background: ${COLORS.success}15; color: ${COLORS.success}; border-color: transparent; }
-
-        .row-edit {
-          display: flex; align-items: flex-end; gap: 10px; padding: 10px 14px 14px; background: ${COLORS.surfaceAlt};
-        }
-        .edit-label { font-size: 10px; color: ${COLORS.muted}; display: block; margin-bottom: 3px; font-weight: 700; }
-        .edit-input {
-          padding: 7px 9px; border-radius: 7px; border: 1px solid ${COLORS.border}; font-size: 13px;
-          font-family: 'Zen Kaku Gothic New', sans-serif;
-        }
-        .edit-save {
-          padding: 8px 14px; border-radius: 7px; border: none; background: ${COLORS.gold}; color: #fff;
-          font-size: 12px; font-weight: 700; cursor: pointer;
-        }
-
-        .add-form-input {
-          padding: 9px 10px; border-radius: 8px; border: 1px solid ${COLORS.border}; font-size: 13px;
-          font-family: 'Zen Kaku Gothic New', sans-serif;
-        }
-
-        .stage-card {
-          flex: 0 0 128px; padding: 10px 12px; border-radius: 10px; cursor: pointer;
-          border: 2px solid ${COLORS.border}; background: ${COLORS.surface}; transition: border-color 0.15s ease, transform 0.1s ease;
-        }
-        .stage-card:hover { transform: translateY(-2px); }
-        .stage-card.active { border-color: ${COLORS.gold}; background: #fff6e8; }
-
-        .add-proxy-btn {
-          display: flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 999px;
-          border: 1px solid ${COLORS.border}; background: ${COLORS.surface}; color: ${COLORS.text};
-          font-size: 13px; font-weight: 700; cursor: pointer; font-family: 'Zen Kaku Gothic New', sans-serif;
-        }
-        .add-proxy-btn:hover { background: ${COLORS.surfaceAlt}; }
-      `}</style>
-
-      {/* デモ用コントロール */}
-      <div className="no-print" style={{ display: 'flex', gap: '10px', marginBottom: '14px', fontSize: '12px', color: COLORS.muted, alignItems: 'center' }}>
-        <span>デモ設定：</span>
-        ログイン中
-        <select className="add-form-input" style={{ padding: '5px 8px' }} value={currentCast} onChange={(e) => setCurrentCast(e.target.value)}>
-          {CASTS.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-        </select>
-        <span style={{ fontSize: '11px' }}>
-          全体タブ：{allTabVisible ? '表示可' : '非公開'} {loading && '(同期中...)'}
-        </span>
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px' }}>
-        <div>
-          <h1 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 4px' }}>{currentCast} さんのマイページ</h1>
-          <div style={{ fontSize: '13px', color: COLORS.muted }}>
-            自分の動員数 <strong style={{ color: COLORS.gold, fontSize: '16px' }}>{myAttendanceCount}</strong> 人
+        {/* ホーム画面追加（PWA）案内 */}
+        <div style={{ backgroundColor: '#fffdf9', border: `1px dashed ${COLORS.gold}`, borderRadius: '12px', padding: '10px 14px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Smartphone size={18} color={COLORS.gold} />
+          <div style={{ fontSize: '11px', color: COLORS.text, lineHeight: '1.4' }}>
+            <strong>ホーム画面に追加</strong>すると、次回からアプリのようにワンタップでチケットや特典にアクセスできます。
           </div>
         </div>
-        <button className="add-proxy-btn" onClick={() => setShowAddForm(!showAddForm)}>
-          <Plus size={14} /> 窓口代理予約を追加
-        </button>
-      </div>
 
-      {showAddForm && (
-        <div style={{ backgroundColor: COLORS.surface, borderRadius: '10px', border: `1px solid ${COLORS.border}`, padding: '14px', marginBottom: '18px' }}>
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-            <input className="add-form-input" placeholder="お客様名" value={newEntry.name} onChange={(e) => setNewEntry({ ...newEntry, name: e.target.value })} />
-            <select className="add-form-input" value={newEntry.stageId} onChange={(e) => setNewEntry({ ...newEntry, stageId: e.target.value })}>
-              {STAGES.map(s => <option key={s.id} value={s.id}>{s.date} {s.time}</option>)}
-            </select>
-            <select className="add-form-input" value={newEntry.ticketType} onChange={(e) => setNewEntry({ ...newEntry, ticketType: e.target.value })}>
-              <option value="自由席">自由席</option>
-              <option value="指定席オプション">指定席オプション</option>
-              <option value="セット券">セット券</option>
-            </select>
-            <input className="add-form-input" type="number" min="1" style={{ width: '70px' }} value={newEntry.count} onChange={(e) => setNewEntry({ ...newEntry, count: e.target.value })} />
+        {/* LINE連携 */}
+        <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '12px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ width: '28px', height: '28px', borderRadius: '6px', backgroundColor: '#06c755', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '12px' }}>
+              LINE
+            </div>
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 700 }}>LINE ID連携</div>
+              <div style={{ fontSize: '10px', color: COLORS.muted }}>
+                {isLineLinked ? '連携完了（特典サイト自動認証）' : '連携して特典サイトへスムーズにアクセス'}
+              </div>
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button className="edit-save" onClick={handleAddEntry}>追加する</button>
-            <button className="tab-btn" onClick={() => setShowAddForm(false)}>キャンセル</button>
-          </div>
-        </div>
-      )}
-
-      {/* ダッシュボード */}
-      <div className="no-print" style={{ marginBottom: '18px' }}>
-        <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
-          {STAGES.map(s => (
-            <div
-              key={s.id}
-              className={`stage-card ${selectedStageId === s.id ? 'active' : ''}`}
-              onClick={() => setSelectedStageId(selectedStageId === s.id ? null : s.id)}
+          {!isLineLinked && (
+            <button
+              onClick={handleLineLink}
+              style={{ padding: '6px 12px', borderRadius: '8px', border: 'none', backgroundColor: '#06c755', color: '#fff', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
             >
-              <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '4px', whiteSpace: 'nowrap' }}>{s.date} {s.time}</div>
-              <div style={{ fontSize: '12px', color: COLORS.muted }}>{reservedCount(s.id)} 枚</div>
-            </div>
-          ))}
+              連携する
+            </button>
+          )}
         </div>
-        {selectedStageId && (
-          <button className="tab-btn" style={{ marginTop: '8px' }} onClick={() => setSelectedStageId(null)}>絞り込み解除</button>
-        )}
-      </div>
 
-      {/* タブ */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '18px' }}>
-        <button className={`tab-btn ${activeTab === 'mine' ? 'active' : ''}`} onClick={() => setActiveTab('mine')}>自分の予約</button>
-        <button className={`tab-btn ${activeTab === 'all' ? 'active' : ''}`} onClick={() => setActiveTab('all')}>全体</button>
-      </div>
-
-      {activeTab === 'mine' && (
-        <div>
-          {(selectedStageId ? STAGES.filter(s => s.id === selectedStageId) : STAGES).map(s => {
-            const rows = myRowsByStage[s.id] || [];
-            return (
-              <div key={s.id} style={{ marginBottom: '16px' }}>
-                <div style={{ fontSize: '13px', fontWeight: 700, color: COLORS.muted, marginBottom: '6px' }}>
-                  {s.date} {s.time} の回（{rows.length}件）
-                </div>
-                <div style={{ backgroundColor: COLORS.surface, borderRadius: '10px', border: `1px solid ${COLORS.border}`, overflow: 'hidden' }}>
-                  {rows.length > 0 ? rows.map(r => <Row key={r.id} r={r} editable />) : (
-                    <div style={{ padding: '16px', textAlign: 'center', color: COLORS.muted, fontSize: '13px' }}>該当する予約はありません</div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {activeTab === 'all' && (
-        !allTabVisible ? (
-          <div style={{ backgroundColor: COLORS.surface, borderRadius: '10px', border: `1px solid ${COLORS.border}`, padding: '30px', textAlign: 'center', color: COLORS.muted, fontSize: '13px' }}>
-            全体タブは非公開に設定されています（管理者の設定により、担当分のみ閲覧できます）
-          </div>
-        ) : (
-          <div>
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
-              <div style={{ position: 'relative', flex: '1 1 200px' }}>
-                <Search size={14} color={COLORS.gold} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-                <input
-                  className="add-form-input"
-                  style={{ width: '100%', paddingLeft: '30px', boxSizing: 'border-box' }}
-                  placeholder="お名前で検索..."
-                  value={allSearch}
-                  onChange={(e) => setAllSearch(e.target.value)}
-                />
-              </div>
-              <select className="add-form-input" value={allStageFilter} onChange={(e) => setAllStageFilter(e.target.value)}>
-                <option value="">回（全て）</option>
-                {STAGES.map(s => <option key={s.id} value={s.id}>{s.date} {s.time}</option>)}
-              </select>
+        {/* 劇団からのお知らせ */}
+        {announcements.length > 0 && (
+          <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '14px', padding: '14px', marginBottom: '16px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 800, color: COLORS.gold, display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px' }}>
+              <MessageSquare size={13} /> 劇団からのご案内
             </div>
-
-            <div style={{ backgroundColor: COLORS.surface, borderRadius: '10px', border: `1px solid ${COLORS.border}`, overflow: 'hidden' }}>
-              {allFiltered.length === 0 ? (
-                <div style={{ padding: '20px', textAlign: 'center', color: COLORS.muted, fontSize: '13px' }}>該当する予約はありません</div>
-              ) : allFiltered.map(r => (
-                <div key={r.id} className="row-main" style={{ gridTemplateColumns: '1.4fr 1.4fr 1fr', cursor: 'default' }}>
-                  <span className="row-name">{r.name}{r.leg && <span className="leg-badge">{r.leg}</span>}</span>
-                  <span className="row-detail">{r.ticketType} × {r.count}枚（{stageLabel(r.stageId)}）</span>
-                  <span className={`checkin-chip ${r.isCheckedIn ? 'done' : ''}`} style={{ justifySelf: 'end', cursor: 'default' }}>
-                    {r.isCheckedIn ? <><Check size={13} /> 来場済</> : '未来場'}
-                  </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {announcements.map(msg => (
+                <div key={msg.id} style={{ fontSize: '12px', backgroundColor: COLORS.surfaceAlt, padding: '8px 10px', borderRadius: '8px' }}>
+                  <div style={{ fontWeight: 700, marginBottom: '2px' }}>{msg.title}</div>
+                  <div style={{ color: COLORS.muted, fontSize: '11px', lineHeight: '1.4' }}>{msg.body}</div>
                 </div>
               ))}
             </div>
           </div>
-        )
+        )}
+
+        {/* 現在予約中の公演チケット */}
+        <div style={{ marginBottom: '24px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 800, color: COLORS.gold, marginBottom: '8px' }}>
+            🎟️ ご予約中の公演チケット
+          </div>
+
+          {currentReservations.length === 0 ? (
+            <div style={{ backgroundColor: COLORS.surface, borderRadius: '12px', border: `1px solid ${COLORS.border}`, padding: '24px', textAlign: 'center', color: COLORS.muted, fontSize: '13px' }}>
+              現在予約中の公演はありません。
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {currentReservations.map(res => {
+                const prod = productions[res.production_id] || {};
+                const stage = stages[res.stage_id] || {};
+                const tk = res.ticket_types || { name: '一般', price: 0 };
+                const subtotal = (tk.price * (res.count || 1)) + (res.donation_amount || 0);
+
+                return (
+                  <div
+                    key={res.id}
+                    style={{
+                      backgroundColor: COLORS.surface,
+                      border: `1.5px solid ${COLORS.gold}`,
+                      borderRadius: '16px',
+                      padding: '16px',
+                      boxShadow: '0 2px 8px rgba(201,121,31,0.08)'
+                    }}
+                  >
+                    <div style={{ borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '8px', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 800, color: '#ffffff', backgroundColor: COLORS.gold, padding: '2px 8px', borderRadius: '4px' }}>
+                        ご予約確定
+                      </span>
+                      <span style={{ fontSize: '12px', color: COLORS.muted }}>
+                        予約番号: #{res.id.slice(0, 6)}
+                      </span>
+                    </div>
+
+                    <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 10px 0', color: COLORS.text }}>
+                      {prod.title || '公演情報'}
+                    </h3>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: COLORS.text, marginBottom: '14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Calendar size={14} color={COLORS.gold} />
+                        <strong>{stage.performance_date || stage.stage_date} {stage.start_time?.slice(0, 5)}開演</strong>
+                        {stage.team_name && <span style={{ fontSize: '11px', color: COLORS.gold }}>({stage.team_name})</span>}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <MapPin size={14} color={COLORS.gold} />
+                        <span>{prod.venue_name || '布施PEベース'}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Ticket size={14} color={COLORS.gold} />
+                        <span>{tk.name} × <strong>{res.count}枚</strong>（¥{subtotal.toLocaleString()} 当日精算）</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <User size={14} color={COLORS.gold} />
+                        <span>扱いキャスト: <strong>{res.staff_name || '劇団扱い'}</strong></span>
+                      </div>
+                    </div>
+
+                    {/* 特典コンテンツサイトへの専用導線 */}
+                    <button
+                      onClick={() => window.open('https://office-knight-partner-site.vercel.app', '_blank')}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        borderRadius: '10px',
+                        border: 'none',
+                        backgroundColor: COLORS.indigo,
+                        color: '#fff',
+                        fontWeight: 700,
+                        fontSize: '13px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        marginBottom: '10px',
+                        boxShadow: '0 2px 6px rgba(67,56,202,0.25)'
+                      }}
+                    >
+                      <ExternalLink size={15} /> 🎁 観劇者限定コンテンツサイトを開く
+                    </button>
+
+                    {/* カレンダー・変更・キャンセル */}
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <a
+                        href={getGoogleCalendarUrl(prod, stage)}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ flex: 1, padding: '8px', textAlign: 'center', textDecoration: 'none', borderRadius: '8px', border: `1px solid ${COLORS.border}`, backgroundColor: COLORS.surfaceAlt, color: COLORS.text, fontSize: '11px', fontWeight: 700 }}
+                      >
+                        📅 カレンダー登録
+                      </a>
+                      <button
+                        onClick={() => {
+                          setSelectedRes(res);
+                          setEditCount(res.count || 1);
+                          setEditMemo(res.memo || '');
+                          setActiveModal('edit');
+                        }}
+                        style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, backgroundColor: COLORS.surface, color: COLORS.gold, fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        <Edit3 size={12} /> 予約変更
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedRes(res);
+                          setActiveModal('cancel');
+                        }}
+                        style={{ padding: '8px 12px', borderRadius: '8px', border: `1px solid rgba(232,90,69,0.3)`, backgroundColor: '#fff', color: COLORS.danger, fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        キャンセル
+                      </button>
+                    </div>
+
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 過去の観劇履歴 ＆ 匿名アンケート */}
+        {pastReservations.length > 0 && (
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 800, color: COLORS.muted, marginBottom: '8px' }}>
+              📜 過去にご観劇いただいた公演
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {pastReservations.map(res => {
+                const prod = productions[res.production_id] || {};
+                const stage = stages[res.stage_id] || {};
+
+                return (
+                  <div key={res.id} style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 700 }}>{prod.title}</div>
+                      <div style={{ fontSize: '11px', color: COLORS.muted }}>
+                        {stage.performance_date || stage.stage_date} ご来場ありがとうございました
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedRes(res);
+                        setActiveModal('survey');
+                      }}
+                      style={{ padding: '6px 12px', borderRadius: '8px', border: `1px solid ${COLORS.gold}`, backgroundColor: '#fffdf9', color: COLORS.gold, fontSize: '11px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <Star size={12} fill={COLORS.gold} /> 感想・評価を送る
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+      </div>
+
+      {/* 予約変更モーダル */}
+      {activeModal === 'edit' && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
+          <div style={{ width: '100%', maxWidth: '420px', backgroundColor: COLORS.surface, borderRadius: '16px', padding: '20px', border: `1px solid ${COLORS.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>ご予約内容の変更</h3>
+              <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={18} /></button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold, display: 'block', marginBottom: '4px' }}>枚数</label>
+                <select value={editCount} onChange={(e) => setEditCount(parseInt(e.target.value))} style={{ width: '100%', padding: '8px', borderRadius: '8px', border: `1px solid ${COLORS.border}` }}>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(cnt => (
+                    <option key={cnt} value={cnt}>{cnt}枚</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold, display: 'block', marginBottom: '4px' }}>備考・ご要望</label>
+                <textarea rows={2} value={editMemo} onChange={(e) => setEditMemo(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '12px' }} />
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                <button onClick={() => setActiveModal(null)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, background: 'none', cursor: 'pointer' }}>戻る</button>
+                <button onClick={handleUpdateReservation} style={{ flex: 2, padding: '10px', borderRadius: '8px', border: 'none', backgroundColor: COLORS.gold, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>変更を保存</button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
+
+      {/* 匿名アンケート・感想モーダル */}
+      {activeModal === 'survey' && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
+          <div style={{ width: '100%', maxWidth: '420px', backgroundColor: COLORS.surface, borderRadius: '16px', padding: '20px', border: `1px solid ${COLORS.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>観劇アンケート・感想</h3>
+              <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={18} /></button>
+            </div>
+
+            {surveySent ? (
+              <div style={{ textAlign: 'center', padding: '20px 0', color: COLORS.success }}>
+                <CheckCircle2 size={40} style={{ margin: '0 auto 8px auto' }} />
+                <div style={{ fontWeight: 700 }}>ご感想ありがとうございました！</div>
+                <div style={{ fontSize: '11px', color: COLORS.muted }}>劇団・キャストへ匿名でお届けしました。</div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '12px', color: COLORS.muted, marginBottom: '6px' }}>公演の満足度</div>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <button
+                        key={star}
+                        onClick={() => setRating(star)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                      >
+                        <Star size={24} color={COLORS.gold} fill={rating >= star ? COLORS.gold : 'none'} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold, display: 'block', marginBottom: '4px' }}>
+                    ご感想・応援メッセージ（匿名）
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="劇団やキャストへの熱いメッセージをぜひお寄せください！"
+                    value={surveyText}
+                    onChange={(e) => setSurveyText(e.target.value)}
+                    style={{ width: '100%', padding: '8px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '12px' }}
+                  />
+                </div>
+
+                <button
+                  onClick={handleSubmitSurvey}
+                  style={{ width: '100%', padding: '12px', borderRadius: '10px', border: 'none', backgroundColor: COLORS.gold, color: '#fff', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                >
+                  <Send size={14} /> 匿名で劇団に送信する
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* キャンセル確認モーダル */}
+      {activeModal === 'cancel' && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
+          <div style={{ width: '100%', maxWidth: '380px', backgroundColor: COLORS.surface, borderRadius: '16px', padding: '20px', border: `1px solid ${COLORS.border}`, textAlign: 'center' }}>
+            <AlertCircle size={40} color={COLORS.danger} style={{ margin: '0 auto 10px auto' }} />
+            <h3 style={{ margin: '0 0 6px 0', fontSize: '16px', fontWeight: 700 }}>ご予約のキャンセル</h3>
+            <p style={{ fontSize: '12px', color: COLORS.muted, lineHeight: '1.5', margin: '0 0 16px 0' }}>
+              この操作は取り消せません。本当にお席の確保を解除してよろしいですか？
+            </p>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={() => setActiveModal(null)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, background: 'none', cursor: 'pointer' }}>戻る</button>
+              <button onClick={handleCancelReservation} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', backgroundColor: COLORS.danger, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>キャンセル確定</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
