@@ -22,6 +22,41 @@ const COLORS = {
   danger: '#e11d48',
 };
 
+// 1枚の元画像（tikepochi-sheet.png）からCSSで自動トリミングするコンポーネント
+const TikepochiHeroSprite = ({ size = 48, borderRadius = '14px' }) => (
+  <div
+    style={{
+      width: `${size}px`,
+      height: `${size}px`,
+      borderRadius: borderRadius,
+      backgroundImage: 'url(/tikepochi-sheet.png)',
+      backgroundPosition: '5.5% 8.5%', // 左上の黄色ポチ君
+      backgroundSize: '360%',
+      backgroundRepeat: 'no-repeat',
+      border: '1.5px solid #f59e0b',
+      flexShrink: 0,
+      backgroundColor: '#fef3c7',
+    }}
+  />
+);
+
+const TikepochiDaienkaiSprite = ({ size = 48, borderRadius = '12px' }) => (
+  <div
+    style={{
+      width: `${size}px`,
+      height: `${size}px`,
+      borderRadius: borderRadius,
+      backgroundImage: 'url(/tikepochi-sheet.png)',
+      backgroundPosition: '94.5% 8.5%', // 右上の秋の大笑会ポチ君
+      backgroundSize: '360%',
+      backgroundRepeat: 'no-repeat',
+      border: '1.5px solid #fbbf24',
+      flexShrink: 0,
+      backgroundColor: '#1e1b4b',
+    }}
+  />
+);
+
 export default function Myreservationspag() {
   const [token, setToken] = useState('');
   const [reservations, setReservations] = useState([]);
@@ -210,12 +245,7 @@ export default function Myreservationspag() {
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: COLORS.pouchiDark, fontFamily: 'sans-serif', gap: '12px' }}>
-        <img 
-          src="/tikepochi-hero.png" 
-          alt="チケポチ" 
-          style={{ width: '64px', height: '64px', borderRadius: '16px', objectFit: 'cover' }} 
-          onError={(e) => { e.target.style.display = 'none'; }}
-        />
+        <TikepochiHeroSprite size={64} borderRadius="18px" />
         <div style={{ fontWeight: 700 }}>チケポチが予約を読み込み中...</div>
       </div>
     );
@@ -225,12 +255,9 @@ export default function Myreservationspag() {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, padding: '32px 16px', boxSizing: 'border-box', fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
         <div style={{ maxWidth: '480px', margin: '40px auto', backgroundColor: COLORS.surface, border: `2px solid ${COLORS.border}`, borderRadius: '24px', padding: '28px', textAlign: 'center', boxShadow: '0 8px 24px rgba(217, 119, 6, 0.08)' }}>
-          <img 
-            src="/tikepochi-hero.png" 
-            alt="チケポチ" 
-            style={{ width: '80px', height: '80px', borderRadius: '20px', objectFit: 'cover', margin: '0 auto 12px auto' }} 
-            onError={(e) => { e.target.style.display = 'none'; }}
-          />
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
+            <TikepochiHeroSprite size={72} borderRadius="20px" />
+          </div>
           <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 8px 0', color: COLORS.pouchiDark }}>予約トークンが見つからないワン</h2>
           <p style={{ fontSize: '13px', color: COLORS.muted, lineHeight: '1.6' }}>
             予約完了メールにある「マイページ確認URL」からアクセスしてね！
@@ -279,13 +306,8 @@ export default function Myreservationspag() {
         {/* 🐶 チケポチ ヘッダー */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', backgroundColor: '#ffffff', padding: '12px 16px', borderRadius: '20px', border: `2px solid ${COLORS.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {/* 切り出したチケポチ画像アイコン */}
-            <img 
-              src="/tikepochi-hero.png" 
-              alt="チケポチ" 
-              style={{ width: '48px', height: '48px', borderRadius: '14px', objectFit: 'cover', border: '1.5px solid #f59e0b', flexShrink: 0 }}
-              onError={(e) => { e.target.style.display = 'none'; }}
-            />
+            {/* CSSで切り抜かれた黄色ポチ君 */}
+            <TikepochiHeroSprite size={46} borderRadius="14px" />
             <div>
               <div className="pouchi-font" style={{ fontSize: '18px', fontWeight: 900, color: '#d97706', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 チケポチ！ <span style={{ fontSize: '11px', color: COLORS.muted, fontWeight: 700 }}>マイページ</span>
@@ -339,13 +361,8 @@ export default function Myreservationspag() {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {/* 切り出した秋の大笑会ポチ君画像 */}
-            <img 
-              src="/tikepochi-daienkai.png" 
-              alt="秋の大笑会ポチ" 
-              style={{ width: '48px', height: '48px', borderRadius: '12px', objectFit: 'cover', border: '1.5px solid #fbbf24', flexShrink: 0 }}
-              onError={(e) => { e.target.style.display = 'none'; }}
-            />
+            {/* CSSで切り抜かれた秋の大笑会着物ポチ君 */}
+            <TikepochiDaienkaiSprite size={48} borderRadius="12px" />
             <div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#dc2626', color: '#ffffff', padding: '2px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: 900, marginBottom: '3px' }}>
                 ⭐ 観劇予約者限定
