@@ -22,7 +22,7 @@ const COLORS = {
   danger: '#e11d48',
 };
 
-// 1枚の元画像（tikepochi-sheet.png）からCSSで自動トリミングするコンポーネント
+// 透過PNG（tikepochi-sheet.png）から左上・右上のアイコンをピッタリ切り出す
 const TikepochiHeroSprite = ({ size = 48, borderRadius = '14px' }) => (
   <div
     style={{
@@ -30,12 +30,13 @@ const TikepochiHeroSprite = ({ size = 48, borderRadius = '14px' }) => (
       height: `${size}px`,
       borderRadius: borderRadius,
       backgroundImage: 'url(/tikepochi-sheet.png)',
-      backgroundPosition: '5.5% 8.5%', // 左上の黄色ポチ君
-      backgroundSize: '360%',
+      backgroundPosition: '5.5% 6%', // 左上の黄色ポチ君
+      backgroundSize: '365%',
       backgroundRepeat: 'no-repeat',
       border: '1.5px solid #f59e0b',
       flexShrink: 0,
       backgroundColor: '#fef3c7',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
     }}
   />
 );
@@ -47,12 +48,13 @@ const TikepochiDaienkaiSprite = ({ size = 48, borderRadius = '12px' }) => (
       height: `${size}px`,
       borderRadius: borderRadius,
       backgroundImage: 'url(/tikepochi-sheet.png)',
-      backgroundPosition: '94.5% 8.5%', // 右上の秋の大笑会ポチ君
-      backgroundSize: '360%',
+      backgroundPosition: '94.5% 6%', // 右上の秋の大笑会ポチ君
+      backgroundSize: '365%',
       backgroundRepeat: 'no-repeat',
       border: '1.5px solid #fbbf24',
       flexShrink: 0,
       backgroundColor: '#1e1b4b',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
     }}
   />
 );
@@ -306,8 +308,7 @@ export default function Myreservationspag() {
         {/* 🐶 チケポチ ヘッダー */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', backgroundColor: '#ffffff', padding: '12px 16px', borderRadius: '20px', border: `2px solid ${COLORS.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {/* CSSで切り抜かれた黄色ポチ君 */}
-            <TikepochiHeroSprite size={46} borderRadius="14px" />
+            <TikepochiHeroSprite size={48} borderRadius="14px" />
             <div>
               <div className="pouchi-font" style={{ fontSize: '18px', fontWeight: 900, color: '#d97706', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 チケポチ！ <span style={{ fontSize: '11px', color: COLORS.muted, fontWeight: 700 }}>マイページ</span>
@@ -361,7 +362,6 @@ export default function Myreservationspag() {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {/* CSSで切り抜かれた秋の大笑会着物ポチ君 */}
             <TikepochiDaienkaiSprite size={48} borderRadius="12px" />
             <div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#dc2626', color: '#ffffff', padding: '2px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: 900, marginBottom: '3px' }}>
@@ -507,7 +507,7 @@ export default function Myreservationspag() {
                           setActiveModal('cancel');
                         }}
                         className="btn-bounce"
-                        style={{ padding: '10px 14px', borderRadius: '12px', border: `1px solid #fecdd3`, backgroundColor: '#fff', color: COLORS.danger, fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
+                        style={{ padding: '10px 14px', borderRadius: '12px', border: `1.5px solid #fecdd3`, backgroundColor: '#fff', color: COLORS.danger, fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
                       >
                         取消
                       </button>
