@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { User, CheckCircle2, AlertCircle, Sparkles, MapPin, ChevronLeft, ChevronRight, HeartHandshake, Ticket } from 'lucide-react';
+import { User, CheckCircle2, AlertCircle, Sparkles, MapPin, ChevronLeft, ChevronRight, HeartHandshake, Ticket, Calendar } from 'lucide-react';
 
 const COLORS = {
   bg: '#faf5ea',
@@ -66,7 +66,7 @@ export default function CustomerReservationForm({ productionId }) {
         const urlParams = new URLSearchParams(window.location.search);
         const staffParam = urlParams.get('staff') || '';
 
-        // 1. 公演情報の取得（完全一致 または 8文字の短縮IDに対応）
+        // 1. 公演情報の取得（完全なUUIDまたは短縮ID）
         let thisProd = null;
         if (productionId.length === 36) {
           const { data, error } = await supabase
@@ -89,6 +89,7 @@ export default function CustomerReservationForm({ productionId }) {
 
         if (!thisProd) throw new Error('公演情報が見つかりませんでした');
 
+        // 2. 同じ劇団の全公演を取得してA公演・B公演順にソート
         let prodList = [thisProd];
         if (thisProd.organization_id) {
           const { data: orgProds } = await supabase
@@ -107,9 +108,10 @@ export default function CustomerReservationForm({ productionId }) {
         }
         setProductions(prodList);
 
+        // 3. 全公演のIDで stages / ticket_types / cast_staff を一括取得
         const prodIds = prodList.map(p => p.id);
         const [{ data: stageData }, { data: ticketData }, { data: staffData }] = await Promise.all([
-          supabase.from('stages').select('*').in('production_id', prodIds).order('performance_date', { ascending: true }).order('start_time', { ascending: true }),
+          supabase.from('stages').select('*').in('production_id', prodIds).order('start_time', { ascending: true }),
           supabase.from('ticket_types').select('*').in('production_id', prodIds).order('price', { ascending: true }),
           supabase.from('cast_staff').select('*').in('production_id', prodIds),
         ]);
@@ -120,7 +122,15 @@ export default function CustomerReservationForm({ productionId }) {
         const initialTickets = ['', ''];
 
         prodList.forEach((p, idx) => {
-          const pStages = (stageData || []).filter(s => s.production_id === p.id);
+          // 日程ソート（performance_date または stage_date でソート）
+          const pStages = (stageData || [])
+            .filter(s => s.production_id === p.id)
+            .sort((a, b) => {
+              const dateA = a.performance_date || a.stage_date || '';
+              const dateB = b.performance_date || b.stage_date || '';
+              return dateA.localeCompare(dateB) || (a.start_time || '').localeCompare(b.start_time || '');
+            });
+
           const pTickets = (ticketData || []).filter(t => t.production_id === p.id);
           sMap[p.id] = pStages;
           tMap[p.id] = pTickets;
@@ -136,6 +146,7 @@ export default function CustomerReservationForm({ productionId }) {
         setSelectedStageIds(initialStages);
         setSelectedTicketTypeIds(initialTickets);
 
+        // キャストリストの重複排除
         const uniqueStaff = [];
         const seenNames = new Set();
         (staffData || []).forEach(st => {
@@ -520,6 +531,7 @@ export default function CustomerReservationForm({ productionId }) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* 日時選択プルダウン */}
           <div>
             <label style={labelStyle}>観劇日時（ステージ）</label>
             <select
@@ -531,14 +543,22 @@ export default function CustomerReservationForm({ productionId }) {
               style={inputStyle}
             >
               <option value="">-- 選択してください --</option>
-              {stages.map(st => (
-                <option key={st.id} value={st.id}>
-                  {st.performance_date} {st.start_time?.slice(0, 5)}開演 {st.team_name ? `(${st.team_name})` : ''}
-                </option>
-              ))}
+              {stages.length === 0 ? (
+                <option value="" disabled>ステージ日程が登録されていません</option>
+              ) : (
+                stages.map(st => {
+                  const dStr = st.performance_date || st.stage_date || '日程未定';
+                  return (
+                    <option key={st.id} value={st.id}>
+                      {dStr} {st.start_time?.slice(0, 5)}開演 {st.team_name ? `(${st.team_name})` : ''}
+                    </option>
+                  );
+                })
+              )}
             </select>
           </div>
 
+          {/* 基本券種と枚数 */}
           <div style={{ display: 'flex', gap: '8px' }}>
             <div style={{ flex: 2 }}>
               <label style={labelStyle}>基本券種</label>
@@ -583,6 +603,7 @@ export default function CustomerReservationForm({ productionId }) {
             )}
           </div>
 
+          {/* 追加オプション */}
           {optionTickets.length > 0 && (
             <div style={{ padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '8px', border: `1px solid ${COLORS.border}` }}>
               <div style={{ fontSize: '12px', fontWeight: 700, color: COLORS.indigo, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -610,6 +631,7 @@ export default function CustomerReservationForm({ productionId }) {
             </div>
           )}
 
+          {/* 扱いキャスト選択 */}
           <div>
             <label style={labelStyle}>扱いキャスト・スタッフ</label>
             {isSecondOfBoth && isSameStaff ? (
@@ -739,6 +761,7 @@ export default function CustomerReservationForm({ productionId }) {
           const ticket = (ticketTypesMap[prod.id] || []).find(t => t.id === selectedTicketTypeIds[idx]);
           const allOpts = ticketTypesMap[prod.id] || [];
           const chosenOpts = (selectedOptions[idx] || []).map(optId => allOpts.find(t => t.id === optId)).filter(Boolean);
+          const stageDateStr = stage ? (stage.performance_date || stage.stage_date || '') : '';
 
           return (
             <CardWrap key={prod.id}>
@@ -752,7 +775,7 @@ export default function CustomerReservationForm({ productionId }) {
               </div>
               <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '6px' }}>{prod.title}</div>
               <div style={{ fontSize: '13px', lineHeight: '1.9', color: COLORS.text }}>
-                <div>日時：{stage ? `${stage.performance_date} ${stage.start_time?.slice(0, 5)}開演` : '未選択'}</div>
+                <div>日時：{stage ? `${stageDateStr} ${stage.start_time?.slice(0, 5)}開演` : '未選択'}</div>
                 <div>券種：{ticket?.name || '未選択'}（¥{ticket?.price?.toLocaleString()} × {ticketCounts[idx]}枚）</div>
                 {chosenOpts.length > 0 && (
                   <div>オプション：{chosenOpts.map(o => `${o.name} (+¥${o.price?.toLocaleString()})`).join(', ')}</div>
