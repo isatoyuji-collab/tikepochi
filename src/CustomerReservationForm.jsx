@@ -15,7 +15,7 @@ const COLORS = {
   danger: '#e85a45',
 };
 
-// --- 外側に定義した共通パーツ（再マウントによるフォーカス外れを防止） ---
+// --- 外側定義コンポーネント（入力フォーカス外れ防止） ---
 function ProgressDots({ steps, stepIndex }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginBottom: '18px' }}>
@@ -267,7 +267,7 @@ export default function CustomerReservationForm({ productionId }) {
 
   const calculateTotal = () => {
     let total = 0;
-    const targetIndices = reservationMode === 'both' ? [0, 1] : [parseInt(reservationMode.replace('single_', ''))];
+    const targetIndices = reservationMode === 'both' ? [0, 1] : [parseInt(reservationMode.replace('single_', ''), 10)];
 
     if (reservationMode === 'both') {
       const prodA = productions[0];
@@ -366,7 +366,7 @@ export default function CustomerReservationForm({ productionId }) {
       const recordsToInsert = [];
 
       const isBoth = reservationMode === 'both';
-      const targetIndices = isBoth ? [0, 1] : [parseInt(reservationMode.replace('single_', ''))];
+      const targetIndices = isBoth ? [0, 1] : [parseInt(reservationMode.replace('single_', ''), 10)];
 
       for (let i = 0; i < targetIndices.length; i++) {
         const idx = targetIndices[i];
@@ -376,6 +376,7 @@ export default function CustomerReservationForm({ productionId }) {
         const stageId = selectedStageIds[idx];
         const ticketTypeId = selectedTicketTypeIds[idx];
         const count = isBoth ? ticketCounts[0] : ticketCounts[idx];
+        const chosenStaff = selectedStaffNames[idx] || '';
 
         const allOpts = ticketTypesMap[prod.id] || [];
         const chosenOptNames = (selectedOptions[idx] || [])
@@ -386,10 +387,14 @@ export default function CustomerReservationForm({ productionId }) {
         if (chosenOptNames.length > 0) {
           fullMemo = `【選択オプション】: ${chosenOptNames.join(', ')}\n${fullMemo}`.trim();
         }
+        if (chosenStaff) {
+          fullMemo = `【扱い】: ${chosenStaff}\n${fullMemo}`.trim();
+        }
         if (isBoth) {
           fullMemo = `【両公演セット予約】\n${fullMemo}`.trim();
         }
 
+        // DBカラム名 `cast_name` に対応[cite: 5]
         recordsToInsert.push({
           production_id: prod.id,
           stage_id: stageId,
@@ -398,7 +403,7 @@ export default function CustomerReservationForm({ productionId }) {
           customer_phone: customerPhone.trim(),
           customer_email: customerEmail.trim(),
           count: count,
-          staff_name: selectedStaffNames[idx] || null,
+          cast_name: chosenStaff || null,
           memo: fullMemo || null,
           donation_amount: (hasDonation && i === 0) ? (parseInt(donationAmount, 10) || 500) : null,
           mypage_token: sharedMypageToken,
@@ -413,7 +418,7 @@ export default function CustomerReservationForm({ productionId }) {
       setSubmitSuccess(true);
     } catch (err) {
       console.error('Submit error:', err);
-      setErrorMessage('予約の送信に失敗しました。もう一度お試しください。');
+      setErrorMessage('予約の送信に失敗しました: ' + (err.message || 'もう一度お試しください。'));
     } finally {
       setIsSubmitting(false);
     }
@@ -456,7 +461,6 @@ export default function CustomerReservationForm({ productionId }) {
     <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '24px 16px 60px 16px', boxSizing: 'border-box' }}>
       <div style={{ maxWidth: '580px', margin: '0 auto' }}>
 
-        {/* 公演ヘッダー */}
         <div style={{ textAlign: 'center', marginBottom: '16px' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: COLORS.gold, fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>
             <Sparkles size={13} /> office Knight プロデュース公演
