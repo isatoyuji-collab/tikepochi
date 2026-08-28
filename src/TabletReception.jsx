@@ -1,6 +1,7 @@
+// src/TabletReception.jsx (TIKEPOCHI側)
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { ArrowLeft, Search, Check, Users, RefreshCw, X, Eye } from 'lucide-react';
+import { ArrowLeft, Search, Check, Users, RefreshCw, X, Eye, Phone, Mail } from 'lucide-react';
 import { COLORS, FONTS, RADIUS } from './theme';
 
 const KANA_GRID = [
@@ -16,7 +17,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
   const [reservations, setReservations] = useState([]);
   const [ticketTypes, setTicketTypes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedStageId, setSelectedStageId] = useState('');
+  const [selectedStageId, setSelectedStageId] = useState('all');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedKana, setSelectedKana] = useState('');
@@ -32,19 +33,21 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
     }
 
     try {
-      // 1. ステージ取得
+      // 1. ステージ取得（stage_date と performance_date の両方に対応）
       const { data: stagesData } = await supabase
         .from('stages')
         .select('*')
         .eq('production_id', productionId)
-        .order('performance_date', { ascending: true })
         .order('start_time', { ascending: true });
 
       if (stagesData && stagesData.length > 0) {
-        setStages(stagesData);
-        if (!selectedStageId) {
-          setSelectedStageId(stagesData[0].id);
-        }
+        // 日付順にソート
+        const sortedStages = stagesData.sort((a, b) => {
+          const dateA = a.stage_date || a.performance_date || '';
+          const dateB = b.stage_date || b.performance_date || '';
+          return dateA.localeCompare(dateB) || (a.start_time || '').localeCompare(b.start_time || '');
+        });
+        setStages(sortedStages);
       }
 
       // 2. 券種取得
@@ -54,14 +57,25 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
         .eq('production_id', productionId);
       if (ticketsData) setTicketTypes(ticketsData);
 
-      // 3. 予約名簿取得
-      const { data: resData } = await supabase
-        .from('reservations')
-        .select('*')
-        .eq('production_id', productionId)
-        .order('customer_name', { ascending: true });
+      // 3. 予約名簿取得（ステージID配列も含めて安全に抽出）
+      const stageIds = (stagesData || []).map(s => s.id);
+      let query = supabase.from('reservations').select('*');
 
-      if (resData) setReservations(resData);
+      if (stageIds.length > 0) {
+        query = query.or(`production_id.eq.${productionId},stage_id.in.(${stageIds.join(',')})`);
+      } else {
+        query = query.eq('production_id', productionId);
+      }
+
+      const { data: resData, error: resError } = await query.order('created_at', { ascending: false });
+
+      if (!resError && resData) {
+        setReservations(resData);
+      } else {
+        // フォールバック取得
+        const { data: fallback } = await supabase.from('reservations').select('*');
+        if (fallback) setReservations(fallback);
+      }
     } catch (err) {
       console.warn('Data fetch notice:', err);
     } finally {
@@ -73,17 +87,20 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
     fetchData();
   }, [productionId]);
 
+  // 来場トグル（checked_in と is_checked_in の両方を更新）
   const handleToggleCheckin = async (resItem) => {
-    const nextStatus = !resItem.is_checked_in;
-    setReservations(prev => prev.map(r => r.id === resItem.id ? { ...r, is_checked_in: nextStatus } : r));
+    const currentStatus = resItem.checked_in || resItem.is_checked_in || false;
+    const nextStatus = !currentStatus;
+
+    setReservations(prev => prev.map(r => r.id === resItem.id ? { ...r, checked_in: nextStatus, is_checked_in: nextStatus } : r));
     if (detailItem && detailItem.id === resItem.id) {
-      setDetailItem({ ...detailItem, is_checked_in: nextStatus });
+      setDetailItem({ ...detailItem, checked_in: nextStatus, is_checked_in: nextStatus });
     }
 
     try {
       await supabase
         .from('reservations')
-        .update({ is_checked_in: nextStatus })
+        .update({ checked_in: nextStatus, is_checked_in: nextStatus })
         .eq('id', resItem.id);
     } catch (e) {
       alert('来場ステータスの更新に失敗しました');
@@ -95,19 +112,32 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
     return ticket || { name: '一般', price: 0 };
   };
 
-  const currentStageReservations = reservations.filter(r => r.stage_id === selectedStageId);
+  // 選択中ステージの予約（all の場合は全件）
+  const currentStageReservations = selectedStageId === 'all'
+    ? reservations
+    : reservations.filter(r => r.stage_id === selectedStageId);
 
+  // 50音・キーワード検索フィルター
   const filteredList = currentStageReservations.filter(r => {
+    const name = r.customer_name || r.name || '';
+    const kana = r.customer_name_kana || r.kana || '';
+    const phone = r.customer_phone || r.phone || '';
+    const memo = r.memo || '';
+    const staff = r.staff_name || r.cast_name || '';
+
+    // キーワード検索
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const matchName = r.customer_name?.toLowerCase().includes(q);
-      const matchPhone = r.customer_phone?.includes(q);
-      const matchStaff = r.staff_name?.toLowerCase().includes(q);
-      if (!matchName && !matchPhone && !matchStaff) return false;
+      const matchName = name.toLowerCase().includes(q);
+      const matchKana = kana.toLowerCase().includes(q);
+      const matchPhone = phone.includes(q);
+      const matchMemo = memo.toLowerCase().includes(q);
+      const matchStaff = staff.toLowerCase().includes(q);
+      if (!matchName && !matchKana && !matchPhone && !matchMemo && !matchStaff) return false;
     }
 
+    // 50音判定
     if (selectedKana) {
-      const firstChar = r.customer_name?.charAt(0) || '';
       const kanaMap = {
         'ア': 'あいうえおアイウエオ',
         'カ': 'かきくけこがぎぐげごカキクケコガギグゲゴ',
@@ -120,15 +150,31 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
         'ラ': 'らりるれろラリルレロ',
         'ワ': 'わをんワヲン',
       };
-      if (kanaMap[selectedKana] && !kanaMap[selectedKana].includes(firstChar)) {
-        return false;
+      const allowedChars = kanaMap[selectedKana] || '';
+
+      // 1. かなカラムの先頭文字をチェック
+      const firstKana = kana.trim().charAt(0);
+      let match = allowedChars.includes(firstKana);
+
+      // 2. メモ欄に「【かな】: xxx」があればそれもチェック
+      if (!match && memo.includes('【かな】:')) {
+        const memoKana = memo.split('【かな】:')[1]?.trim()?.charAt(0) || '';
+        match = allowedChars.includes(memoKana);
       }
+
+      // 3. お名前自体がひらがな・カタカナの場合もチェック
+      if (!match) {
+        const firstName = name.trim().charAt(0);
+        match = allowedChars.includes(firstName);
+      }
+
+      if (!match) return false;
     }
 
     return true;
   });
 
-  const checkedCount = currentStageReservations.filter(r => r.is_checked_in).reduce((sum, r) => sum + (r.count || 1), 0);
+  const checkedCount = currentStageReservations.filter(r => r.checked_in || r.is_checked_in).reduce((sum, r) => sum + (r.count || 1), 0);
   const totalStageReserved = currentStageReservations.reduce((sum, r) => sum + (r.count || 1), 0);
 
   return (
@@ -168,35 +214,53 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
 
         {/* ステージ選択セレクター */}
         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '16px' }}>
-          {stages.length === 0 ? (
-            <div style={{ fontSize: '13px', color: COLORS.muted, padding: '8px 0' }}>ステージが登録されていません</div>
-          ) : (
-            stages.map(s => {
-              const isSel = s.id === selectedStageId;
-              const dateStr = s.performance_date ? `${new Date(s.performance_date).getMonth() + 1}/${new Date(s.performance_date).getDate()}` : '';
-              return (
-                <button
-                  key={s.id}
-                  onClick={() => { setSelectedStageId(s.id); setSelectedKana(''); }}
-                  style={{
-                    minWidth: '120px',
-                    padding: '10px 14px',
-                    borderRadius: '12px',
-                    border: `2px solid ${isSel ? COLORS.gold : COLORS.border}`,
-                    backgroundColor: isSel ? '#fff6e8' : COLORS.surface,
-                    color: COLORS.text,
-                    fontWeight: isSel ? 700 : 500,
-                    cursor: 'pointer',
-                    textAlign: 'center',
-                    flex: '0 0 auto'
-                  }}
-                >
-                  <div style={{ fontSize: '14px' }}>{dateStr} {s.start_time?.slice(0, 5)}開演</div>
-                  {s.team_name && <div style={{ fontSize: '11px', color: COLORS.gold }}>{s.team_name}</div>}
-                </button>
-              );
-            })
-          )}
+          <button
+            onClick={() => { setSelectedStageId('all'); setSelectedKana(''); }}
+            style={{
+              minWidth: '100px',
+              padding: '10px 14px',
+              borderRadius: '12px',
+              border: `2px solid ${selectedStageId === 'all' ? COLORS.gold : COLORS.border}`,
+              backgroundColor: selectedStageId === 'all' ? '#fff6e8' : COLORS.surface,
+              color: COLORS.text,
+              fontWeight: selectedStageId === 'all' ? 700 : 500,
+              cursor: 'pointer',
+              textAlign: 'center',
+              flex: '0 0 auto'
+            }}
+          >
+            <div style={{ fontSize: '14px' }}>全日程・全回</div>
+            <div style={{ fontSize: '11px', color: COLORS.muted }}>{reservations.length}件</div>
+          </button>
+
+          {stages.map(s => {
+            const isSel = s.id === selectedStageId;
+            const d = s.stage_date || s.performance_date;
+            const dateStr = d ? `${new Date(d).getMonth() + 1}/${new Date(d).getDate()}` : '日程未設定';
+            const countForStage = reservations.filter(r => r.stage_id === s.id).length;
+
+            return (
+              <button
+                key={s.id}
+                onClick={() => { setSelectedStageId(s.id); setSelectedKana(''); }}
+                style={{
+                  minWidth: '120px',
+                  padding: '10px 14px',
+                  borderRadius: '12px',
+                  border: `2px solid ${isSel ? COLORS.gold : COLORS.border}`,
+                  backgroundColor: isSel ? '#fff6e8' : COLORS.surface,
+                  color: COLORS.text,
+                  fontWeight: isSel ? 700 : 500,
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  flex: '0 0 auto'
+                }}
+              >
+                <div style={{ fontSize: '14px' }}>{dateStr} {s.start_time?.slice(0, 5)}開演</div>
+                <div style={{ fontSize: '11px', color: COLORS.gold }}>{s.team_name || `${countForStage}件`}</div>
+              </button>
+            );
+          })}
         </div>
 
         {/* 検索バー */}
@@ -205,7 +269,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
             <Search size={16} color={COLORS.muted} style={{ position: 'absolute', left: '12px', top: '14px' }} />
             <input
               type="text"
-              placeholder="お名前・電話番号・扱いで検索..."
+              placeholder="お名前・ふりがな・電話番号・扱いで検索..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{ width: '100%', padding: '12px 12px 12px 38px', borderRadius: '12px', border: `1px solid ${COLORS.border}`, backgroundColor: COLORS.surface, fontSize: '14px', boxSizing: 'border-box' }}
@@ -218,10 +282,10 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
           )}
         </div>
 
-        {/* 50音キーボード（タブレット最適化・スマホ自動調整） */}
+        {/* 50音キーボード */}
         <div style={{ backgroundColor: COLORS.surface, borderRadius: '14px', border: `1px solid ${COLORS.border}`, padding: '12px', marginBottom: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', padding: '0 4px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold }}>頭文字で探す</span>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold }}>頭文字で探す（50音）</span>
             {selectedKana && (
               <button onClick={() => setSelectedKana('')} style={{ fontSize: '11px', color: COLORS.muted, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
                 絞り込み解除（全員表示）
@@ -273,21 +337,25 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
           <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '16px', padding: '40px 20px', textAlign: 'center' }}>
             <Users size={32} color={COLORS.gold} style={{ marginBottom: '8px' }} />
             <h3 style={{ margin: '0 0 4px 0', color: COLORS.gold }}>該当する予約はありません</h3>
-            <p style={{ fontSize: '12px', color: COLORS.muted }}>新しい予約が入るとここに表示されます。</p>
+            <p style={{ fontSize: '12px', color: COLORS.muted }}>（全予約数: {reservations.length}件）</p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {filteredList.map(res => {
+              const isChecked = res.checked_in || res.is_checked_in || false;
+              const name = res.customer_name || res.name || 'お名前なし';
+              const kana = res.customer_name_kana || res.kana || '';
               const tk = getTicketInfo(res.ticket_type_id);
               const count = res.count || 1;
               const subtotal = (tk.price * count) + (res.donation_amount || 0);
+              const staff = res.staff_name || res.cast_name || (res.memo?.includes('【扱い】:') ? res.memo.split('【扱い】:')[1]?.split('\n')[0]?.trim() : '劇団扱い');
 
               return (
                 <div
                   key={res.id}
                   style={{
-                    backgroundColor: res.is_checked_in ? '#f0fdf4' : COLORS.surface,
-                    border: `1.5px solid ${res.is_checked_in ? '#86efac' : COLORS.border}`,
+                    backgroundColor: isChecked ? '#f0fdf4' : COLORS.surface,
+                    border: `1.5px solid ${isChecked ? '#86efac' : COLORS.border}`,
                     borderRadius: '14px',
                     padding: '12px 16px',
                     display: 'flex',
@@ -298,12 +366,13 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
                 >
                   <div style={{ flex: 1, minWidth: 0, paddingRight: '10px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '2px' }}>
-                      <span style={{ fontWeight: 800, fontSize: '16px' }}>{res.customer_name} 様</span>
+                      <span style={{ fontWeight: 800, fontSize: '16px' }}>{name} 様</span>
+                      {kana && <span style={{ fontSize: '12px', color: COLORS.muted }}>({kana})</span>}
                       <span style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold, backgroundColor: COLORS.surfaceAlt, padding: '1px 6px', borderRadius: '4px' }}>
                         {count}枚
                       </span>
                       <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#eef2ff', color: '#4f46e5', fontWeight: 700 }}>
-                        {res.staff_name ? `扱い: ${res.staff_name}` : '劇団扱い'}
+                        {staff}
                       </span>
                     </div>
                     <div style={{ fontSize: '12px', color: COLORS.muted }}>
@@ -329,7 +398,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
                         padding: '10px 16px',
                         borderRadius: '10px',
                         border: 'none',
-                        backgroundColor: res.is_checked_in ? '#10b981' : COLORS.gold,
+                        backgroundColor: isChecked ? '#10b981' : COLORS.gold,
                         color: '#fff',
                         fontWeight: 700,
                         fontSize: '13px',
@@ -340,7 +409,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
                         whiteSpace: 'nowrap'
                       }}
                     >
-                      {res.is_checked_in ? <><Check size={16} /> 来場済</> : '受付する'}
+                      {isChecked ? <><Check size={16} /> 来場済</> : '受付する'}
                     </button>
                   </div>
                 </div>
@@ -362,20 +431,30 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
             <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontFamily: "'Shippori Mincho', serif" }}>予約詳細</h3>
 
             <div style={{ fontSize: '14px', display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px', lineHeight: '1.6' }}>
-              <div><strong>お客様名:</strong> {detailItem.customer_name} 様</div>
+              <div><strong>お客様名:</strong> {detailItem.customer_name} 様 {detailItem.customer_name_kana ? `(${detailItem.customer_name_kana})` : ''}</div>
               <div><strong>電話番号:</strong> {detailItem.customer_phone || '未登録'}</div>
               <div><strong>メール:</strong> {detailItem.customer_email || '未登録'}</div>
-              <div><strong>券種・枚数:</strong> {getTicketInfo(detailItem.ticket_type_id).name} × {detailItem.count}枚</div>
-              <div><strong>合計予定額:</strong> ¥{((getTicketInfo(detailItem.ticket_type_id).price * detailItem.count) + (detailItem.donation_amount || 0)).toLocaleString()}</div>
-              <div><strong>担当扱い:</strong> {detailItem.staff_name || '劇団扱い'}</div>
+              <div><strong>券種・枚数:</strong> {getTicketInfo(detailItem.ticket_type_id).name} × {detailItem.count || 1}枚</div>
+              <div><strong>合計予定額:</strong> ¥{((getTicketInfo(detailItem.ticket_type_id).price * (detailItem.count || 1)) + (detailItem.donation_amount || 0)).toLocaleString()}</div>
+              <div><strong>担当扱い:</strong> {detailItem.staff_name || detailItem.cast_name || '劇団扱い'}</div>
               {detailItem.memo && <div><strong>備考・オプション:</strong> {detailItem.memo}</div>}
             </div>
 
             <button
               onClick={() => handleToggleCheckin(detailItem)}
-              style={{ width: '100%', padding: '12px', borderRadius: '10px', border: 'none', backgroundColor: detailItem.is_checked_in ? '#e85a45' : '#10b981', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '15px' }}
+              style={{
+                width: '100%',
+                padding: '12px',
+                borderRadius: '10px',
+                border: 'none',
+                backgroundColor: (detailItem.checked_in || detailItem.is_checked_in) ? '#e85a45' : '#10b981',
+                color: '#fff',
+                fontWeight: 700,
+                cursor: 'pointer',
+                fontSize: '15px'
+              }}
             >
-              {detailItem.is_checked_in ? '来場を取り消す' : '来場済みにする'}
+              {(detailItem.checked_in || detailItem.is_checked_in) ? '来場を取り消す' : '来場済みにする'}
             </button>
           </div>
         </div>
