@@ -23,6 +23,7 @@ export default function Myreservationspag() {
   const [token, setToken] = useState('');
   const [reservations, setReservations] = useState([]);
   const [stages, setStages] = useState({});
+  const [ticketTypes, setTicketTypes] = useState({});
   const [productions, setProductions] = useState({});
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,10 +59,10 @@ export default function Myreservationspag() {
   const fetchMypageData = async (mypageToken) => {
     setLoading(true);
     try {
-      // 1. 予約データの取得
+      // 1. 予約データをリレーションを使わずにシンプルに取得
       const { data: resData, error: resErr } = await supabase
         .from('reservations')
-        .select('*, ticket_types(name, price)')
+        .select('*')
         .eq('mypage_token', mypageToken)
         .order('created_at', { ascending: false });
 
@@ -73,12 +74,19 @@ export default function Myreservationspag() {
 
         const prodIds = [...new Set(resData.map(r => r.production_id).filter(Boolean))];
         const stageIds = [...new Set(resData.map(r => r.stage_id).filter(Boolean))];
+        const ticketTypeIds = [...new Set(resData.map(r => r.ticket_type_id).filter(Boolean))];
 
-        // 2. 公演・ステージ・お知らせの並列取得
-        const [{ data: prodList }, { data: stageList }, { data: msgList }] = await Promise.all([
+        // 2. 公演・ステージ・券種・お知らせを並列で個別取得（安全なマッピング）
+        const [
+          { data: prodList }, 
+          { data: stageList }, 
+          { data: ticketList },
+          { data: msgList }
+        ] = await Promise.all([
           supabase.from('productions').select('*').in('id', prodIds),
           supabase.from('stages').select('*').in('id', stageIds),
-          supabase.from('announcements').select('*').in('production_id', prodIds).order('created_at', { ascending: false }).limit(5)
+          supabase.from('ticket_types').select('*').in('id', ticketTypeIds),
+          supabase.from('announcements').select('*').in('production_id', prodIds).order('created_at', { ascending: false }).limit(5).maybeSingle ? supabase.from('announcements').select('*').in('production_id', prodIds).order('created_at', { ascending: false }).limit(5) : { data: [] }
         ]);
 
         const pMap = {};
@@ -88,6 +96,10 @@ export default function Myreservationspag() {
         const sMap = {};
         (stageList || []).forEach(s => { sMap[s.id] = s; });
         setStages(sMap);
+
+        const tMap = {};
+        (ticketList || []).forEach(t => { tMap[t.id] = t; });
+        setTicketTypes(tMap);
 
         setAnnouncements(msgList || []);
       }
@@ -257,7 +269,7 @@ export default function Myreservationspag() {
           </button>
         </div>
 
-        {/* ホーム画面追加（PWA）案内 */}
+        {/* ホーム画面追加案内 */}
         <div style={{ backgroundColor: '#fffdf9', border: `1px dashed ${COLORS.gold}`, borderRadius: '12px', padding: '10px 14px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Smartphone size={18} color={COLORS.gold} />
           <div style={{ fontSize: '11px', color: COLORS.text, lineHeight: '1.4' }}>
@@ -305,7 +317,7 @@ export default function Myreservationspag() {
           </div>
         )}
 
-        {/* 現在予約中の公演チケット */}
+        {/* 🎫 現在予約中の公演チケット */}
         <div style={{ marginBottom: '24px' }}>
           <div style={{ fontSize: '13px', fontWeight: 800, color: COLORS.gold, marginBottom: '8px' }}>
             🎟️ ご予約中の公演チケット
@@ -320,7 +332,7 @@ export default function Myreservationspag() {
               {currentReservations.map(res => {
                 const prod = productions[res.production_id] || {};
                 const stage = stages[res.stage_id] || {};
-                const tk = res.ticket_types || { name: '一般', price: 0 };
+                const tk = ticketTypes[res.ticket_type_id] || { name: '一般', price: 0 };
                 const subtotal = (tk.price * (res.count || 1)) + (res.donation_amount || 0);
 
                 return (
@@ -360,10 +372,6 @@ export default function Myreservationspag() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <Ticket size={14} color={COLORS.gold} />
                         <span>{tk.name} × <strong>{res.count}枚</strong>（¥{subtotal.toLocaleString()} 当日精算）</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <User size={14} color={COLORS.gold} />
-                        <span>扱いキャスト: <strong>{res.staff_name || '劇団扱い'}</strong></span>
                       </div>
                     </div>
 
@@ -480,7 +488,7 @@ export default function Myreservationspag() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div>
                 <label style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold, display: 'block', marginBottom: '4px' }}>枚数</label>
-                <select value={editCount} onChange={(e) => setEditCount(parseInt(e.target.value))} style={{ width: '100%', padding: '8px', borderRadius: '8px', border: `1px solid ${COLORS.border}` }}>
+                <select value={editCount} onChange={(e) => setEditCount(parseInt(e.target.value, 10))} style={{ width: '100%', padding: '8px', borderRadius: '8px', border: `1px solid ${COLORS.border}` }}>
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(cnt => (
                     <option key={cnt} value={cnt}>{cnt}枚</option>
                   ))}
@@ -501,7 +509,7 @@ export default function Myreservationspag() {
         </div>
       )}
 
-      {/* 匿名アンケート・感想モーダル */}
+      {/* 匿名アンケートモーダル */}
       {activeModal === 'survey' && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
           <div style={{ width: '100%', maxWidth: '420px', backgroundColor: COLORS.surface, borderRadius: '16px', padding: '20px', border: `1px solid ${COLORS.border}` }}>
