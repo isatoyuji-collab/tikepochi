@@ -37,7 +37,6 @@ export default function App() {
   const [currentView, setCurrentView] = useState('home');
   const [selectedProductionId, setSelectedProductionId] = useState(null);
 
-  // 組織データの取得
   const fetchUserOrganization = async (userId) => {
     setCheckingOrg(true);
     try {
@@ -83,10 +82,16 @@ export default function App() {
     }
   };
 
-  // 認証 & バイパス判定
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const key = urlParams.get('key');
+    const directView = urlParams.get('view');
+    const prodId = urlParams.get('prod_id');
+
+    if (directView) {
+      setCurrentView(directView);
+    }
+
     const isBypass = key === ADMIN_BYPASS_KEY || localStorage.getItem('tp_admin_bypass') === 'true';
 
     if (isBypass) {
@@ -94,18 +99,26 @@ export default function App() {
       const bypassUser = { id: 'bypass-admin-id', email: 'office-knight-admin@bypass.local' };
       setSession({ user: bypassUser });
 
-      // デフォルト組織（office Knight）を自動照会
       supabase
         .from('organizations')
         .select('id, name')
         .limit(1)
         .maybeSingle()
-        .then(({ data: orgData }) => {
-          if (orgData) {
-            setCurrentOrg({ id: orgData.id, name: orgData.name, role: 'owner' });
+        .then(async ({ data: orgData }) => {
+          const org = orgData || { id: 'default-org-id', name: 'office Knight', role: 'owner' };
+          setCurrentOrg({ id: org.id, name: org.name, role: 'owner' });
+
+          if (prodId) {
+            setSelectedProductionId(prodId);
           } else {
-            setCurrentOrg({ id: 'default-org-id', name: 'office Knight', role: 'owner' });
+            const { data: prodData } = await supabase
+              .from('productions')
+              .select('id')
+              .limit(1)
+              .maybeSingle();
+            if (prodData) setSelectedProductionId(prodData.id);
           }
+
           setCheckingOrg(false);
           setLoading(false);
         });
