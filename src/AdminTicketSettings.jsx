@@ -1,10 +1,12 @@
+// src/AdminTicketSettings.jsx (TIKEPOCHI側)
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { ArrowLeft, Plus, Edit2, Trash2, X, Ticket, Sparkles, CheckCircle2, AlertCircle, Layers, HeartHandshake } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, X, Ticket, Sparkles, CheckCircle2, AlertCircle, Layers, HeartHandshake, Link2 } from 'lucide-react';
 import { COLORS, FONTS, RADIUS } from './theme';
 
 export default function AdminTicketSettings({ productionId, org, onBack }) {
   const [ticketTypes, setTicketTypes] = useState([]);
+  const [allProductions, setAllProductions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('tickets'); // 'tickets' | 'options'
 
@@ -13,13 +15,28 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
 
   // フォーム入力ステート
   const [name, setName] = useState('');
-  const [price, setPrice] = useState('3700');
+  const [price, setPrice] = useState('7000');
   const [isDonation, setIsDonation] = useState(false);
+  const [isSetTicket, setIsSetTicket] = useState(false); // 🎫 セット券フラグ
   const [description, setDescription] = useState('');
-  const [categoryType, setCategoryType] = useState('ticket'); // 'ticket' (基本券種) | 'option' (オプション)
+  const [categoryType, setCategoryType] = useState('ticket'); // 'ticket' | 'option'
 
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  // 組織内の全公演を取得（A公演・B公演の同期用）
+  const fetchOrgProductions = async () => {
+    try {
+      if (!org?.id) return;
+      const { data } = await supabase
+        .from('productions')
+        .select('id, title')
+        .eq('organization_id', org.id);
+      if (data) setAllProductions(data);
+    } catch (err) {
+      console.error('Fetch productions error:', err);
+    }
+  };
 
   const fetchTickets = async () => {
     setLoading(true);
@@ -42,8 +59,9 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
   };
 
   useEffect(() => {
+    fetchOrgProductions();
     fetchTickets();
-  }, [productionId]);
+  }, [productionId, org?.id]);
 
   // 基本券種とオプションに分類
   const baseTickets = ticketTypes.filter(t => !t.is_donation && !t.description?.includes('【オプション】'));
@@ -52,10 +70,11 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
   const handleOpenAdd = (type = 'ticket') => {
     setEditingTicket(null);
     setCategoryType(type);
-    setName(type === 'ticket' ? '一般前売り' : '最前列指定席');
-    setPrice(type === 'ticket' ? '3700' : '500');
+    setName(type === 'ticket' ? 'A・B両公演通しセット券' : '最前列指定席');
+    setPrice(type === 'ticket' ? '7000' : '500');
     setIsDonation(false);
-    setDescription('');
+    setIsSetTicket(type === 'ticket');
+    setDescription(type === 'ticket' ? 'A公演・B公演を両方観劇できるお得なセット券' : '');
     setErrorMessage('');
     setIsModalOpen(true);
   };
@@ -63,11 +82,14 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
   const handleOpenEdit = (tk) => {
     setEditingTicket(tk);
     const isOpt = tk.is_donation || tk.description?.includes('【オプション】');
+    const isSet = tk.is_set_ticket || tk.description?.includes('【セット券】') || tk.name?.includes('セット');
+
     setCategoryType(isOpt ? 'option' : 'ticket');
     setName(tk.name || '');
     setPrice(tk.price ? String(tk.price) : '0');
     setIsDonation(tk.is_donation || false);
-    setDescription(tk.description ? tk.description.replace('【オプション】', '').trim() : '');
+    setIsSetTicket(Boolean(isSet));
+    setDescription(tk.description ? tk.description.replace('【オプション】', '').replace('【セット券】', '').trim() : '');
     setErrorMessage('');
     setIsModalOpen(true);
   };
@@ -82,34 +104,64 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
     setSaving(true);
     setErrorMessage('');
 
-    // オプションの場合は説明文の先頭にタグを付与して安全に識別
+    // 説明文の識別タグ成形
     let finalDesc = description.trim();
     if (categoryType === 'option' && !isDonation) {
       finalDesc = `【オプション】${finalDesc}`;
+    } else if (isSetTicket) {
+      finalDesc = `【セット券】${finalDesc}`;
     }
 
-    const payload = {
-      production_id: productionId,
-      name: name.trim(),
-      price: isDonation ? 0 : (parseInt(price, 10) || 0),
-      is_donation: isDonation,
-      description: finalDesc || null,
-    };
+    const priceNum = isDonation ? 0 : (parseInt(price, 10) || 0);
 
     try {
-      if (editingTicket) {
-        const { error } = await supabase
-          .from('ticket_types')
-          .update(payload)
-          .eq('id', editingTicket.id);
+      // 🎯 セット券の場合は全公演（A公演・B公演）に一括同期保存
+      if (isSetTicket && allProductions.length > 0) {
+        for (const prod of allProductions) {
+          // 該当公演に同名のセット券が既にあるか確認
+          const { data: existing } = await supabase
+            .from('ticket_types')
+            .select('id')
+            .eq('production_id', prod.id)
+            .eq('name', name.trim())
+            .maybeSingle();
 
-        if (error) throw error;
+          const prodPayload = {
+            production_id: prod.id,
+            name: name.trim(),
+            price: priceNum,
+            is_donation: false,
+            description: finalDesc || null,
+          };
+
+          if (existing) {
+            await supabase.from('ticket_types').update(prodPayload).eq('id', existing.id);
+          } else {
+            await supabase.from('ticket_types').insert([prodPayload]);
+          }
+        }
       } else {
-        const { error } = await supabase
-          .from('ticket_types')
-          .insert([payload]);
+        // 通常券種（単一公演のみ）
+        const payload = {
+          production_id: productionId,
+          name: name.trim(),
+          price: priceNum,
+          is_donation: isDonation,
+          description: finalDesc || null,
+        };
 
-        if (error) throw error;
+        if (editingTicket) {
+          const { error } = await supabase
+            .from('ticket_types')
+            .update(payload)
+            .eq('id', editingTicket.id);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase
+            .from('ticket_types')
+            .insert([payload]);
+          if (error) throw error;
+        }
       }
 
       setIsModalOpen(false);
@@ -122,15 +174,31 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (confirm('この項目を削除してよろしいですか？')) {
-      try {
-        const { error } = await supabase
-          .from('ticket_types')
-          .delete()
-          .eq('id', id);
+  const handleDelete = async (ticket) => {
+    const isSet = ticket.description?.includes('【セット券】') || ticket.name?.includes('セット');
+    const confirmMsg = isSet
+      ? 'このセット券を削除すると、A公演・B公演の両方から同時に削除されます。よろしいですか？'
+      : 'この項目を削除してよろしいですか？';
 
-        if (error) throw error;
+    if (confirm(confirmMsg)) {
+      try {
+        if (isSet && allProductions.length > 0) {
+          // セット券は同名のものを全公演から一括削除
+          for (const prod of allProductions) {
+            await supabase
+              .from('ticket_types')
+              .delete()
+              .eq('production_id', prod.id)
+              .eq('name', ticket.name);
+          }
+        } else {
+          const { error } = await supabase
+            .from('ticket_types')
+            .delete()
+            .eq('id', ticket.id);
+          if (error) throw error;
+        }
+
         fetchTickets();
       } catch (err) {
         alert('削除に失敗しました: ' + err.message);
@@ -234,7 +302,7 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
           <div style={{ width: '80px' }} />
         </div>
 
-        {/* タブ切り替え（基本券種 / 追加オプション） */}
+        {/* タブ切り替え */}
         <div style={{ display: 'flex', backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '12px', overflow: 'hidden', marginBottom: '20px' }}>
           <button
             className={`tab-btn ${activeTab === 'tickets' ? 'active' : ''}`}
@@ -267,30 +335,40 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
               <div style={{ textAlign: 'center', padding: '30px', color: COLORS.muted }}>読み込み中...</div>
             ) : baseTickets.length === 0 ? (
               <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '30px', textAlign: 'center', color: COLORS.muted, fontSize: '13px' }}>
-                基本券種が登録されていません。「一般前売り」「セットチケット」「学割チケット」などを登録してください。
+                基本券種が登録されていません。「一般前売り」「セットチケット」などを登録してください。
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {baseTickets.map(tk => (
-                  <div key={tk.id} className="form-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: COLORS.surfaceAlt, display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.gold, border: `1px solid ${COLORS.border}` }}>
-                        <Ticket size={20} />
-                      </div>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: '15px', color: COLORS.text }}>{tk.name}</div>
-                        <div style={{ fontSize: '14px', fontWeight: 700, color: COLORS.gold, marginTop: '2px' }}>
-                          ¥{tk.price?.toLocaleString()}
+                {baseTickets.map(tk => {
+                  const isSet = tk.description?.includes('【セット券】') || tk.name?.includes('セット');
+                  return (
+                    <div key={tk.id} className="form-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: isSet ? 'rgba(201,121,31,0.12)' : COLORS.surfaceAlt, display: 'flex', alignItems: 'center', justifyContent: 'center', color: isSet ? COLORS.gold : COLORS.indigo, border: `1px solid ${COLORS.border}` }}>
+                          {isSet ? <Link2 size={20} /> : <Ticket size={20} />}
                         </div>
-                        {tk.description && <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '2px' }}>{tk.description}</div>}
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontWeight: 700, fontSize: '15px', color: COLORS.text }}>{tk.name}</span>
+                            {isSet && (
+                              <span style={{ fontSize: '10px', fontWeight: 700, backgroundColor: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', padding: '2px 6px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                <Link2 size={10} /> A・B両公演共通セット券
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '14px', fontWeight: 700, color: COLORS.gold, marginTop: '2px' }}>
+                            ¥{tk.price?.toLocaleString()}
+                          </div>
+                          {tk.description && <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '2px' }}>{tk.description.replace('【セット券】', '')}</div>}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button onClick={() => handleOpenEdit(tk)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted, padding: '6px' }}><Edit2 size={16} /></button>
+                        <button onClick={() => handleDelete(tk)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.danger, padding: '6px' }}><Trash2 size={16} /></button>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      <button onClick={() => handleOpenEdit(tk)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted, padding: '6px' }}><Edit2 size={16} /></button>
-                      <button onClick={() => handleDelete(tk.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.danger, padding: '6px' }}><Trash2 size={16} /></button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -313,7 +391,7 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
               <div style={{ textAlign: 'center', padding: '30px', color: COLORS.muted }}>読み込み中...</div>
             ) : optionTickets.length === 0 ? (
               <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '30px', textAlign: 'center', color: COLORS.muted, fontSize: '13px' }}>
-                オプションが登録されていません。「最前列指定席（+500円）」「指定席」「応援カンパ」などを追加できます。
+                オプションが登録されていません。「最前列指定席（+500円）」「応援カンパ」などを追加できます。
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -338,7 +416,7 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
                     </div>
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button onClick={() => handleOpenEdit(tk)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted, padding: '6px' }}><Edit2 size={16} /></button>
-                      <button onClick={() => handleDelete(tk.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.danger, padding: '6px' }}><Trash2 size={16} /></button>
+                      <button onClick={() => handleDelete(tk)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.danger, padding: '6px' }}><Trash2 size={16} /></button>
                     </div>
                   </div>
                 ))}
@@ -368,7 +446,7 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
                 <input
                   type="text"
                   required
-                  placeholder={categoryType === 'ticket' ? '例: 一般前売り' : '例: 最前列指定席'}
+                  placeholder={categoryType === 'ticket' ? '例: A・B両公演通しセット券' : '例: 最前列指定席'}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="text-input"
@@ -390,6 +468,24 @@ export default function AdminTicketSettings({ productionId, org, onBack }) {
                   style={{ backgroundColor: isDonation ? COLORS.surfaceAlt : COLORS.surface }}
                 />
               </div>
+
+              {/* 🎫 基本券種の場合：セット券連動チェック */}
+              {categoryType === 'ticket' && (
+                <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', padding: '10px 12px', borderRadius: '8px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: '#92400e' }}>
+                    <input
+                      type="checkbox"
+                      checked={isSetTicket}
+                      onChange={(e) => setIsSetTicket(e.target.checked)}
+                      style={{ accentColor: COLORS.gold, width: '16px', height: '16px', cursor: 'pointer' }}
+                    />
+                    🎫 A・B両公演共通のセット券にする
+                  </label>
+                  <p style={{ fontSize: '11px', color: '#b45309', margin: '4px 0 0 24px', lineHeight: '1.4' }}>
+                    チェックを入れると、A公演・B公演の双方に自動でこの券種が登録・同期されます。
+                  </p>
+                </div>
+              )}
 
               {categoryType === 'option' && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
