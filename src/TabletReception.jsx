@@ -1,7 +1,10 @@
 // src/TabletReception.jsx (TIKEPOCHI側)
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { ArrowLeft, Search, Check, Users, RefreshCw, X, Eye } from 'lucide-react';
+import { 
+  ArrowLeft, Search, Check, Users, RefreshCw, X, Eye, 
+  Gift, DollarSign, Calculator, Armchair, HeartHandshake, CheckCircle2, UserCheck, AlertCircle 
+} from 'lucide-react';
 import { COLORS, FONTS, RADIUS } from './theme';
 
 const KANA_GRID = [
@@ -12,7 +15,6 @@ const KANA_GRID = [
   ['オ', 'コ', 'ソ', 'ト', 'ノ', 'ホ', 'モ', 'ヨ', 'ロ', '']
 ];
 
-// 各文字ごとの正確なマッピング辞書（濁音・半濁音・ひらがな・カタカナ対応）
 const CHAR_MAP = {
   'ア': 'あア', 'イ': 'いイ', 'ウ': 'うゔウヴ', 'エ': 'えエ', 'オ': 'おオ',
   'カ': 'かカがガ', 'キ': 'きキぎギ', 'ク': 'くクぐグ', 'ケ': 'けケげゲ', 'コ': 'こコごゴ',
@@ -35,7 +37,14 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedKana, setSelectedKana] = useState('');
-  const [detailItem, setDetailItem] = useState(null);
+  
+  // モーダル用ステート
+  const [activeRes, setActiveRes] = useState(null);
+  const [receivedCash, setReceivedCash] = useState('');
+  const [giftTargetCast, setGiftTargetCast] = useState('');
+  const [giftNote, setGiftNote] = useState('');
+  const [hasGift, setHasGift] = useState(false);
+  const [savingAction, setSavingAction] = useState(false);
 
   const handleBack = onBackToAdmin || onBack || (() => window.history.back());
 
@@ -99,37 +108,118 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
     fetchData();
   }, [productionId]);
 
-  // 来場トグル
-  const handleToggleCheckin = async (resItem) => {
-    const currentStatus = resItem.checked_in || resItem.is_checked_in || false;
-    const nextStatus = !currentStatus;
-
-    setReservations(prev => prev.map(r => r.id === resItem.id ? { ...r, checked_in: nextStatus, is_checked_in: nextStatus } : r));
-    if (detailItem && detailItem.id === resItem.id) {
-      setDetailItem({ ...detailItem, checked_in: nextStatus, is_checked_in: nextStatus });
-    }
-
-    try {
-      await supabase
-        .from('reservations')
-        .update({ checked_in: nextStatus, is_checked_in: nextStatus })
-        .eq('id', resItem.id);
-    } catch (e) {
-      alert('来場ステータスの更新に失敗しました');
-    }
-  };
-
+  // 券種・価格計算
   const getTicketInfo = (ticketId) => {
     const ticket = ticketTypes.find(t => t.id === ticketId);
     return ticket || { name: '一般', price: 0 };
   };
 
-  // 選択中ステージの予約
+  const calculateTotal = (res) => {
+    if (!res) return 0;
+    if (res.total_price && res.total_price > 0) return res.total_price;
+    const tk = getTicketInfo(res.ticket_type_id);
+    const count = res.count || 1;
+    return (tk.price * count) + (res.donation_amount || 0);
+  };
+
+  // モーダルを開く
+  const handleOpenModal = (res) => {
+    setActiveRes(res);
+    setReceivedCash('');
+    const currentStaff = res.staff_name || res.cast_name || (res.memo?.includes('【扱い】:') ? res.memo.split('【扱い】:')[1]?.split('\n')[0]?.trim() : '');
+    setGiftTargetCast(res.gift_target_cast || currentStaff || '');
+    setGiftNote(res.gift_note || '');
+    setHasGift(Boolean(res.has_gift || res.gift_note || res.gift_target_cast));
+  };
+
+  // 精算完了トグル
+  const handleTogglePayment = async () => {
+    if (!activeRes) return;
+    setSavingAction(true);
+    const currentPaid = activeRes.payment_status === 'paid' || activeRes.is_paid === true;
+    const nextStatus = currentPaid ? 'unpaid' : 'paid';
+
+    try {
+      await supabase
+        .from('reservations')
+        .update({ payment_status: nextStatus, is_paid: !currentPaid })
+        .eq('id', activeRes.id);
+
+      const updated = { ...activeRes, payment_status: nextStatus, is_paid: !currentPaid };
+      setActiveRes(updated);
+      setReservations(prev => prev.map(r => r.id === activeRes.id ? updated : r));
+    } catch (e) {
+      alert('精算ステータスの更新に失敗しました: ' + e.message);
+    } finally {
+      setSavingAction(false);
+    }
+  };
+
+  // チェックイン人数更新（分割チェックイン対応）
+  const handleUpdateCheckinCount = async (newCount) => {
+    if (!activeRes) return;
+    const totalCount = activeRes.count || 1;
+    const validCount = Math.max(0, Math.min(totalCount, newCount));
+    const isAllChecked = validCount >= totalCount;
+
+    setSavingAction(true);
+    try {
+      await supabase
+        .from('reservations')
+        .update({ 
+          checked_in_count: validCount, 
+          checked_in: isAllChecked, 
+          is_checked_in: isAllChecked 
+        })
+        .eq('id', activeRes.id);
+
+      const updated = { 
+        ...activeRes, 
+        checked_in_count: validCount, 
+        checked_in: isAllChecked, 
+        is_checked_in: isAllChecked 
+      };
+      setActiveRes(updated);
+      setReservations(prev => prev.map(r => r.id === activeRes.id ? updated : r));
+    } catch (e) {
+      alert('来場人数の更新に失敗しました: ' + e.message);
+    } finally {
+      setSavingAction(false);
+    }
+  };
+
+  // 差し入れ情報の保存（チェックイン後もいつでも実行可能）
+  const handleSaveGift = async () => {
+    if (!activeRes) return;
+    setSavingAction(true);
+    try {
+      const giftPayload = {
+        has_gift: hasGift,
+        gift_target_cast: hasGift ? giftTargetCast.trim() : null,
+        gift_note: hasGift ? giftNote.trim() : null,
+      };
+
+      await supabase
+        .from('reservations')
+        .update(giftPayload)
+        .eq('id', activeRes.id);
+
+      const updated = { ...activeRes, ...giftPayload };
+      setActiveRes(updated);
+      setReservations(prev => prev.map(r => r.id === activeRes.id ? updated : r));
+      alert('🎁 差し入れ情報を保存・連携しました！');
+    } catch (e) {
+      alert('差し入れ情報の保存に失敗しました: ' + e.message);
+    } finally {
+      setSavingAction(false);
+    }
+  };
+
+  // フィルター
   const currentStageReservations = selectedStageId === 'all'
     ? reservations
     : reservations.filter(r => r.stage_id === selectedStageId);
 
-  // 50音・検索フィルター
   const filteredList = currentStageReservations.filter(r => {
     const name = r.customer_name || r.name || '';
     const kana = r.customer_name_kana || r.kana || '';
@@ -137,7 +227,6 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
     const memo = r.memo || '';
     const staff = r.staff_name || r.cast_name || '';
 
-    // キーワード検索
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchName = name.toLowerCase().includes(q);
@@ -148,21 +237,16 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
       if (!matchName && !matchKana && !matchPhone && !matchMemo && !matchStaff) return false;
     }
 
-    // 🎯 50音ボタン判定
     if (selectedKana) {
       const allowedChars = CHAR_MAP[selectedKana] || selectedKana;
-
-      // 1. かなカラムの先頭1文字
       const firstKana = kana.trim().charAt(0);
       let match = allowedChars.includes(firstKana);
 
-      // 2. メモ欄の「【かな】: xxx」から抽出した先頭1文字
       if (!match && memo.includes('【かな】:')) {
         const memoKana = memo.split('【かな】:')[1]?.trim()?.charAt(0) || '';
         match = allowedChars.includes(memoKana);
       }
 
-      // 3. お名前自体がひらがな・カタカナの場合
       if (!match) {
         const firstName = name.trim().charAt(0);
         match = allowedChars.includes(firstName);
@@ -174,26 +258,34 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
     return true;
   });
 
-  const checkedCount = currentStageReservations.filter(r => r.checked_in || r.is_checked_in).reduce((sum, r) => sum + (r.count || 1), 0);
-  const totalStageReserved = currentStageReservations.reduce((sum, r) => sum + (r.count || 1), 0);
+  const checkedTotalPeople = currentStageReservations.reduce((sum, r) => {
+    if (r.checked_in_count !== undefined && r.checked_in_count !== null) {
+      return sum + Number(r.checked_in_count);
+    }
+    return sum + (r.checked_in || r.is_checked_in ? (r.count || 1) : 0);
+  }, 0);
+
+  const totalStagePeople = currentStageReservations.reduce((sum, r) => sum + (r.count || 1), 0);
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '16px', boxSizing: 'border-box' }}>
       <style>{`
-        .kana-grid {
-          display: grid;
-          grid-template-columns: repeat(10, 1fr);
-          gap: 4px;
-        }
+        .kana-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
         @media (max-width: 480px) {
-          .kana-grid {
-            gap: 2px;
-          }
-          .kana-btn {
-            padding: 8px 0 !important;
-            font-size: 11px !important;
-          }
+          .kana-grid { gap: 2px; }
+          .kana-btn { padding: 8px 0 !important; font-size: 11px !important; }
         }
+        .quick-amt-btn {
+          padding: 8px 12px;
+          border-radius: 8px;
+          border: 1px solid ${COLORS.border};
+          background-color: ${COLORS.surfaceAlt};
+          color: ${COLORS.text};
+          font-weight: 700;
+          font-size: 13px;
+          cursor: pointer;
+        }
+        .quick-amt-btn:hover { background-color: #fce8cc; border-color: ${COLORS.gold}; }
       `}</style>
 
       <div style={{ maxWidth: '960px', margin: '0 auto' }}>
@@ -326,11 +418,11 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
             予約一覧 ({filteredList.length}件)
           </div>
           <div style={{ fontSize: '14px', fontWeight: 800, color: COLORS.gold }}>
-            来場: {checkedCount} / {totalStageReserved}人
+            来場総数: {checkedTotalPeople} / {totalStagePeople}人
           </div>
         </div>
 
-        {/* 予約リスト */}
+        {/* 予約リスト一覧 */}
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px', color: COLORS.muted }}>データを読み込み中...</div>
         ) : filteredList.length === 0 ? (
@@ -342,75 +434,92 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {filteredList.map(res => {
-              const isChecked = res.checked_in || res.is_checked_in || false;
+              const count = res.count || 1;
+              const checkedCount = res.checked_in_count !== undefined && res.checked_in_count !== null 
+                ? Number(res.checked_in_count) 
+                : (res.checked_in || res.is_checked_in ? count : 0);
+              const isFullyChecked = checkedCount >= count;
+              const isPartiallyChecked = checkedCount > 0 && !isFullyChecked;
+              const isPaid = res.payment_status === 'paid' || res.is_paid === true;
+
               const name = res.customer_name || res.name || 'お名前なし';
               const kana = res.customer_name_kana || res.kana || '';
               const tk = getTicketInfo(res.ticket_type_id);
-              const count = res.count || 1;
-              const subtotal = (tk.price * count) + (res.donation_amount || 0);
+              const totalAmt = calculateTotal(res);
               const staff = res.staff_name || res.cast_name || (res.memo?.includes('【扱い】:') ? res.memo.split('【扱い】:')[1]?.split('\n')[0]?.trim() : '劇団扱い');
+              const hasSeatOption = res.seat_number || res.memo?.includes('指定席') || res.memo?.includes('最前列');
+              const hasGiftMark = res.has_gift || res.gift_note || res.gift_target_cast;
 
               return (
                 <div
                   key={res.id}
+                  onClick={() => handleOpenModal(res)}
                   style={{
-                    backgroundColor: isChecked ? '#f0fdf4' : COLORS.surface,
-                    border: `1.5px solid ${isChecked ? '#86efac' : COLORS.border}`,
+                    backgroundColor: isFullyChecked ? '#f0fdf4' : (isPartiallyChecked ? '#fefce8' : COLORS.surface),
+                    border: `1.5px solid ${isFullyChecked ? '#86efac' : (isPartiallyChecked ? '#fde047' : COLORS.border)}`,
                     borderRadius: '14px',
-                    padding: '12px 16px',
+                    padding: '14px 16px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    boxShadow: '0 2px 4px rgba(43, 36, 56, 0.04)'
+                    boxShadow: '0 2px 4px rgba(43, 36, 56, 0.04)',
+                    cursor: 'pointer',
+                    transition: 'transform 0.1s ease'
                   }}
                 >
-                  <div style={{ flex: 1, minWidth: 0, paddingRight: '10px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '2px' }}>
-                      <span style={{ fontWeight: 800, fontSize: '16px' }}>{name} 様</span>
-                      {kana && <span style={{ fontSize: '12px', color: COLORS.muted }}>({kana})</span>}
-                      <span style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold, backgroundColor: COLORS.surfaceAlt, padding: '1px 6px', borderRadius: '4px' }}>
+                  <div style={{ flex: 1, minWidth: 0, paddingRight: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                      <span style={{ fontWeight: 800, fontSize: '17px', color: COLORS.text }}>{name} 様</span>
+                      {kana && <span style={{ fontSize: '12px', color: COLORS.muted }}>（{kana}）</span>}
+                      
+                      <span style={{ fontSize: '11px', fontWeight: 800, color: COLORS.gold, backgroundColor: COLORS.surfaceAlt, padding: '2px 8px', borderRadius: '4px' }}>
                         {count}枚
                       </span>
-                      <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#eef2ff', color: '#4f46e5', fontWeight: 700 }}>
+
+                      <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', backgroundColor: '#eef2ff', color: '#4f46e5', fontWeight: 700 }}>
                         {staff}
                       </span>
+
+                      {/* 💺 指定席ハイライトバッジ */}
+                      {hasSeatOption && (
+                        <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', backgroundColor: '#fef3c7', color: '#b45309', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '3px', border: '1px solid #fde68a' }}>
+                          <Armchair size={12} /> {res.seat_number ? `指定席 ${res.seat_number}` : '指定席オプション'}
+                        </span>
+                      )}
+
+                      {/* 🎁 差し入れバッジ */}
+                      {hasGiftMark && (
+                        <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', backgroundColor: '#fdf2f8', color: '#be185d', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '3px', border: '1px solid #fbcfe8' }}>
+                          <Gift size={12} /> 差し入れ預かり済
+                        </span>
+                      )}
                     </div>
-                    <div style={{ fontSize: '12px', color: COLORS.muted }}>
-                      {tk.name} · ¥{subtotal.toLocaleString()}
+
+                    <div style={{ fontSize: '13px', color: COLORS.muted, display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+                      <span>{tk.name}</span>
+                      <span>·</span>
+                      <span style={{ fontWeight: 700, color: isPaid ? '#10b981' : '#e85a45' }}>
+                        {isPaid ? '精算済' : `未精算 ¥${totalAmt.toLocaleString()}`}
+                      </span>
                     </div>
-                    {res.memo && (
-                      <div style={{ fontSize: '11px', color: '#e85a45', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        📝 {res.memo}
-                      </div>
-                    )}
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <button
-                      onClick={() => setDetailItem(res)}
-                      style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '8px', padding: '8px', cursor: 'pointer', color: COLORS.muted }}
-                    >
-                      <Eye size={16} />
-                    </button>
-                    <button
-                      onClick={() => handleToggleCheckin(res)}
-                      style={{
-                        padding: '10px 16px',
-                        borderRadius: '10px',
-                        border: 'none',
-                        backgroundColor: isChecked ? '#10b981' : COLORS.gold,
-                        color: '#fff',
-                        fontWeight: 700,
-                        fontSize: '13px',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {isChecked ? <><Check size={16} /> 来場済</> : '受付する'}
-                    </button>
+                  {/* 右側：来場ステータス表示 */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{
+                      padding: '8px 14px',
+                      borderRadius: '10px',
+                      backgroundColor: isFullyChecked ? '#10b981' : (isPartiallyChecked ? '#eab308' : COLORS.surfaceAlt),
+                      color: isFullyChecked || isPartiallyChecked ? '#fff' : COLORS.text,
+                      fontWeight: 800,
+                      fontSize: '13px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {isFullyChecked ? <><Check size={16} /> 来場完了</> : isPartiallyChecked ? <><UserCheck size={16} /> {checkedCount}/{count}人来場</> : '未受付'}
+                    </div>
                   </div>
                 </div>
               );
@@ -420,45 +529,270 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
 
       </div>
 
-      {/* 詳細モーダル */}
-      {detailItem && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
-          <div style={{ width: '100%', maxWidth: '420px', backgroundColor: COLORS.surface, borderRadius: '18px', padding: '24px', border: `1px solid ${COLORS.border}`, position: 'relative' }}>
-            <button onClick={() => setDetailItem(null)} style={{ position: 'absolute', top: '16px', right: '16px', background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}>
-              <X size={20} />
-            </button>
+      {/* 🎯 受付・精算・チェックイン統括モーダル */}
+      {activeRes && (() => {
+        const count = activeRes.count || 1;
+        const checkedCount = activeRes.checked_in_count !== undefined && activeRes.checked_in_count !== null 
+          ? Number(activeRes.checked_in_count) 
+          : (activeRes.checked_in || activeRes.is_checked_in ? count : 0);
+        const isFullyChecked = checkedCount >= count;
+        const isPaid = activeRes.payment_status === 'paid' || activeRes.is_paid === true;
+        const totalAmt = calculateTotal(activeRes);
+        const name = activeRes.customer_name || activeRes.name || 'お名前なし';
+        const kana = activeRes.customer_name_kana || activeRes.kana || '';
+        const tk = getTicketInfo(activeRes.ticket_type_id);
+        const staff = activeRes.staff_name || activeRes.cast_name || (activeRes.memo?.includes('【扱い】:') ? activeRes.memo.split('【扱い】:')[1]?.split('\n')[0]?.trim() : '劇団扱い');
+        const hasSeatOption = activeRes.seat_number || activeRes.memo?.includes('指定席') || activeRes.memo?.includes('最前列');
+        const changeAmt = receivedCash ? (Number(receivedCash) - totalAmt) : null;
 
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontFamily: "'Shippori Mincho', serif" }}>予約詳細</h3>
+        return (
+          <div onClick={() => setActiveRes(null)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '16px', boxSizing: 'border-box' }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto', backgroundColor: COLORS.surface, borderRadius: '20px', padding: '24px', border: `1px solid ${COLORS.border}`, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)', position: 'relative' }}>
+              
+              {/* モーダル閉じるボタン */}
+              <button onClick={() => setActiveRes(null)} style={{ position: 'absolute', top: '16px', right: '16px', background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}>
+                <X size={22} />
+              </button>
 
-            <div style={{ fontSize: '14px', display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px', lineHeight: '1.6' }}>
-              <div><strong>お客様名:</strong> {detailItem.customer_name} 様 {detailItem.customer_name_kana ? `(${detailItem.customer_name_kana})` : ''}</div>
-              <div><strong>電話番号:</strong> {detailItem.customer_phone || '未登録'}</div>
-              <div><strong>メール:</strong> {detailItem.customer_email || '未登録'}</div>
-              <div><strong>券種・枚数:</strong> {getTicketInfo(detailItem.ticket_type_id).name} × {detailItem.count || 1}枚</div>
-              <div><strong>合計予定額:</strong> ¥{((getTicketInfo(detailItem.ticket_type_id).price * (detailItem.count || 1)) + (detailItem.donation_amount || 0)).toLocaleString()}</div>
-              <div><strong>担当扱い:</strong> {detailItem.staff_name || detailItem.cast_name || '劇団扱い'}</div>
-              {detailItem.memo && <div><strong>備考・オプション:</strong> {detailItem.memo}</div>}
+              {/* 1. お客様ヘッダー */}
+              <div style={{ borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '14px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '12px', color: COLORS.gold, fontWeight: 700, marginBottom: '2px' }}>
+                  {kana ? `${kana}` : 'ご予約受付'}
+                </div>
+                <h2 style={{ margin: '0 0 6px 0', fontSize: '22px', fontWeight: 900, color: COLORS.text }}>
+                  {name} <span style={{ fontSize: '15px', fontWeight: 500 }}>様</span>
+                </h2>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 800, backgroundColor: COLORS.surfaceAlt, color: COLORS.gold, padding: '3px 8px', borderRadius: '6px' }}>
+                    {tk.name} × {count}枚
+                  </span>
+                  <span style={{ fontSize: '12px', fontWeight: 700, backgroundColor: '#eef2ff', color: '#4f46e5', padding: '3px 8px', borderRadius: '6px' }}>
+                    扱い: {staff}
+                  </span>
+                </div>
+              </div>
+
+              {/* 2. 💺 VIP・特別案内枠（指定席・カンパ） */}
+              {(hasSeatOption || activeRes.donation_amount > 0) && (
+                <div style={{ backgroundColor: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: '12px', padding: '12px 14px', marginBottom: '16px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#b45309', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    ⭐ 特別対応・ご案内
+                  </div>
+                  {hasSeatOption && (
+                    <div style={{ fontSize: '15px', fontWeight: 900, color: '#92400e', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Armchair size={18} /> お席案内: {activeRes.seat_number ? `【${activeRes.seat_number}】` : '最前列指定席'}
+                    </div>
+                  )}
+                  {activeRes.donation_amount > 0 && (
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#b45309', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <HeartHandshake size={15} /> 応援カンパ: ¥{activeRes.donation_amount.toLocaleString()}（感謝のお声がけをお願いします）
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 3. 💴 お会計・お釣り計算エリア */}
+              <div style={{ backgroundColor: isPaid ? '#f0fdf4' : COLORS.surfaceAlt, border: `1.5px solid ${isPaid ? '#86efac' : COLORS.border}`, borderRadius: '14px', padding: '16px', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: isPaid ? '#15803d' : COLORS.text }}>
+                    {isPaid ? '✅ 精算完了（受領済）' : '⚠️ お支払い（未精算）'}
+                  </span>
+                  <div style={{ fontSize: '20px', fontWeight: 900, color: isPaid ? '#15803d' : COLORS.gold }}>
+                    ¥{totalAmt.toLocaleString()}
+                  </div>
+                </div>
+
+                {/* 未精算時のお釣りクイック計算 */}
+                {!isPaid && (
+                  <div style={{ borderTop: `1px solid ${COLORS.border}`, paddingTop: '10px', marginTop: '10px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.muted, marginBottom: '6px' }}>
+                      お預かり金額（クイック計算）
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                      <button type="button" onClick={() => setReceivedCash(String(totalAmt))} className="quick-amt-btn">
+                        ちょうど (¥{totalAmt.toLocaleString()})
+                      </button>
+                      <button type="button" onClick={() => setReceivedCash('5000')} className="quick-amt-btn">
+                        ¥5,000
+                      </button>
+                      <button type="button" onClick={() => setReceivedCash('10000')} className="quick-amt-btn">
+                        ¥10,000
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="number"
+                        placeholder="お預かり金額を入力..."
+                        value={receivedCash}
+                        onChange={(e) => setReceivedCash(e.target.value)}
+                        style={{ width: '140px', padding: '8px 10px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, fontSize: '14px', fontWeight: 700 }}
+                      />
+                      {changeAmt !== null && (
+                        <div style={{ fontSize: '15px', fontWeight: 900, color: changeAmt >= 0 ? '#10b981' : COLORS.danger }}>
+                          {changeAmt >= 0 ? `お釣り: ¥${changeAmt.toLocaleString()}` : `不足: ¥${Math.abs(changeAmt).toLocaleString()}`}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 精算完了・取消トグルボタン */}
+                <button
+                  type="button"
+                  disabled={savingAction}
+                  onClick={handleTogglePayment}
+                  style={{
+                    width: '100%',
+                    marginTop: '12px',
+                    padding: '12px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    backgroundColor: isPaid ? '#fee2e2' : '#10b981',
+                    color: isPaid ? '#dc2626' : '#ffffff',
+                    fontWeight: 800,
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {isPaid ? '精算を取り消す（未払いに戻す）' : '💴 現金を受領して「精算完了」にする'}
+                </button>
+              </div>
+
+              {/* 4. 🎟️ チェックイン（入場）エリア（分割来場対応＆ロック制御） */}
+              <div style={{ backgroundColor: COLORS.surface, border: `1.5px solid ${COLORS.border}`, borderRadius: '14px', padding: '16px', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 800 }}>
+                    入場チェックイン状態
+                  </span>
+                  <span style={{ fontSize: '14px', fontWeight: 800, color: isFullyChecked ? '#10b981' : COLORS.gold }}>
+                    {checkedCount} / {count} 人 来場済
+                  </span>
+                </div>
+
+                {!isPaid && (
+                  <div style={{ fontSize: '12px', color: COLORS.danger, fontWeight: 700, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <AlertCircle size={14} /> 精算が完了するまでチェックインはロックされています
+                  </div>
+                )}
+
+                {/* 複数人の場合の人数ステッパー */}
+                {count > 1 && isPaid && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '10px', padding: '8px', backgroundColor: COLORS.surfaceAlt, borderRadius: '10px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 700 }}>来場人数の個別調整:</span>
+                    <button
+                      type="button"
+                      disabled={checkedCount <= 0 || savingAction}
+                      onClick={() => handleUpdateCheckinCount(checkedCount - 1)}
+                      style={{ width: '32px', height: '32px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, backgroundColor: '#fff', fontSize: '16px', fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      -
+                    </button>
+                    <span style={{ fontSize: '16px', fontWeight: 900 }}>{checkedCount} 人</span>
+                    <button
+                      type="button"
+                      disabled={checkedCount >= count || savingAction}
+                      onClick={() => handleUpdateCheckinCount(checkedCount + 1)}
+                      style={{ width: '32px', height: '32px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, backgroundColor: '#fff', fontSize: '16px', fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      +
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  disabled={!isPaid || savingAction}
+                  onClick={() => handleUpdateCheckinCount(isFullyChecked ? 0 : count)}
+                  style={{
+                    width: '100%',
+                    padding: '14px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    backgroundColor: !isPaid ? '#e2e8f0' : (isFullyChecked ? '#64748b' : COLORS.gold),
+                    color: !isPaid ? '#94a3b8' : '#ffffff',
+                    fontWeight: 800,
+                    fontSize: '15px',
+                    cursor: !isPaid ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    boxShadow: isPaid && !isFullyChecked ? '0 4px 12px rgba(201,121,31,0.25)' : 'none'
+                  }}
+                >
+                  {isFullyChecked ? '入場を取り消す（未受付に戻す）' : `🎟️ 全員分チェックイン（${count}名 入場）`}
+                </button>
+              </div>
+
+              {/* 5. 🎁 差し入れ預かり ＆ キャスト即時連携（常時操作可能） */}
+              <div style={{ backgroundColor: '#fdf2f8', border: '1.5px solid #fbcfe8', borderRadius: '14px', padding: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 800, color: '#be185d', marginBottom: '8px' }}>
+                  <input
+                    type="checkbox"
+                    checked={hasGift}
+                    onChange={(e) => setHasGift(e.target.checked)}
+                    style={{ width: '18px', height: '18px', accentColor: '#be185d', cursor: 'pointer' }}
+                  />
+                  <Gift size={17} /> 差し入れを預かる（キャストアプリへ自動連携）
+                </label>
+
+                {hasGift && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#be185d', marginBottom: '2px' }}>
+                        宛先キャスト名
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="例: 岸根勇人"
+                        value={giftTargetCast}
+                        onChange={(e) => setGiftTargetCast(e.target.value)}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #fbcfe8', fontSize: '13px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#be185d', marginBottom: '2px' }}>
+                        品名・メッセージメモ
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="例: お菓子、お手紙、差し入れ弁当など"
+                        value={giftNote}
+                        onChange={(e) => setGiftNote(e.target.value)}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #fbcfe8', fontSize: '13px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={savingAction}
+                      onClick={handleSaveGift}
+                      style={{
+                        padding: '10px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: '#be185d',
+                        color: '#fff',
+                        fontWeight: 800,
+                        fontSize: '13px',
+                        cursor: 'pointer',
+                        marginTop: '4px'
+                      }}
+                    >
+                      差し入れ情報を保存・連携する
+                    </button>
+                  </div>
+                )}
+              </div>
+
             </div>
-
-            <button
-              onClick={() => handleToggleCheckin(detailItem)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                borderRadius: '10px',
-                border: 'none',
-                backgroundColor: (detailItem.checked_in || detailItem.is_checked_in) ? '#e85a45' : '#10b981',
-                color: '#fff',
-                fontWeight: 700,
-                cursor: 'pointer',
-                fontSize: '15px'
-              }}
-            >
-              {(detailItem.checked_in || detailItem.is_checked_in) ? '来場を取り消す' : '来場済みにする'}
-            </button>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
     </div>
   );
