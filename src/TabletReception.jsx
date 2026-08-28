@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { 
-  ArrowLeft, Search, Check, Users, RefreshCw, X, Eye, 
+  ArrowLeft, Search, Check, Users, RefreshCw, X, 
   Gift, Armchair, HeartHandshake, UserCheck, AlertCircle 
 } from 'lucide-react';
 import { COLORS, FONTS, RADIUS } from './theme';
@@ -46,6 +46,9 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
   const [hasGift, setHasGift] = useState(false);
   const [savingAction, setSavingAction] = useState(false);
 
+  // 今回精算する枚数の選択（1枚 or 全員分）
+  const [payTargetCount, setPayTargetCount] = useState(1);
+
   const handleBack = onBackToAdmin || onBack || (() => window.history.back());
 
   const fetchData = async () => {
@@ -79,7 +82,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
         .eq('production_id', productionId);
       if (ticketsData) setTicketTypes(ticketsData);
 
-      // 3. キャスト一覧取得（差し入れプルダウン用）
+      // 3. キャスト一覧取得
       const { data: castsData } = await supabase
         .from('cast_staff')
         .select('*')
@@ -122,15 +125,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
     return ticket || { name: '一般', price: 0 };
   };
 
-  const calculateTotal = (res) => {
-    if (!res) return 0;
-    if (res.total_price && res.total_price > 0) return res.total_price;
-    const tk = getTicketInfo(res.ticket_type_id);
-    const count = res.count || 1;
-    return (tk.price * count) + (res.donation_amount || 0);
-  };
-
-  // ふりがな取得（安全抽出）
+  // ふりがな取得（あらゆる保存パターンに対応）
   const getKana = (res) => {
     if (!res) return '';
     if (res.customer_name_kana) return res.customer_name_kana;
@@ -145,28 +140,45 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
   const handleOpenModal = (res) => {
     setActiveRes(res);
     setReceivedCash('');
+    const totalCount = res.count || 1;
+    const paidCount = res.paid_count !== undefined && res.paid_count !== null
+      ? Number(res.paid_count)
+      : (res.payment_status === 'paid' || res.is_paid ? totalCount : 0);
+
+    const remainingUnpaid = totalCount - paidCount;
+    setPayTargetCount(remainingUnpaid > 0 ? remainingUnpaid : totalCount);
+
     const currentStaff = res.staff_name || res.cast_name || (res.memo?.includes('【扱い】:') ? res.memo.split('【扱い】:')[1]?.split('\n')[0]?.trim() : '');
     const initialTarget = res.gift_target_cast || currentStaff || '劇団全体・カンパニー宛';
     setGiftTargetCast(initialTarget);
     setHasGift(Boolean(res.has_gift || res.gift_target_cast));
   };
 
-  // 精算完了トグル
-  const handleTogglePayment = async () => {
+  // 1枚 / 全枚数 精算処理
+  const handleSavePaymentCount = async (targetPaidCount) => {
     if (!activeRes) return;
     setSavingAction(true);
-    const currentPaid = activeRes.payment_status === 'paid' || activeRes.is_paid === true;
-    const nextStatus = currentPaid ? 'unpaid' : 'paid';
+
+    const totalCount = activeRes.count || 1;
+    const isAllPaid = targetPaidCount >= totalCount;
+    const nextStatus = targetPaidCount > 0 ? (isAllPaid ? 'paid' : 'partial') : 'unpaid';
 
     try {
+      const payload = {
+        paid_count: targetPaidCount,
+        payment_status: nextStatus,
+        is_paid: isAllPaid
+      };
+
       await supabase
         .from('reservations')
-        .update({ payment_status: nextStatus, is_paid: !currentPaid })
+        .update(payload)
         .eq('id', activeRes.id);
 
-      const updated = { ...activeRes, payment_status: nextStatus, is_paid: !currentPaid };
+      const updated = { ...activeRes, ...payload };
       setActiveRes(updated);
       setReservations(prev => prev.map(r => r.id === activeRes.id ? updated : r));
+      setReceivedCash('');
     } catch (e) {
       alert('精算ステータスの更新に失敗しました: ' + e.message);
     } finally {
@@ -174,7 +186,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
     }
   };
 
-  // チェックイン人数更新（分割チェックイン対応）
+  // チェックイン人数更新
   const handleUpdateCheckinCount = async (newCount) => {
     if (!activeRes) return;
     const totalCount = activeRes.count || 1;
@@ -234,7 +246,6 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
       setActiveRes(updated);
       setReservations(prev => prev.map(r => r.id === activeRes.id ? updated : r));
 
-      // 🎯 チェックイン完了後に差し入れを登録した場合は、0.35秒後に自動でモーダルを閉じる
       if (isFullyChecked && nextHasGift) {
         setTimeout(() => {
           setActiveRes(null);
@@ -465,12 +476,16 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
                 : (res.checked_in || res.is_checked_in ? count : 0);
               const isFullyChecked = checkedCount >= count;
               const isPartiallyChecked = checkedCount > 0 && !isFullyChecked;
-              const isPaid = res.payment_status === 'paid' || res.is_paid === true;
+
+              const paidCount = res.paid_count !== undefined && res.paid_count !== null
+                ? Number(res.paid_count)
+                : (res.payment_status === 'paid' || res.is_paid ? count : 0);
+              const isFullyPaid = paidCount >= count;
+              const isPartiallyPaid = paidCount > 0 && !isFullyPaid;
 
               const name = res.customer_name || res.name || 'お名前なし';
               const kana = getKana(res);
               const tk = getTicketInfo(res.ticket_type_id);
-              const totalAmt = calculateTotal(res);
               const staff = res.staff_name || res.cast_name || (res.memo?.includes('【扱い】:') ? res.memo.split('【扱い】:')[1]?.split('\n')[0]?.trim() : '劇団扱い');
               const hasSeatOption = res.seat_number || res.memo?.includes('指定席') || res.memo?.includes('最前列');
               const hasGiftMark = res.has_gift || res.gift_target_cast;
@@ -495,7 +510,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
                   <div style={{ flex: 1, minWidth: 0, paddingRight: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
                       <span style={{ fontWeight: 800, fontSize: '17px', color: COLORS.text }}>{name} 様</span>
-                      {kana && <span style={{ fontSize: '13px', fontWeight: 700, color: COLORS.gold }}>（{kana}）</span>}
+                      {kana && <span style={{ fontSize: '13px', fontWeight: 800, color: COLORS.gold }}>（{kana}）</span>}
                       
                       <span style={{ fontSize: '11px', fontWeight: 800, color: COLORS.gold, backgroundColor: COLORS.surfaceAlt, padding: '2px 8px', borderRadius: '4px' }}>
                         {count}枚
@@ -515,16 +530,16 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
                       {/* 🎁 差し入れバッジ */}
                       {hasGiftMark && (
                         <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', backgroundColor: '#fdf2f8', color: '#be185d', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '3px', border: '1px solid #fbcfe8' }}>
-                          <Gift size={12} /> 差し入れ預かり済（{res.gift_target_cast || '劇団'}）
+                          <Gift size={12} /> 差し入れ預かり済
                         </span>
                       )}
                     </div>
 
                     <div style={{ fontSize: '13px', color: COLORS.muted, display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
-                      <span>{tk.name}</span>
+                      <span>{tk.name} (¥{tk.price?.toLocaleString()}/枚)</span>
                       <span>·</span>
-                      <span style={{ fontWeight: 700, color: isPaid ? '#10b981' : '#e85a45' }}>
-                        {isPaid ? '精算済' : `未精算 ¥${totalAmt.toLocaleString()}`}
+                      <span style={{ fontWeight: 700, color: isFullyPaid ? '#10b981' : (isPartiallyPaid ? '#d97706' : '#e85a45') }}>
+                        {isFullyPaid ? '精算済' : isPartiallyPaid ? `${paidCount}/${count}枚 精算済` : `未精算 ¥${(tk.price * count).toLocaleString()}`}
                       </span>
                     </div>
                   </div>
@@ -554,21 +569,31 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
 
       </div>
 
-      {/* 🎯 受付・精算・チェックイン統括モーダル */}
+      {/* 🎯 受付・分割精算・分割チェックイン統括モーダル */}
       {activeRes && (() => {
         const count = activeRes.count || 1;
+        const tk = getTicketInfo(activeRes.ticket_type_id);
+        const unitPrice = tk.price || 3700;
+
+        const paidCount = activeRes.paid_count !== undefined && activeRes.paid_count !== null 
+          ? Number(activeRes.paid_count) 
+          : (activeRes.payment_status === 'paid' || activeRes.is_paid ? count : 0);
+
         const checkedCount = activeRes.checked_in_count !== undefined && activeRes.checked_in_count !== null 
           ? Number(activeRes.checked_in_count) 
           : (activeRes.checked_in || activeRes.is_checked_in ? count : 0);
+
+        const isFullyPaid = paidCount >= count;
         const isFullyChecked = checkedCount >= count;
-        const isPaid = activeRes.payment_status === 'paid' || activeRes.is_paid === true;
-        const totalAmt = calculateTotal(activeRes);
+
         const name = activeRes.customer_name || activeRes.name || 'お名前なし';
         const kana = getKana(activeRes);
-        const tk = getTicketInfo(activeRes.ticket_type_id);
         const staff = activeRes.staff_name || activeRes.cast_name || (activeRes.memo?.includes('【扱い】:') ? activeRes.memo.split('【扱い】:')[1]?.split('\n')[0]?.trim() : '劇団扱い');
         const hasSeatOption = activeRes.seat_number || activeRes.memo?.includes('指定席') || activeRes.memo?.includes('最前列');
-        const changeAmt = receivedCash ? (Number(receivedCash) - totalAmt) : null;
+
+        // 今回精算する対象の金額計算
+        const currentPayAmount = payTargetCount * unitPrice;
+        const changeAmt = receivedCash ? (Number(receivedCash) - currentPayAmount) : null;
 
         return (
           <div onClick={() => setActiveRes(null)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '16px', boxSizing: 'border-box' }}>
@@ -579,14 +604,21 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
                 <X size={22} />
               </button>
 
-              {/* 1. お客様ヘッダー（ふりがなを大きく明記） */}
+              {/* 1. お客様ヘッダー（ふりがなを大きく強調） */}
               <div style={{ borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '14px', marginBottom: '16px' }}>
-                <div style={{ fontSize: '14px', color: COLORS.gold, fontWeight: 800, marginBottom: '2px' }}>
-                  {kana ? `【ふりがな】 ${kana}` : 'ご予約受付'}
+                <div style={{ fontSize: '11px', color: COLORS.muted, fontWeight: 700, marginBottom: '2px' }}>ご予約受付</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                  <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 900, color: COLORS.text }}>
+                    {name} <span style={{ fontSize: '16px', fontWeight: 500 }}>様</span>
+                  </h2>
+                  {kana ? (
+                    <span style={{ fontSize: '16px', fontWeight: 900, color: COLORS.gold, backgroundColor: '#fef3c7', padding: '2px 8px', borderRadius: '6px' }}>
+                      【{kana}】
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '12px', color: COLORS.muted }}>（ふりがな未登録）</span>
+                  )}
                 </div>
-                <h2 style={{ margin: '0 0 6px 0', fontSize: '24px', fontWeight: 900, color: COLORS.text }}>
-                  {name} <span style={{ fontSize: '16px', fontWeight: 500 }}>様</span>
-                </h2>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ fontSize: '12px', fontWeight: 800, backgroundColor: COLORS.surfaceAlt, color: COLORS.gold, padding: '3px 8px', borderRadius: '6px' }}>
                     {tk.name} × {count}枚
@@ -597,7 +629,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
                 </div>
               </div>
 
-              {/* 2. 💺 VIP・特別案内枠（指定席・カンパ） */}
+              {/* 2. 💺 VIP・特別案内枠 */}
               {(hasSeatOption || activeRes.donation_amount > 0) && (
                 <div style={{ backgroundColor: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: '12px', padding: '12px 14px', marginBottom: '16px' }}>
                   <div style={{ fontSize: '11px', fontWeight: 800, color: '#b45309', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -610,32 +642,74 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
                   )}
                   {activeRes.donation_amount > 0 && (
                     <div style={{ fontSize: '13px', fontWeight: 700, color: '#b45309', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <HeartHandshake size={15} /> 応援カンパ: ¥{activeRes.donation_amount.toLocaleString()}（感謝のお声がけをお願いします）
+                      <HeartHandshake size={15} /> 応援カンパ: ¥{activeRes.donation_amount.toLocaleString()}
                     </div>
                   )}
                 </div>
               )}
 
-              {/* 3. 💴 お会計・お釣り計算エリア */}
-              <div style={{ backgroundColor: isPaid ? '#f0fdf4' : COLORS.surfaceAlt, border: `1.5px solid ${isPaid ? '#86efac' : COLORS.border}`, borderRadius: '14px', padding: '16px', marginBottom: '16px' }}>
+              {/* 3. 💴 1枚精算 / 全員分精算 エリア */}
+              <div style={{ backgroundColor: isFullyPaid ? '#f0fdf4' : COLORS.surfaceAlt, border: `1.5px solid ${isFullyPaid ? '#86efac' : COLORS.border}`, borderRadius: '14px', padding: '16px', marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 800, color: isPaid ? '#15803d' : COLORS.text }}>
-                    {isPaid ? '✅ 精算完了（受領済）' : '⚠️ お支払い（未精算）'}
-                  </span>
-                  <div style={{ fontSize: '20px', fontWeight: 900, color: isPaid ? '#15803d' : COLORS.gold }}>
-                    ¥{totalAmt.toLocaleString()}
+                  <div>
+                    <span style={{ fontSize: '13px', fontWeight: 800, color: isFullyPaid ? '#15803d' : COLORS.text }}>
+                      {isFullyPaid ? '✅ 全員分 精算完了' : paidCount > 0 ? `⚠️ 一部精算済（${paidCount}/${count}枚）` : '⚠️ お支払い（未精算）'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '20px', fontWeight: 900, color: isFullyPaid ? '#15803d' : COLORS.gold }}>
+                    {isFullyPaid ? `¥${(count * unitPrice).toLocaleString()}` : `¥${currentPayAmount.toLocaleString()}`}
                   </div>
                 </div>
 
+                {/* 複数人予約の場合の精算枚数タブ（1枚だけ or 全員分） */}
+                {!isFullyPaid && count > 1 && (
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '10px' }}>
+                    <button
+                      type="button"
+                      onClick={() => { setPayTargetCount(1); setReceivedCash(''); }}
+                      style={{
+                        flex: 1,
+                        padding: '10px',
+                        borderRadius: '8px',
+                        border: `2px solid ${payTargetCount === 1 ? COLORS.gold : COLORS.border}`,
+                        backgroundColor: payTargetCount === 1 ? '#fff6e8' : '#fff',
+                        fontWeight: 800,
+                        fontSize: '13px',
+                        cursor: 'pointer',
+                        color: payTargetCount === 1 ? COLORS.gold : COLORS.text
+                      }}
+                    >
+                      🎫 1枚だけ精算 (¥{unitPrice.toLocaleString()})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setPayTargetCount(count - paidCount); setReceivedCash(''); }}
+                      style={{
+                        flex: 1,
+                        padding: '10px',
+                        borderRadius: '8px',
+                        border: `2px solid ${payTargetCount > 1 ? COLORS.gold : COLORS.border}`,
+                        backgroundColor: payTargetCount > 1 ? '#fff6e8' : '#fff',
+                        fontWeight: 800,
+                        fontSize: '13px',
+                        cursor: 'pointer',
+                        color: payTargetCount > 1 ? COLORS.gold : COLORS.text
+                      }}
+                    >
+                      👥 {count - paidCount}枚分まとめて精算 (¥{((count - paidCount) * unitPrice).toLocaleString()})
+                    </button>
+                  </div>
+                )}
+
                 {/* 未精算時のお釣りクイック計算 */}
-                {!isPaid && (
-                  <div style={{ borderTop: `1px solid ${COLORS.border}`, paddingTop: '10px', marginTop: '10px' }}>
+                {!isFullyPaid && (
+                  <div style={{ marginTop: '6px' }}>
                     <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.muted, marginBottom: '6px' }}>
                       お預かり金額（クイック計算）
                     </div>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
-                      <button type="button" onClick={() => setReceivedCash(String(totalAmt))} className="quick-amt-btn">
-                        ちょうど (¥{totalAmt.toLocaleString()})
+                      <button type="button" onClick={() => setReceivedCash(String(currentPayAmount))} className="quick-amt-btn">
+                        ちょうど (¥{currentPayAmount.toLocaleString()})
                       </button>
                       <button type="button" onClick={() => setReceivedCash('5000')} className="quick-amt-btn">
                         ¥5,000
@@ -662,33 +736,55 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
                   </div>
                 )}
 
-                {/* 精算完了・取消トグルボタン */}
-                <button
-                  type="button"
-                  disabled={savingAction}
-                  onClick={handleTogglePayment}
-                  style={{
-                    width: '100%',
-                    marginTop: '12px',
-                    padding: '12px',
-                    borderRadius: '10px',
-                    border: 'none',
-                    backgroundColor: isPaid ? '#fee2e2' : '#10b981',
-                    color: isPaid ? '#dc2626' : '#ffffff',
-                    fontWeight: 800,
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px'
-                  }}
-                >
-                  {isPaid ? '精算を取り消す（未払いに戻す）' : '💴 現金を受領して「精算完了」にする'}
-                </button>
+                {/* 精算実行ボタン */}
+                {!isFullyPaid ? (
+                  <button
+                    type="button"
+                    disabled={savingAction}
+                    onClick={() => handleSavePaymentCount(paidCount + payTargetCount)}
+                    style={{
+                      width: '100%',
+                      marginTop: '12px',
+                      padding: '12px',
+                      borderRadius: '10px',
+                      border: 'none',
+                      backgroundColor: '#10b981',
+                      color: '#ffffff',
+                      fontWeight: 800,
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    💴 {payTargetCount}枚分 (¥{currentPayAmount.toLocaleString()}) を「精算完了」にする
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={savingAction}
+                    onClick={() => handleSavePaymentCount(0)}
+                    style={{
+                      width: '100%',
+                      marginTop: '12px',
+                      padding: '10px',
+                      borderRadius: '10px',
+                      border: 'none',
+                      backgroundColor: '#fee2e2',
+                      color: '#dc2626',
+                      fontWeight: 800,
+                      fontSize: '13px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    精算を取り消す（全未払いに戻す）
+                  </button>
+                )}
               </div>
 
-              {/* 4. 🎟️ チェックイン（入場）エリア */}
+              {/* 4. 🎟️ チェックイン（入場）エリア（精算済み人数分のみ入場可能） */}
               <div style={{ backgroundColor: COLORS.surface, border: `1.5px solid ${COLORS.border}`, borderRadius: '14px', padding: '16px', marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                   <span style={{ fontSize: '13px', fontWeight: 800 }}>
@@ -699,16 +795,23 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
                   </span>
                 </div>
 
-                {!isPaid && (
+                {paidCount === 0 && (
                   <div style={{ fontSize: '12px', color: COLORS.danger, fontWeight: 700, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <AlertCircle size={14} /> 精算が完了するまでチェックインはロックされています
                   </div>
                 )}
 
-                {/* 複数人の場合の個別人数ステッパー */}
-                {count > 1 && isPaid && (
+                {/* 複数人予約で一部精算の場合 */}
+                {paidCount > 0 && paidCount < count && (
+                  <div style={{ fontSize: '12px', color: '#b45309', fontWeight: 700, marginBottom: '8px' }}>
+                    ※現在【{paidCount}名分】精算済みのため、最大{paidCount}名まで入場可能です。
+                  </div>
+                )}
+
+                {/* 個別調整ボタン */}
+                {count > 1 && paidCount > 0 && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '10px', padding: '8px', backgroundColor: COLORS.surfaceAlt, borderRadius: '10px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 700 }}>来場人数の個別調整:</span>
+                    <span style={{ fontSize: '12px', fontWeight: 700 }}>入場人数:</span>
                     <button
                       type="button"
                       disabled={checkedCount <= 0 || savingAction}
@@ -720,7 +823,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
                     <span style={{ fontSize: '16px', fontWeight: 900 }}>{checkedCount} 人</span>
                     <button
                       type="button"
-                      disabled={checkedCount >= count || savingAction}
+                      disabled={checkedCount >= paidCount || savingAction}
                       onClick={() => handleUpdateCheckinCount(checkedCount + 1)}
                       style={{ width: '32px', height: '32px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, backgroundColor: '#fff', fontSize: '16px', fontWeight: 800, cursor: 'pointer' }}
                     >
@@ -731,30 +834,29 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
 
                 <button
                   type="button"
-                  disabled={!isPaid || savingAction}
-                  onClick={() => handleUpdateCheckinCount(isFullyChecked ? 0 : count)}
+                  disabled={paidCount === 0 || savingAction}
+                  onClick={() => handleUpdateCheckinCount(isFullyChecked ? 0 : paidCount)}
                   style={{
                     width: '100%',
                     padding: '14px',
                     borderRadius: '10px',
                     border: 'none',
-                    backgroundColor: !isPaid ? '#e2e8f0' : (isFullyChecked ? '#64748b' : COLORS.gold),
-                    color: !isPaid ? '#94a3b8' : '#ffffff',
+                    backgroundColor: paidCount === 0 ? '#e2e8f0' : (isFullyChecked ? '#64748b' : COLORS.gold),
+                    color: paidCount === 0 ? '#94a3b8' : '#ffffff',
                     fontWeight: 800,
                     fontSize: '15px',
-                    cursor: !isPaid ? 'not-allowed' : 'pointer',
+                    cursor: paidCount === 0 ? 'not-allowed' : 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '6px',
-                    boxShadow: isPaid && !isFullyChecked ? '0 4px 12px rgba(201,121,31,0.25)' : 'none'
+                    gap: '6px'
                   }}
                 >
-                  {isFullyChecked ? '入場を取り消す（未受付に戻す）' : `🎟️ 全員分チェックイン（${count}名 入場）`}
+                  {isFullyChecked ? '入場を取り消す（未受付に戻す）' : `🎟️ 精算済み分チェックイン（${paidCount}名 入場）`}
                 </button>
               </div>
 
-              {/* 5. 🎁 差し入れ預かり（文字入力なし・プルダウン選択＆自動保存＆自動クローズ） */}
+              {/* 5. 🎁 差し入れ預かり（チェック時・変更時ワンタップ自動保存＆クローズ） */}
               <div style={{ backgroundColor: '#fdf2f8', border: '1.5px solid #fbcfe8', borderRadius: '14px', padding: '16px' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 800, color: '#be185d', marginBottom: '6px' }}>
                   <input
