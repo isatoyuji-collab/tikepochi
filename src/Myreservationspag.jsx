@@ -3,20 +3,23 @@ import { supabase } from './supabaseClient';
 import { 
   Ticket, Calendar, MapPin, Bell, ExternalLink, 
   Smartphone, Star, CheckCircle2, AlertCircle, X, 
-  Send, Edit3, Sparkles
+  Send, Edit3, Sparkles, Heart
 } from 'lucide-react';
 
 const COLORS = {
-  bg: '#faf5ea',
+  bg: '#fdf8ef',
   surface: '#ffffff',
-  surfaceAlt: '#f7efe0',
-  border: 'rgba(201,121,31,0.22)',
-  gold: '#c9791f',
+  surfaceAlt: '#fff4d6',
+  cardBg: '#ffffff',
+  border: 'rgba(230, 159, 0, 0.25)',
+  gold: '#d97706',
+  goldLight: '#fef3c7',
+  pouchiDark: '#38220f',
   indigo: '#4338ca',
   text: '#2b2438',
-  muted: '#8a8398',
-  success: '#1f9a56',
-  danger: '#e85a45',
+  muted: '#8c7d70',
+  success: '#16a34a',
+  danger: '#e11d48',
 };
 
 export default function Myreservationspag() {
@@ -28,7 +31,7 @@ export default function Myreservationspag() {
   const [loading, setLoading] = useState(true);
 
   // 変更・キャンセル・アンケート用モーダル
-  const [activeModal, setActiveModal] = useState(null); // 'edit' | 'cancel' | 'survey'
+  const [activeModal, setActiveModal] = useState(null);
   const [selectedRes, setSelectedRes] = useState(null);
   const [editCount, setEditCount] = useState(1);
   const [editMemo, setEditMemo] = useState('');
@@ -58,7 +61,6 @@ export default function Myreservationspag() {
   const fetchMypageData = async (mypageToken) => {
     setLoading(true);
     try {
-      // 1. 予約データを取得
       const { data: resData, error: resErr } = await supabase
         .from('reservations')
         .select('*')
@@ -75,7 +77,6 @@ export default function Myreservationspag() {
         const stageIds = [...new Set(resData.map(r => r.stage_id).filter(Boolean))];
         const ticketTypeIds = [...new Set(resData.map(r => r.ticket_type_id).filter(Boolean))];
 
-        // 2. 公演・ステージ・券種を並列取得
         const [
           { data: prodList }, 
           { data: stageList }, 
@@ -105,7 +106,6 @@ export default function Myreservationspag() {
     }
   };
 
-  // Push通知
   const handleTogglePush = async () => {
     if (!('Notification' in window)) {
       alert('お使いのブラウザはプッシュ通知に対応していません。');
@@ -114,20 +114,18 @@ export default function Myreservationspag() {
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
       setPushEnabled(true);
-      alert('開演前リマインドや重要なお知らせのプッシュ通知をONにしました！');
+      alert('開演前リマインドのプッシュ通知をONにしましたワン！🐾');
     } else {
       alert('通知がブロックされました。ブラウザの設定から許可してください。');
     }
   };
 
-  // LINE連携
   const handleLineLink = () => {
     const liffUrl = `https://line.me/R/`; 
     alert('LINE連携画面へ進みます。連携すると別サイトの特典コンテンツが自動アンロックされます。');
     window.location.href = liffUrl;
   };
 
-  // 予約変更の送信
   const handleUpdateReservation = async () => {
     if (!selectedRes) return;
     try {
@@ -140,7 +138,7 @@ export default function Myreservationspag() {
         .eq('id', selectedRes.id);
 
       if (error) throw error;
-      alert('予約内容を変更しました。');
+      alert('予約内容を変更しました！🐾');
       setActiveModal(null);
       fetchMypageData(token);
     } catch (e) {
@@ -148,7 +146,6 @@ export default function Myreservationspag() {
     }
   };
 
-  // 予約キャンセルの送信
   const handleCancelReservation = async () => {
     if (!selectedRes) return;
     if (confirm('本当にこの予約をキャンセルしますか？')) {
@@ -168,7 +165,6 @@ export default function Myreservationspag() {
     }
   };
 
-  // 匿名アンケート送信
   const handleSubmitSurvey = async () => {
     if (!surveyText.trim()) return;
     try {
@@ -189,7 +185,6 @@ export default function Myreservationspag() {
     }
   };
 
-  // GoogleカレンダーURL生成
   const getGoogleCalendarUrl = (prod, stage) => {
     if (!stage || !prod) return '#';
     const dStr = stage.performance_date || stage.stage_date || '';
@@ -214,8 +209,9 @@ export default function Myreservationspag() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.text, fontFamily: 'sans-serif' }}>
-        マイページを読み込み中...
+      <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: COLORS.pouchiDark, fontFamily: 'sans-serif', gap: '12px' }}>
+        <div style={{ fontSize: '36px' }}>🐾</div>
+        <div style={{ fontWeight: 700 }}>チケポチが予約を読み込み中...</div>
       </div>
     );
   }
@@ -223,11 +219,11 @@ export default function Myreservationspag() {
   if (!token && reservations.length === 0) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, padding: '32px 16px', boxSizing: 'border-box', fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
-        <div style={{ maxWidth: '480px', margin: '40px auto', backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '16px', padding: '24px', textAlign: 'center' }}>
-          <Ticket size={48} color={COLORS.gold} style={{ margin: '0 auto 12px auto' }} />
-          <h2 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 8px 0' }}>予約確認トークンが見つかりません</h2>
+        <div style={{ maxWidth: '480px', margin: '40px auto', backgroundColor: COLORS.surface, border: `2px solid ${COLORS.border}`, borderRadius: '24px', padding: '28px', textAlign: 'center', boxShadow: '0 8px 24px rgba(217, 119, 6, 0.08)' }}>
+          <div style={{ fontSize: '42px', marginBottom: '8px' }}>🐶🎟️</div>
+          <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 8px 0', color: COLORS.pouchiDark }}>予約トークンが見つからないワン</h2>
           <p style={{ fontSize: '13px', color: COLORS.muted, lineHeight: '1.6' }}>
-            予約完了時にお送りしたメールに記載されている「マイページ確認URL」からアクセスしてください。
+            予約完了メールにある「マイページ確認URL」からアクセスしてね！
           </p>
         </div>
       </div>
@@ -235,25 +231,69 @@ export default function Myreservationspag() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '16px 12px 60px 12px', boxSizing: 'border-box' }}>
-      <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '16px 14px 60px 14px', boxSizing: 'border-box' }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Zen+Kaku+Gothic+New:wght@500;700;900&display=swap');
+        
+        .pouchi-font {
+          font-family: 'Zen Maru Gothic', 'Zen Kaku Gothic New', sans-serif;
+        }
 
-        {/* ヘッダー */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-          <div>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.gold }}>office Knight チケットポータル</div>
-            <h1 style={{ fontSize: '20px', fontWeight: 800, margin: '2px 0 0 0' }}>お客様マイページ</h1>
+        .ticket-card {
+          background-color: #ffffff;
+          border: 2px solid ${COLORS.border};
+          border-radius: 20px;
+          padding: 18px;
+          box-shadow: 0 4px 14px rgba(217, 119, 6, 0.08);
+          position: relative;
+          overflow: hidden;
+        }
+        
+        .ticket-card::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 6px;
+          background: linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b);
+        }
+
+        .btn-bounce:active {
+          transform: scale(0.97);
+        }
+      `}</style>
+
+      <div style={{ maxWidth: '540px', margin: '0 auto' }}>
+
+        {/* 🐶 チケポチ ヘッダー */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', backgroundColor: '#ffffff', padding: '12px 16px', borderRadius: '20px', border: `2px solid ${COLORS.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {/* ポチ君アイコン */}
+            <div style={{ width: '46px', height: '46px', borderRadius: '16px', backgroundColor: '#fef3c7', border: '2px solid #f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '26px', flexShrink: 0 }}>
+              🐶
+            </div>
+            <div>
+              <div className="pouchi-font" style={{ fontSize: '18px', fontWeight: 900, color: '#d97706', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                チケポチ！ <span style={{ fontSize: '11px', color: COLORS.muted, fontWeight: 700 }}>マイページ</span>
+              </div>
+              <div style={{ fontSize: '11px', color: COLORS.muted, fontWeight: 700 }}>
+                チケット、ポチッとしよ！🐾
+              </div>
+            </div>
           </div>
+
           <button
             onClick={handleTogglePush}
+            className="btn-bounce"
             style={{
               padding: '6px 12px',
-              borderRadius: '20px',
-              border: `1px solid ${pushEnabled ? COLORS.success : COLORS.border}`,
-              backgroundColor: pushEnabled ? '#f0fdf4' : COLORS.surface,
-              color: pushEnabled ? COLORS.success : COLORS.text,
+              borderRadius: '999px',
+              border: `1.5px solid ${pushEnabled ? COLORS.success : '#f59e0b'}`,
+              backgroundColor: pushEnabled ? '#f0fdf4' : '#fffbeb',
+              color: pushEnabled ? COLORS.success : '#d97706',
               fontSize: '11px',
-              fontWeight: 700,
+              fontWeight: 800,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -264,137 +304,163 @@ export default function Myreservationspag() {
           </button>
         </div>
 
-        {/* 🎁 観劇者限定コンテンツサイトへの統合バナー（最上部に1本化） */}
+        {/* 🍁 秋の大笑会2026 特典コンテンツサイトへの専用バナー */}
         <div 
           onClick={() => window.open(`https://office-knight-partner-site.vercel.app?token=${token}`, '_blank')}
+          className="btn-bounce"
           style={{
-            backgroundColor: '#4338ca',
+            background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)',
             color: '#ffffff',
-            borderRadius: '16px',
-            padding: '16px',
+            borderRadius: '22px',
+            padding: '16px 18px',
             marginBottom: '16px',
             cursor: 'pointer',
-            boxShadow: '0 4px 14px rgba(67,56,202,0.25)',
+            boxShadow: '0 6px 18px rgba(30, 27, 75, 0.25)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: '12px'
+            gap: '12px',
+            border: '2px solid rgba(251, 191, 36, 0.4)',
+            position: 'relative',
+            overflow: 'hidden'
           }}
         >
-          <div>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
-              <Sparkles size={12} /> 観劇予約者限定
-            </div>
-            <div style={{ fontSize: '15px', fontWeight: 800 }}>
-              秋の大笑会 特典コンテンツサイト
-            </div>
-            <div style={{ fontSize: '11px', opacity: 0.9, marginTop: '2px' }}>
-              限定動画・電子パンフ・稽古場レポートはこちら
-            </div>
+          <div style={{ position: 'absolute', right: '-10px', bottom: '-10px', fontSize: '64px', opacity: 0.15, pointerEvents: 'none' }}>
+            🍁
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#ffffff', color: '#4338ca', padding: '8px 12px', borderRadius: '10px', fontSize: '12px', fontWeight: 800, whiteSpace: 'nowrap', flexShrink: 0 }}>
-            開く <ExternalLink size={14} />
-          </div>
-        </div>
 
-        {/* ホーム画面追加案内 */}
-        <div style={{ backgroundColor: '#fffdf9', border: `1px dashed ${COLORS.gold}`, borderRadius: '12px', padding: '10px 14px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Smartphone size={18} color={COLORS.gold} />
-          <div style={{ fontSize: '11px', color: COLORS.text, lineHeight: '1.4' }}>
-            <strong>ホーム画面に追加</strong>すると、次回からアプリのようにワンタップでチケットや特典にアクセスできます。
-          </div>
-        </div>
-
-        {/* LINE連携 */}
-        <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '12px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '28px', height: '28px', borderRadius: '6px', backgroundColor: '#06c755', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '12px' }}>
-              LINE
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '14px', backgroundColor: '#fbbf24', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', flexShrink: 0 }}>
+              🎭
             </div>
             <div>
-              <div style={{ fontSize: '12px', fontWeight: 700 }}>LINE ID連携</div>
-              <div style={{ fontSize: '10px', color: COLORS.muted }}>
-                {isLineLinked ? '連携完了（特典サイト自動認証）' : '連携して特典サイトへスムーズにアクセス'}
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#dc2626', color: '#ffffff', padding: '2px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: 900, marginBottom: '3px' }}>
+                ⭐ 観劇予約者限定
+              </div>
+              <div className="pouchi-font" style={{ fontSize: '15px', fontWeight: 900, letterSpacing: '0.5px' }}>
+                秋の大笑会 特典コンテンツサイト
+              </div>
+              <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '2px' }}>
+                限定動画・電子パンフ・稽古場日誌はこちら🐾
               </div>
             </div>
           </div>
-          {!isLineLinked && (
-            <button
-              onClick={handleLineLink}
-              style={{ padding: '6px 12px', borderRadius: '8px', border: 'none', backgroundColor: '#06c755', color: '#fff', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
-            >
-              連携する
-            </button>
-          )}
+
+          <div style={{ backgroundColor: '#fbbf24', color: '#1e1b4b', padding: '8px 14px', borderRadius: '12px', fontSize: '12px', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0, boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }}>
+            あそびに行く <ExternalLink size={13} />
+          </div>
         </div>
 
-        {/* 🎫 現在予約中の公演チケット */}
+        {/* 📲 ホーム画面追加（PWA）＆ LINE連携（横並びミニバナー） */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '18px' }}>
+          
+          {/* ホーム画面追加 */}
+          <div style={{ backgroundColor: '#ffffff', border: `1.5px dashed #f59e0b`, borderRadius: '16px', padding: '12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 800, color: '#d97706' }}>
+              <Smartphone size={15} /> ホーム画面追加
+            </div>
+            <div style={{ fontSize: '10px', color: COLORS.muted, margin: '6px 0', lineHeight: '1.4' }}>
+              アプリみたいにホームに置いてすぐチケット表示🐾
+            </div>
+          </div>
+
+          {/* LINE連携 */}
+          <div style={{ backgroundColor: '#ffffff', border: `1.5px solid ${isLineLinked ? '#86efac' : '#bbf7d0'}`, borderRadius: '16px', padding: '12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 800, color: '#15803d' }}>
+              <div style={{ width: '16px', height: '16px', borderRadius: '4px', backgroundColor: '#06c755', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: 900 }}>L</div>
+              LINE ID連携
+            </div>
+            <div style={{ fontSize: '10px', color: isLineLinked ? COLORS.success : COLORS.muted, margin: '6px 0', fontWeight: isLineLinked ? 700 : 400 }}>
+              {isLineLinked ? '連携完了！自動ログイン' : '連携して特典に即アクセス'}
+            </div>
+            {!isLineLinked && (
+              <button
+                onClick={handleLineLink}
+                className="btn-bounce"
+                style={{ width: '100%', padding: '5px', borderRadius: '8px', border: 'none', backgroundColor: '#06c755', color: '#fff', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+              >
+                連携する
+              </button>
+            )}
+          </div>
+
+        </div>
+
+        {/* 🎟️ ご予約中のチケット一覧 */}
         <div style={{ marginBottom: '24px' }}>
-          <div style={{ fontSize: '13px', fontWeight: 800, color: COLORS.gold, marginBottom: '8px' }}>
-            🎟️ ご予約中の公演チケット
+          <div className="pouchi-font" style={{ fontSize: '15px', fontWeight: 900, color: COLORS.pouchiDark, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span>🎟️</span> ご予約中のチケット <span style={{ fontSize: '12px', color: '#d97706' }}>（全 {currentReservations.length} 公演）</span>
           </div>
 
           {currentReservations.length === 0 ? (
-            <div style={{ backgroundColor: COLORS.surface, borderRadius: '12px', border: `1px solid ${COLORS.border}`, padding: '24px', textAlign: 'center', color: COLORS.muted, fontSize: '13px' }}>
-              現在予約中の公演はありません。
+            <div className="ticket-card" style={{ textAlign: 'center', padding: '30px 20px', color: COLORS.muted }}>
+              <div style={{ fontSize: '32px', marginBottom: '6px' }}>🐶💤</div>
+              <div style={{ fontWeight: 700, fontSize: '13px' }}>現在予約中の公演はありませんワン</div>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               {currentReservations.map(res => {
                 const prod = productions[res.production_id] || {};
                 const stage = stages[res.stage_id] || {};
                 const tk = ticketTypes[res.ticket_type_id] || { name: '一般', price: 0 };
                 const subtotal = (tk.price * (res.count || 1)) + (res.donation_amount || 0);
 
+                const isA = prod.title?.includes('あなたとコンビ');
+                const badgeColor = isA ? '#d97706' : '#4338ca';
+                const badgeText = isA ? 'A公演' : 'B公演';
+
                 return (
-                  <div
-                    key={res.id}
-                    style={{
-                      backgroundColor: COLORS.surface,
-                      border: `1.5px solid ${COLORS.gold}`,
-                      borderRadius: '16px',
-                      padding: '16px',
-                      boxShadow: '0 2px 8px rgba(201,121,31,0.08)'
-                    }}
-                  >
-                    <div style={{ borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '8px', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 800, color: '#ffffff', backgroundColor: COLORS.gold, padding: '2px 8px', borderRadius: '4px' }}>
-                        ご予約確定
-                      </span>
-                      <span style={{ fontSize: '12px', color: COLORS.muted }}>
-                        予約番号: #{res.id.slice(0, 6)}
+                  <div key={res.id} className="ticket-card">
+                    
+                    {/* カード上部 */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 900, color: '#ffffff', backgroundColor: badgeColor, padding: '3px 8px', borderRadius: '6px' }}>
+                          {badgeText}
+                        </span>
+                        <span style={{ fontSize: '11px', fontWeight: 800, color: COLORS.success, backgroundColor: '#dcfce7', padding: '3px 8px', borderRadius: '6px' }}>
+                          ✓ ご予約確定
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '11px', color: COLORS.muted, fontFamily: 'monospace' }}>
+                        #{res.id.slice(0, 6)}
                       </span>
                     </div>
 
-                    <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 10px 0', color: COLORS.text }}>
+                    <h3 className="pouchi-font" style={{ fontSize: '16px', fontWeight: 900, margin: '0 0 12px 0', color: COLORS.pouchiDark }}>
                       {prod.title || '公演情報'}
                     </h3>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: COLORS.text, marginBottom: '14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Calendar size={14} color={COLORS.gold} />
+                    {/* 公演スペック（見やすいブロック形式） */}
+                    <div style={{ backgroundColor: '#fffbeb', borderRadius: '14px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', marginBottom: '14px', border: '1px solid #fef3c7' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: COLORS.pouchiDark }}>
+                        <Calendar size={15} color="#d97706" />
                         <strong>{stage.performance_date || stage.stage_date} {stage.start_time?.slice(0, 5)}開演</strong>
-                        {stage.team_name && <span style={{ fontSize: '11px', color: COLORS.gold }}>({stage.team_name})</span>}
+                        {stage.team_name && <span style={{ fontSize: '11px', color: '#d97706', fontWeight: 700 }}>({stage.team_name})</span>}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <MapPin size={14} color={COLORS.gold} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: COLORS.muted }}>
+                        <MapPin size={15} color="#d97706" />
                         <span>{prod.venue_name || '布施PEベース'}</span>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Ticket size={14} color={COLORS.gold} />
-                        <span>{tk.name} × <strong>{res.count}枚</strong>（¥{subtotal.toLocaleString()} 当日精算）</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: COLORS.pouchiDark, borderTop: '1px dashed #fde68a', paddingTop: '6px', marginTop: '2px' }}>
+                        <Ticket size={15} color="#d97706" />
+                        <span>{tk.name} × <strong>{res.count}枚</strong></span>
+                        <span style={{ marginLeft: 'auto', fontWeight: 900, color: '#d97706', fontSize: '14px' }}>
+                          ¥{subtotal.toLocaleString()} <span style={{ fontSize: '10px', color: COLORS.muted }}>(当日精算)</span>
+                        </span>
                       </div>
                     </div>
 
-                    {/* カレンダー・変更・キャンセル */}
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {/* 操作ボタン */}
+                    <div style={{ display: 'flex', gap: '8px' }}>
                       <a
                         href={getGoogleCalendarUrl(prod, stage)}
                         target="_blank"
                         rel="noreferrer"
-                        style={{ flex: 1, padding: '9px', textAlign: 'center', textDecoration: 'none', borderRadius: '8px', border: `1px solid ${COLORS.border}`, backgroundColor: COLORS.surfaceAlt, color: COLORS.text, fontSize: '12px', fontWeight: 700 }}
+                        className="btn-bounce"
+                        style={{ flex: 1.2, padding: '10px', textAlign: 'center', textDecoration: 'none', borderRadius: '12px', border: `1.5px solid #fde68a`, backgroundColor: '#fffdf9', color: '#b45309', fontSize: '12px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                       >
-                        📅 カレンダー登録
+                        📅 カレンダー
                       </a>
                       <button
                         onClick={() => {
@@ -403,18 +469,20 @@ export default function Myreservationspag() {
                           setEditMemo(res.memo || '');
                           setActiveModal('edit');
                         }}
-                        style={{ flex: 1, padding: '9px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, backgroundColor: COLORS.surface, color: COLORS.gold, fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                        className="btn-bounce"
+                        style={{ flex: 1, padding: '10px', borderRadius: '12px', border: `1.5px solid #fde68a`, backgroundColor: '#ffffff', color: '#d97706', fontSize: '12px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                       >
-                        <Edit3 size={13} /> 予約変更
+                        <Edit3 size={13} /> 変更
                       </button>
                       <button
                         onClick={() => {
                           setSelectedRes(res);
                           setActiveModal('cancel');
                         }}
-                        style={{ padding: '9px 14px', borderRadius: '8px', border: `1px solid rgba(232,90,69,0.3)`, backgroundColor: '#fff', color: COLORS.danger, fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                        className="btn-bounce"
+                        style={{ padding: '10px 14px', borderRadius: '12px', border: `1px solid #fecdd3`, backgroundColor: '#fff', color: COLORS.danger, fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
                       >
-                        キャンセル
+                        取消
                       </button>
                     </div>
 
@@ -425,24 +493,24 @@ export default function Myreservationspag() {
           )}
         </div>
 
-        {/* 過去の観劇履歴 ＆ 匿名アンケート */}
+        {/* 📜 過去の観劇履歴 ＆ 匿名アンケート */}
         {pastReservations.length > 0 && (
           <div>
-            <div style={{ fontSize: '13px', fontWeight: 800, color: COLORS.muted, marginBottom: '8px' }}>
-              📜 過去にご観劇いただいた公演
+            <div className="pouchi-font" style={{ fontSize: '14px', fontWeight: 900, color: COLORS.muted, marginBottom: '10px' }}>
+              📜 観劇のおもいで
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {pastReservations.map(res => {
                 const prod = productions[res.production_id] || {};
                 const stage = stages[res.stage_id] || {};
 
                 return (
-                  <div key={res.id} style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div key={res.id} style={{ backgroundColor: '#ffffff', border: `1.5px solid ${COLORS.border}`, borderRadius: '16px', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div>
-                      <div style={{ fontSize: '13px', fontWeight: 700 }}>{prod.title}</div>
-                      <div style={{ fontSize: '11px', color: COLORS.muted }}>
-                        {stage.performance_date || stage.stage_date} ご来場ありがとうございました
+                      <div className="pouchi-font" style={{ fontSize: '14px', fontWeight: 900, color: COLORS.pouchiDark }}>{prod.title}</div>
+                      <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '2px' }}>
+                        {stage.performance_date || stage.stage_date} ご来場ありがとうワン！🐾
                       </div>
                     </div>
                     <button
@@ -450,9 +518,10 @@ export default function Myreservationspag() {
                         setSelectedRes(res);
                         setActiveModal('survey');
                       }}
-                      style={{ padding: '6px 12px', borderRadius: '8px', border: `1px solid ${COLORS.gold}`, backgroundColor: '#fffdf9', color: COLORS.gold, fontSize: '11px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      className="btn-bounce"
+                      style={{ padding: '8px 14px', borderRadius: '12px', border: `1.5px solid #f59e0b`, backgroundColor: '#fffbeb', color: '#d97706', fontSize: '12px', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                     >
-                      <Star size={12} fill={COLORS.gold} /> 感想・評価を送る
+                      <Star size={13} fill="#d97706" /> 感想を送る
                     </button>
                   </div>
                 );
@@ -463,19 +532,21 @@ export default function Myreservationspag() {
 
       </div>
 
-      {/* 予約変更モーダル */}
+      {/* 🛠️ 予約変更モーダル */}
       {activeModal === 'edit' && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
-          <div style={{ width: '100%', maxWidth: '420px', backgroundColor: COLORS.surface, borderRadius: '16px', padding: '20px', border: `1px solid ${COLORS.border}` }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
+          <div style={{ width: '100%', maxWidth: '420px', backgroundColor: '#ffffff', borderRadius: '24px', padding: '22px', border: `2px solid ${COLORS.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>ご予約内容の変更</h3>
-              <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={18} /></button>
+              <h3 className="pouchi-font" style={{ margin: 0, fontSize: '17px', fontWeight: 900, color: COLORS.pouchiDark }}>
+                予約内容の変更 🐾
+              </h3>
+              <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={20} /></button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold, display: 'block', marginBottom: '4px' }}>枚数</label>
-                <select value={editCount} onChange={(e) => setEditCount(parseInt(e.target.value, 10))} style={{ width: '100%', padding: '8px', borderRadius: '8px', border: `1px solid ${COLORS.border}` }}>
+                <label style={{ fontSize: '12px', fontWeight: 800, color: '#d97706', display: 'block', marginBottom: '4px' }}>枚数</label>
+                <select value={editCount} onChange={(e) => setEditCount(parseInt(e.target.value, 10))} style={{ width: '100%', padding: '10px', borderRadius: '10px', border: `1.5px solid ${COLORS.border}`, fontSize: '14px' }}>
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(cnt => (
                     <option key={cnt} value={cnt}>{cnt}枚</option>
                   ))}
@@ -483,69 +554,71 @@ export default function Myreservationspag() {
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold, display: 'block', marginBottom: '4px' }}>備考・ご要望</label>
-                <textarea rows={2} value={editMemo} onChange={(e) => setEditMemo(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '12px' }} />
+                <label style={{ fontSize: '12px', fontWeight: 800, color: '#d97706', display: 'block', marginBottom: '4px' }}>備考・ご要望</label>
+                <textarea rows={2} value={editMemo} onChange={(e) => setEditMemo(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '10px', border: `1.5px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '13px' }} />
               </div>
 
-              <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-                <button onClick={() => setActiveModal(null)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, background: 'none', cursor: 'pointer' }}>戻る</button>
-                <button onClick={handleUpdateReservation} style={{ flex: 2, padding: '10px', borderRadius: '8px', border: 'none', backgroundColor: COLORS.gold, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>変更を保存</button>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                <button onClick={() => setActiveModal(null)} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: `1.5px solid ${COLORS.border}`, background: 'none', cursor: 'pointer', fontWeight: 800 }}>もどる</button>
+                <button onClick={handleUpdateReservation} style={{ flex: 2, padding: '12px', borderRadius: '12px', border: 'none', backgroundColor: '#d97706', color: '#fff', fontWeight: 900, cursor: 'pointer' }}>変更を保存ワン！</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* 匿名アンケートモーダル */}
+      {/* 💬 匿名アンケートモーダル */}
       {activeModal === 'survey' && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
-          <div style={{ width: '100%', maxWidth: '420px', backgroundColor: COLORS.surface, borderRadius: '16px', padding: '20px', border: `1px solid ${COLORS.border}` }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
+          <div style={{ width: '100%', maxWidth: '420px', backgroundColor: '#ffffff', borderRadius: '24px', padding: '22px', border: `2px solid ${COLORS.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>観劇アンケート・感想</h3>
-              <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={18} /></button>
+              <h3 className="pouchi-font" style={{ margin: 0, fontSize: '17px', fontWeight: 900, color: COLORS.pouchiDark }}>
+                観劇アンケート・感想 💌
+              </h3>
+              <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={20} /></button>
             </div>
 
             {surveySent ? (
               <div style={{ textAlign: 'center', padding: '20px 0', color: COLORS.success }}>
-                <CheckCircle2 size={40} style={{ margin: '0 auto 8px auto' }} />
-                <div style={{ fontWeight: 700 }}>ご感想ありがとうございました！</div>
-                <div style={{ fontSize: '11px', color: COLORS.muted }}>劇団・キャストへ匿名でお届けしました。</div>
+                <div style={{ fontSize: '36px', marginBottom: '6px' }}>🐶🎉</div>
+                <div className="pouchi-font" style={{ fontWeight: 900, fontSize: '16px' }}>ご感想ありがとワン！</div>
+                <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '4px' }}>劇団・キャストへ匿名でお届けしたよ🐾</div>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '12px', color: COLORS.muted, marginBottom: '6px' }}>公演の満足度</div>
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
+                  <div style={{ fontSize: '12px', color: COLORS.muted, marginBottom: '6px', fontWeight: 700 }}>公演の満足度</div>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
                     {[1, 2, 3, 4, 5].map(star => (
                       <button
                         key={star}
                         onClick={() => setRating(star)}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                       >
-                        <Star size={24} color={COLORS.gold} fill={rating >= star ? COLORS.gold : 'none'} />
+                        <Star size={28} color="#f59e0b" fill={rating >= star ? "#f59e0b" : 'none'} />
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold, display: 'block', marginBottom: '4px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: '#d97706', display: 'block', marginBottom: '4px' }}>
                     ご感想・応援メッセージ（匿名）
                   </label>
                   <textarea
                     rows={3}
-                    placeholder="劇団やキャストへの熱いメッセージをぜひお寄せください！"
+                    placeholder="面白かったところやキャストへの熱いメッセージをぜひ教えてね！🐾"
                     value={surveyText}
                     onChange={(e) => setSurveyText(e.target.value)}
-                    style={{ width: '100%', padding: '8px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '12px' }}
+                    style={{ width: '100%', padding: '10px', borderRadius: '10px', border: `1.5px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '13px' }}
                   />
                 </div>
 
                 <button
                   onClick={handleSubmitSurvey}
-                  style={{ width: '100%', padding: '12px', borderRadius: '10px', border: 'none', backgroundColor: COLORS.gold, color: '#fff', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                  style={{ width: '100%', padding: '14px', borderRadius: '14px', border: 'none', backgroundColor: '#d97706', color: '#fff', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '14px' }}
                 >
-                  <Send size={14} /> 匿名で劇団に送信する
+                  <Send size={15} /> 匿名で劇団に届けるワン！
                 </button>
               </div>
             )}
@@ -553,18 +626,18 @@ export default function Myreservationspag() {
         </div>
       )}
 
-      {/* キャンセル確認モーダル */}
+      {/* ⚠️ キャンセル確認モーダル */}
       {activeModal === 'cancel' && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
-          <div style={{ width: '100%', maxWidth: '380px', backgroundColor: COLORS.surface, borderRadius: '16px', padding: '20px', border: `1px solid ${COLORS.border}`, textAlign: 'center' }}>
-            <AlertCircle size={40} color={COLORS.danger} style={{ margin: '0 auto 10px auto' }} />
-            <h3 style={{ margin: '0 0 6px 0', fontSize: '16px', fontWeight: 700 }}>ご予約のキャンセル</h3>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
+          <div style={{ width: '100%', maxWidth: '380px', backgroundColor: '#ffffff', borderRadius: '24px', padding: '22px', border: `2px solid ${COLORS.border}`, textAlign: 'center' }}>
+            <div style={{ fontSize: '36px', marginBottom: '8px' }}>🐶💦</div>
+            <h3 className="pouchi-font" style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: 900, color: COLORS.danger }}>ご予約のキャンセル</h3>
             <p style={{ fontSize: '12px', color: COLORS.muted, lineHeight: '1.5', margin: '0 0 16px 0' }}>
-              この操作は取り消せません。本当にお席の確保を解除してよろしいですか？
+              本当にこの予約をキャンセルしてよろしいですかワン？
             </p>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button onClick={() => setActiveModal(null)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, background: 'none', cursor: 'pointer' }}>戻る</button>
-              <button onClick={handleCancelReservation} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', backgroundColor: COLORS.danger, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>キャンセル確定</button>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={() => setActiveModal(null)} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: `1.5px solid ${COLORS.border}`, background: 'none', cursor: 'pointer', fontWeight: 800 }}>もどる</button>
+              <button onClick={handleCancelReservation} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: 'none', backgroundColor: COLORS.danger, color: '#fff', fontWeight: 900, cursor: 'pointer' }}>キャンセル確定</button>
             </div>
           </div>
         </div>
