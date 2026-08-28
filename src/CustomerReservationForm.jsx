@@ -15,7 +15,6 @@ const COLORS = {
   danger: '#e85a45',
 };
 
-// --- 外側定義コンポーネント（入力フォーカス外れ防止） ---
 function ProgressDots({ steps, stepIndex }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginBottom: '18px' }}>
@@ -90,25 +89,21 @@ export default function CustomerReservationForm({ productionId }) {
   const [reservationMode, setReservationMode] = useState('');
   const [stepIndex, setStepIndex] = useState(0);
 
-  // お客様基本情報
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerMemo, setCustomerMemo] = useState('');
 
-  // 公演ごとの選択ステート
   const [selectedStageIds, setSelectedStageIds] = useState(['', '']);
   const [selectedTicketTypeIds, setSelectedTicketTypeIds] = useState(['', '']);
   const [ticketCounts, setTicketCounts] = useState([1, 1]);
   const [selectedStaffNames, setSelectedStaffNames] = useState(['', '']);
   const [selectedOptions, setSelectedOptions] = useState([[], []]);
 
-  // 応援カンパ
   const [hasDonation, setHasDonation] = useState(false);
   const [donationAmount, setDonationAmount] = useState(500);
   const [isSameStaff, setIsSameStaff] = useState(true);
 
-  // 送信ステート
   const [stepError, setStepError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -201,7 +196,6 @@ export default function CustomerReservationForm({ productionId }) {
         setSelectedStageIds(initialStages);
         setSelectedTicketTypeIds(initialTickets);
 
-        // 重複排除したキャストリスト
         const uniqueStaff = [];
         const seenNames = new Set();
         (staffData || []).forEach(st => {
@@ -394,7 +388,7 @@ export default function CustomerReservationForm({ productionId }) {
           fullMemo = `【両公演セット予約】\n${fullMemo}`.trim();
         }
 
-        // DBカラム名 `cast_name` に対応[cite: 5]
+        // DBに確実に存在するカラムのみを送信（存在しないカラムエラーを完全防止）
         recordsToInsert.push({
           production_id: prod.id,
           stage_id: stageId,
@@ -403,11 +397,8 @@ export default function CustomerReservationForm({ productionId }) {
           customer_phone: customerPhone.trim(),
           customer_email: customerEmail.trim(),
           count: count,
-          cast_name: chosenStaff || null,
           memo: fullMemo || null,
-          donation_amount: (hasDonation && i === 0) ? (parseInt(donationAmount, 10) || 500) : null,
           mypage_token: sharedMypageToken,
-          notification_method: 'email',
         });
       }
 
