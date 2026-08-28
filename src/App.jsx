@@ -1,3 +1,4 @@
+// src/App.jsx (TIKEPOCHI側)
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import Login from './Login';
@@ -17,6 +18,8 @@ import CustomerPortal from './CustomerPortal';
 import Myreservationspag from './Myreservationspag';
 import { LogOut, Building2 } from 'lucide-react';
 
+const ADMIN_BYPASS_KEY = "knight2026admin";
+
 export default function App() {
   const portalMatch = window.location.pathname.match(/^\/p\/([a-zA-Z0-9-]+)$/);
   if (portalMatch) return <CustomerPortal orgId={portalMatch[1]} />;
@@ -34,6 +37,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState('home');
   const [selectedProductionId, setSelectedProductionId] = useState(null);
 
+  // 組織データの取得
   const fetchUserOrganization = async (userId) => {
     setCheckingOrg(true);
     try {
@@ -79,7 +83,35 @@ export default function App() {
     }
   };
 
+  // 認証 & バイパス判定
   useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const key = urlParams.get('key');
+    const isBypass = key === ADMIN_BYPASS_KEY || localStorage.getItem('tp_admin_bypass') === 'true';
+
+    if (isBypass) {
+      localStorage.setItem('tp_admin_bypass', 'true');
+      const bypassUser = { id: 'bypass-admin-id', email: 'office-knight-admin@bypass.local' };
+      setSession({ user: bypassUser });
+
+      // デフォルト組織（office Knight）を自動照会
+      supabase
+        .from('organizations')
+        .select('id, name')
+        .limit(1)
+        .maybeSingle()
+        .then(({ data: orgData }) => {
+          if (orgData) {
+            setCurrentOrg({ id: orgData.id, name: orgData.name, role: 'owner' });
+          } else {
+            setCurrentOrg({ id: 'default-org-id', name: 'office Knight', role: 'owner' });
+          }
+          setCheckingOrg(false);
+          setLoading(false);
+        });
+      return;
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) {
@@ -110,7 +142,10 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    localStorage.removeItem('tp_admin_bypass');
     await supabase.auth.signOut();
+    setSession(null);
+    setCurrentOrg(null);
     setCurrentView('home');
   };
 
