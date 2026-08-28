@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient';
 import { 
   Ticket, Calendar, MapPin, Bell, ExternalLink, 
   Smartphone, Star, CheckCircle2, AlertCircle, X, 
-  Send, Edit3, Sparkles, Heart
+  Send, Edit3
 } from 'lucide-react';
 
 const COLORS = {
@@ -210,7 +210,12 @@ export default function Myreservationspag() {
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: COLORS.pouchiDark, fontFamily: 'sans-serif', gap: '12px' }}>
-        <div style={{ fontSize: '36px' }}>🐾</div>
+        <img 
+          src="/tikepochi-hero.png" 
+          alt="チケポチ" 
+          style={{ width: '64px', height: '64px', borderRadius: '16px', objectFit: 'cover' }} 
+          onError={(e) => { e.target.style.display = 'none'; }}
+        />
         <div style={{ fontWeight: 700 }}>チケポチが予約を読み込み中...</div>
       </div>
     );
@@ -220,7 +225,12 @@ export default function Myreservationspag() {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, padding: '32px 16px', boxSizing: 'border-box', fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
         <div style={{ maxWidth: '480px', margin: '40px auto', backgroundColor: COLORS.surface, border: `2px solid ${COLORS.border}`, borderRadius: '24px', padding: '28px', textAlign: 'center', boxShadow: '0 8px 24px rgba(217, 119, 6, 0.08)' }}>
-          <div style={{ fontSize: '42px', marginBottom: '8px' }}>🐶🎟️</div>
+          <img 
+            src="/tikepochi-hero.png" 
+            alt="チケポチ" 
+            style={{ width: '80px', height: '80px', borderRadius: '20px', objectFit: 'cover', margin: '0 auto 12px auto' }} 
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
           <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 8px 0', color: COLORS.pouchiDark }}>予約トークンが見つからないワン</h2>
           <p style={{ fontSize: '13px', color: COLORS.muted, lineHeight: '1.6' }}>
             予約完了メールにある「マイページ確認URL」からアクセスしてね！
@@ -269,10 +279,13 @@ export default function Myreservationspag() {
         {/* 🐶 チケポチ ヘッダー */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', backgroundColor: '#ffffff', padding: '12px 16px', borderRadius: '20px', border: `2px solid ${COLORS.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {/* ポチ君アイコン */}
-            <div style={{ width: '46px', height: '46px', borderRadius: '16px', backgroundColor: '#fef3c7', border: '2px solid #f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '26px', flexShrink: 0 }}>
-              🐶
-            </div>
+            {/* 切り出したチケポチ画像アイコン */}
+            <img 
+              src="/tikepochi-hero.png" 
+              alt="チケポチ" 
+              style={{ width: '48px', height: '48px', borderRadius: '14px', objectFit: 'cover', border: '1.5px solid #f59e0b', flexShrink: 0 }}
+              onError={(e) => { e.target.style.display = 'none'; }}
+            />
             <div>
               <div className="pouchi-font" style={{ fontSize: '18px', fontWeight: 900, color: '#d97706', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 チケポチ！ <span style={{ fontSize: '11px', color: COLORS.muted, fontWeight: 700 }}>マイページ</span>
@@ -325,14 +338,14 @@ export default function Myreservationspag() {
             overflow: 'hidden'
           }}
         >
-          <div style={{ position: 'absolute', right: '-10px', bottom: '-10px', fontSize: '64px', opacity: 0.15, pointerEvents: 'none' }}>
-            🍁
-          </div>
-
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', borderRadius: '14px', backgroundColor: '#fbbf24', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', flexShrink: 0 }}>
-              🎭
-            </div>
+            {/* 切り出した秋の大笑会ポチ君画像 */}
+            <img 
+              src="/tikepochi-daienkai.png" 
+              alt="秋の大笑会ポチ" 
+              style={{ width: '48px', height: '48px', borderRadius: '12px', objectFit: 'cover', border: '1.5px solid #fbbf24', flexShrink: 0 }}
+              onError={(e) => { e.target.style.display = 'none'; }}
+            />
             <div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#dc2626', color: '#ffffff', padding: '2px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: 900, marginBottom: '3px' }}>
                 ⭐ 観劇予約者限定
@@ -351,7 +364,7 @@ export default function Myreservationspag() {
           </div>
         </div>
 
-        {/* 📲 ホーム画面追加（PWA）＆ LINE連携（横並びミニバナー） */}
+        {/* 📲 ホーム画面追加（PWA）＆ LINE連携 */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '18px' }}>
           
           {/* ホーム画面追加 */}
@@ -412,7 +425,6 @@ export default function Myreservationspag() {
                 return (
                   <div key={res.id} className="ticket-card">
                     
-                    {/* カード上部 */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ fontSize: '11px', fontWeight: 900, color: '#ffffff', backgroundColor: badgeColor, padding: '3px 8px', borderRadius: '6px' }}>
@@ -431,7 +443,6 @@ export default function Myreservationspag() {
                       {prod.title || '公演情報'}
                     </h3>
 
-                    {/* 公演スペック（見やすいブロック形式） */}
                     <div style={{ backgroundColor: '#fffbeb', borderRadius: '14px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', marginBottom: '14px', border: '1px solid #fef3c7' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: COLORS.pouchiDark }}>
                         <Calendar size={15} color="#d97706" />
@@ -451,7 +462,6 @@ export default function Myreservationspag() {
                       </div>
                     </div>
 
-                    {/* 操作ボタン */}
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <a
                         href={getGoogleCalendarUrl(prod, stage)}
