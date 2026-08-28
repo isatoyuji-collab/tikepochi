@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { 
-  Ticket, Calendar, MapPin, Bell, MessageSquare, ExternalLink, 
-  Smartphone, Share2, Star, CheckCircle2, AlertCircle, X, 
-  User, Send, Edit3, Heart
+  Ticket, Calendar, MapPin, Bell, ExternalLink, 
+  Smartphone, Star, CheckCircle2, AlertCircle, X, 
+  Send, Edit3, Sparkles
 } from 'lucide-react';
 
 const COLORS = {
@@ -25,7 +25,6 @@ export default function Myreservationspag() {
   const [stages, setStages] = useState({});
   const [ticketTypes, setTicketTypes] = useState({});
   const [productions, setProductions] = useState({});
-  const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // 変更・キャンセル・アンケート用モーダル
@@ -59,7 +58,7 @@ export default function Myreservationspag() {
   const fetchMypageData = async (mypageToken) => {
     setLoading(true);
     try {
-      // 1. 予約データをリレーションを使わずにシンプルに取得
+      // 1. 予約データを取得
       const { data: resData, error: resErr } = await supabase
         .from('reservations')
         .select('*')
@@ -76,17 +75,15 @@ export default function Myreservationspag() {
         const stageIds = [...new Set(resData.map(r => r.stage_id).filter(Boolean))];
         const ticketTypeIds = [...new Set(resData.map(r => r.ticket_type_id).filter(Boolean))];
 
-        // 2. 公演・ステージ・券種・お知らせを並列で個別取得（安全なマッピング）
+        // 2. 公演・ステージ・券種を並列取得
         const [
           { data: prodList }, 
           { data: stageList }, 
-          { data: ticketList },
-          { data: msgList }
+          { data: ticketList }
         ] = await Promise.all([
           supabase.from('productions').select('*').in('id', prodIds),
           supabase.from('stages').select('*').in('id', stageIds),
           supabase.from('ticket_types').select('*').in('id', ticketTypeIds),
-          supabase.from('announcements').select('*').in('production_id', prodIds).order('created_at', { ascending: false }).limit(5).maybeSingle ? supabase.from('announcements').select('*').in('production_id', prodIds).order('created_at', { ascending: false }).limit(5) : { data: [] }
         ]);
 
         const pMap = {};
@@ -100,8 +97,6 @@ export default function Myreservationspag() {
         const tMap = {};
         (ticketList || []).forEach(t => { tMap[t.id] = t; });
         setTicketTypes(tMap);
-
-        setAnnouncements(msgList || []);
       }
     } catch (e) {
       console.error('Mypage fetch error:', e);
@@ -269,6 +264,39 @@ export default function Myreservationspag() {
           </button>
         </div>
 
+        {/* 🎁 観劇者限定コンテンツサイトへの統合バナー（最上部に1本化） */}
+        <div 
+          onClick={() => window.open(`https://office-knight-partner-site.vercel.app?token=${token}`, '_blank')}
+          style={{
+            backgroundColor: '#4338ca',
+            color: '#ffffff',
+            borderRadius: '16px',
+            padding: '16px',
+            marginBottom: '16px',
+            cursor: 'pointer',
+            boxShadow: '0 4px 14px rgba(67,56,202,0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px'
+          }}
+        >
+          <div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+              <Sparkles size={12} /> 観劇予約者限定
+            </div>
+            <div style={{ fontSize: '15px', fontWeight: 800 }}>
+              秋の大笑会 特典コンテンツサイト
+            </div>
+            <div style={{ fontSize: '11px', opacity: 0.9, marginTop: '2px' }}>
+              限定動画・電子パンフ・稽古場レポートはこちら
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#ffffff', color: '#4338ca', padding: '8px 12px', borderRadius: '10px', fontSize: '12px', fontWeight: 800, whiteSpace: 'nowrap', flexShrink: 0 }}>
+            開く <ExternalLink size={14} />
+          </div>
+        </div>
+
         {/* ホーム画面追加案内 */}
         <div style={{ backgroundColor: '#fffdf9', border: `1px dashed ${COLORS.gold}`, borderRadius: '12px', padding: '10px 14px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Smartphone size={18} color={COLORS.gold} />
@@ -299,23 +327,6 @@ export default function Myreservationspag() {
             </button>
           )}
         </div>
-
-        {/* 劇団からのお知らせ */}
-        {announcements.length > 0 && (
-          <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '14px', padding: '14px', marginBottom: '16px' }}>
-            <div style={{ fontSize: '12px', fontWeight: 800, color: COLORS.gold, display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px' }}>
-              <MessageSquare size={13} /> 劇団からのご案内
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {announcements.map(msg => (
-                <div key={msg.id} style={{ fontSize: '12px', backgroundColor: COLORS.surfaceAlt, padding: '8px 10px', borderRadius: '8px' }}>
-                  <div style={{ fontWeight: 700, marginBottom: '2px' }}>{msg.title}</div>
-                  <div style={{ color: COLORS.muted, fontSize: '11px', lineHeight: '1.4' }}>{msg.body}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* 🎫 現在予約中の公演チケット */}
         <div style={{ marginBottom: '24px' }}>
@@ -375,37 +386,13 @@ export default function Myreservationspag() {
                       </div>
                     </div>
 
-                    {/* 特典コンテンツサイトへの専用導線 */}
-                    <button
-                      onClick={() => window.open('https://office-knight-partner-site.vercel.app', '_blank')}
-                      style={{
-                        width: '100%',
-                        padding: '12px',
-                        borderRadius: '10px',
-                        border: 'none',
-                        backgroundColor: COLORS.indigo,
-                        color: '#fff',
-                        fontWeight: 700,
-                        fontSize: '13px',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        marginBottom: '10px',
-                        boxShadow: '0 2px 6px rgba(67,56,202,0.25)'
-                      }}
-                    >
-                      <ExternalLink size={15} /> 🎁 観劇者限定コンテンツサイトを開く
-                    </button>
-
                     {/* カレンダー・変更・キャンセル */}
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                       <a
                         href={getGoogleCalendarUrl(prod, stage)}
                         target="_blank"
                         rel="noreferrer"
-                        style={{ flex: 1, padding: '8px', textAlign: 'center', textDecoration: 'none', borderRadius: '8px', border: `1px solid ${COLORS.border}`, backgroundColor: COLORS.surfaceAlt, color: COLORS.text, fontSize: '11px', fontWeight: 700 }}
+                        style={{ flex: 1, padding: '9px', textAlign: 'center', textDecoration: 'none', borderRadius: '8px', border: `1px solid ${COLORS.border}`, backgroundColor: COLORS.surfaceAlt, color: COLORS.text, fontSize: '12px', fontWeight: 700 }}
                       >
                         📅 カレンダー登録
                       </a>
@@ -416,16 +403,16 @@ export default function Myreservationspag() {
                           setEditMemo(res.memo || '');
                           setActiveModal('edit');
                         }}
-                        style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, backgroundColor: COLORS.surface, color: COLORS.gold, fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                        style={{ flex: 1, padding: '9px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, backgroundColor: COLORS.surface, color: COLORS.gold, fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
                       >
-                        <Edit3 size={12} /> 予約変更
+                        <Edit3 size={13} /> 予約変更
                       </button>
                       <button
                         onClick={() => {
                           setSelectedRes(res);
                           setActiveModal('cancel');
                         }}
-                        style={{ padding: '8px 12px', borderRadius: '8px', border: `1px solid rgba(232,90,69,0.3)`, backgroundColor: '#fff', color: COLORS.danger, fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                        style={{ padding: '9px 14px', borderRadius: '8px', border: `1px solid rgba(232,90,69,0.3)`, backgroundColor: '#fff', color: COLORS.danger, fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
                       >
                         キャンセル
                       </button>
