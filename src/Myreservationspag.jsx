@@ -22,41 +22,41 @@ const COLORS = {
   danger: '#e11d48',
 };
 
-// 透過PNG（tikepochi-sheet.png）から左上・右上のアイコンをピッタリ切り出す
+// 座標ズレが起きないSVGビューボックス切り抜き
+// 左上：黄色ポチ君 (x: 40, y: 30, w: 280, h: 280)
 const TikepochiHeroSprite = ({ size = 48, borderRadius = '14px' }) => (
-  <div
+  <svg
+    width={size}
+    height={size}
+    viewBox="40 30 280 280"
     style={{
-      width: `${size}px`,
-      height: `${size}px`,
       borderRadius: borderRadius,
-      backgroundImage: 'url(/tikepochi-sheet.png)',
-      backgroundPosition: '5.5% 6%', // 左上の黄色ポチ君
-      backgroundSize: '365%',
-      backgroundRepeat: 'no-repeat',
       border: '1.5px solid #f59e0b',
-      flexShrink: 0,
       backgroundColor: '#fef3c7',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+      flexShrink: 0,
+      display: 'block'
     }}
-  />
+  >
+    <image href="/tikepochi-sheet.png" x="0" y="0" width="1000" height="667" />
+  </svg>
 );
 
+// 右上：秋の大笑会ポチ君 (x: 680, y: 30, w: 280, h: 280)
 const TikepochiDaienkaiSprite = ({ size = 48, borderRadius = '12px' }) => (
-  <div
+  <svg
+    width={size}
+    height={size}
+    viewBox="680 30 280 280"
     style={{
-      width: `${size}px`,
-      height: `${size}px`,
       borderRadius: borderRadius,
-      backgroundImage: 'url(/tikepochi-sheet.png)',
-      backgroundPosition: '94.5% 6%', // 右上の秋の大笑会ポチ君
-      backgroundSize: '365%',
-      backgroundRepeat: 'no-repeat',
       border: '1.5px solid #fbbf24',
-      flexShrink: 0,
       backgroundColor: '#1e1b4b',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+      flexShrink: 0,
+      display: 'block'
     }}
-  />
+  >
+    <image href="/tikepochi-sheet.png" x="0" y="0" width="1000" height="667" />
+  </svg>
 );
 
 export default function Myreservationspag() {
@@ -507,7 +507,7 @@ export default function Myreservationspag() {
                           setActiveModal('cancel');
                         }}
                         className="btn-bounce"
-                        style={{ padding: '10px 14px', borderRadius: '12px', border: `1.5px solid #fecdd3`, backgroundColor: '#fff', color: COLORS.danger, fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
+                        style={{ padding: '10px 14px', borderRadius: '12px', border: `1px solid #fecdd3`, backgroundColor: '#fff', color: COLORS.danger, fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
                       >
                         取消
                       </button>
