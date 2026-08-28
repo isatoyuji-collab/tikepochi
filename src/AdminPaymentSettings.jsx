@@ -4,7 +4,7 @@ import {
   ArrowLeft, CreditCard, Smartphone, Building2, Check, 
   ShieldCheck, Save, RefreshCw, AlertCircle, HelpCircle, Mail, RotateCcw 
 } from 'lucide-react';
-import { supabase } from './supabaseClient'; // ⭐ Supabaseクライアントをインポート[cite: 3]
+import { supabase } from './supabaseClient';
 
 const COLORS = {
   bg: '#faf5ea',
@@ -20,18 +20,18 @@ const COLORS = {
 };
 
 export default function AdminPaymentSettings({ productionId, onBack }) {
-  // 1. Stripe（クレジットカード）設定[cite: 3]
+  // 1. Stripe（クレジットカード）設定
   const [stripeEnabled, setStripeEnabled] = useState(true);
   const [stripePublishableKey, setStripePublishableKey] = useState('');
   const [stripeSecretKey, setStripeSecretKey] = useState('');
 
-  // 2. PayPay（公式 Developers API）設定[cite: 3]
+  // 2. PayPay（公式 Developers API）設定
   const [paypayEnabled, setPaypayEnabled] = useState(false);
   const [paypayApiKey, setPaypayApiKey] = useState('');
   const [paypayApiSecret, setPaypayApiSecret] = useState('');
   const [paypayMerchantId, setPaypayMerchantId] = useState('');
 
-  // 3. 銀行振込設定 ＆ メールテンプレート[cite: 3]
+  // 3. 銀行振込設定 ＆ メールテンプレート
   const [bankEnabled, setBankEnabled] = useState(true);
   const [bankName, setBankName] = useState('三菱UFJ銀行');
   const [branchName, setBranchName] = useState('難波支店（123）');
@@ -71,16 +71,16 @@ export default function AdminPaymentSettings({ productionId, onBack }) {
 ご入金の確認が取れ次第、ご予約確定（精算完了）の案内をお送りいたします。`;
   };
 
-  // 1. Supabaseから決済設定を取得[cite: 3]
+  // 1. Supabaseから決済設定を取得
   const fetchPaymentSettings = async () => {
     setLoading(true);
-    let query = supabase.from('payment_settings').select('*');[cite: 3]
+    let query = supabase.from('payment_settings').select('*');
 
     if (productionId) {
-      query = query.eq('production_id', productionId);[cite: 3]
+      query = query.eq('production_id', productionId);
     }
 
-    const { data, error } = await query;[cite: 3]
+    const { data, error } = await query;
 
     if (!error && data && data.length > 0) {
       const s = data[0];
@@ -109,7 +109,6 @@ export default function AdminPaymentSettings({ productionId, onBack }) {
 
       setCancelFeeAmount(s.cancel_fee_amount !== undefined ? s.cancel_fee_amount : 500);
     } else {
-      // 初期状態
       setBankMailTemplate(generateDefaultBankMail(bankName, branchName, accountType, accountNumber, accountHolder, bankDaysLimit));
     }
     setLoading(false);
@@ -126,7 +125,7 @@ export default function AdminPaymentSettings({ productionId, onBack }) {
     }
   };
 
-  // 2. Supabaseへ全決済設定を保存 (UPSERT)[cite: 3]
+  // 2. Supabaseへ全決済設定を保存 (UPSERT)
   const handleSaveAll = async () => {
     setSaving(true);
     const payload = {
@@ -151,7 +150,7 @@ export default function AdminPaymentSettings({ productionId, onBack }) {
 
     const { error } = await supabase
       .from('payment_settings')
-      .upsert([payload], { onConflict: 'production_id' });[cite: 3]
+      .upsert([payload], { onConflict: 'production_id' });
 
     setSaving(false);
 
