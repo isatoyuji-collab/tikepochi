@@ -1,3 +1,4 @@
+// src/CustomerReservationForm.jsx (TIKEPOCHI側)
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { User, CheckCircle2, AlertCircle, Sparkles, MapPin, ChevronLeft, ChevronRight, HeartHandshake, Ticket, Calendar } from 'lucide-react';
@@ -90,6 +91,7 @@ export default function CustomerReservationForm({ productionId }) {
   const [stepIndex, setStepIndex] = useState(0);
 
   const [customerName, setCustomerName] = useState('');
+  const [customerKana, setCustomerKana] = useState(''); // 🎯 ふりがな入力ステート
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerMemo, setCustomerMemo] = useState('');
@@ -326,6 +328,7 @@ export default function CustomerReservationForm({ productionId }) {
 
   const validateCustomerStep = () => {
     if (!customerName.trim()) return 'お名前を入力してください。';
+    if (!customerKana.trim()) return 'ふりがなを入力してください。';
     if (!customerEmail.trim()) return 'メールアドレスを入力してください。';
     if (hasDonation && (!donationAmount || donationAmount < 500)) {
       return '応援カンパは500円以上でご入力ください。';
@@ -384,16 +387,20 @@ export default function CustomerReservationForm({ productionId }) {
         if (chosenStaff) {
           fullMemo = `【扱い】: ${chosenStaff}\n${fullMemo}`.trim();
         }
+        if (customerKana.trim()) {
+          fullMemo = `【かな】: ${customerKana.trim()}\n${fullMemo}`.trim();
+        }
         if (isBoth) {
           fullMemo = `【両公演セット予約】\n${fullMemo}`.trim();
         }
 
-        // DBに確実に存在するカラムのみを送信（存在しないカラムエラーを完全防止）
+        // DBに確実に登録するペイロード（customer_name_kana も含めて送信）
         recordsToInsert.push({
           production_id: prod.id,
           stage_id: stageId,
           ticket_type_id: ticketTypeId,
           customer_name: customerName.trim(),
+          customer_name_kana: customerKana.trim(),
           customer_phone: customerPhone.trim(),
           customer_email: customerEmail.trim(),
           count: count,
@@ -723,6 +730,7 @@ export default function CustomerReservationForm({ productionId }) {
                   <User size={15} /> お客様情報
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {/* お名前 */}
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>お名前（必須）</label>
                     <input
@@ -734,6 +742,21 @@ export default function CustomerReservationForm({ productionId }) {
                       style={inputStyle}
                     />
                   </div>
+
+                  {/* 🎯 ふりがな（追加） */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>ふりがな（必須）</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="例: やまだ たろう"
+                      value={customerKana}
+                      onChange={(e) => setCustomerKana(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  {/* メールアドレス */}
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>メールアドレス（必須）</label>
                     <input
@@ -745,6 +768,8 @@ export default function CustomerReservationForm({ productionId }) {
                       style={inputStyle}
                     />
                   </div>
+
+                  {/* お電話番号 */}
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>お電話番号</label>
                     <input
@@ -755,6 +780,8 @@ export default function CustomerReservationForm({ productionId }) {
                       style={inputStyle}
                     />
                   </div>
+
+                  {/* 備考 */}
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>備考</label>
                     <textarea
@@ -857,7 +884,7 @@ export default function CustomerReservationForm({ productionId }) {
                 <CardWrap>
                   <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.gold, marginBottom: '6px' }}>お客様情報</div>
                   <div style={{ fontSize: '13px', lineHeight: '1.9', color: COLORS.text }}>
-                    <div>お名前：{customerName}</div>
+                    <div>お名前：{customerName}（{customerKana}）</div>
                     <div>メール：{customerEmail}</div>
                     {customerPhone && <div>電話：{customerPhone}</div>}
                     {customerMemo && <div>備考：{customerMemo}</div>}
