@@ -1,7 +1,7 @@
 // src/TabletReception.jsx (TIKEPOCHI側)
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { ArrowLeft, Search, Check, Users, RefreshCw, X, Eye, Phone, Mail } from 'lucide-react';
+import { ArrowLeft, Search, Check, Users, RefreshCw, X, Eye } from 'lucide-react';
 import { COLORS, FONTS, RADIUS } from './theme';
 
 const KANA_GRID = [
@@ -11,6 +11,20 @@ const KANA_GRID = [
   ['エ', 'ケ', 'セ', 'テ', 'ネ', 'ヘ', 'メ', '', 'レ', ''],
   ['オ', 'コ', 'ソ', 'ト', 'ノ', 'ホ', 'モ', 'ヨ', 'ロ', '']
 ];
+
+// 各文字ごとの正確なマッピング辞書（濁音・半濁音・ひらがな・カタカナ対応）
+const CHAR_MAP = {
+  'ア': 'あア', 'イ': 'いイ', 'ウ': 'うゔウヴ', 'エ': 'えエ', 'オ': 'おオ',
+  'カ': 'かカがガ', 'キ': 'きキぎギ', 'ク': 'くクぐグ', 'ケ': 'けケげゲ', 'コ': 'こコごゴ',
+  'サ': 'さサざザ', 'シ': 'しシじジ', 'ス': 'すスずズ', 'セ': 'せセぜゼ', 'ソ': 'そソぞゾ',
+  'タ': 'たタだダ', 'チ': 'ちチぢヂ', 'ツ': 'つツづヅ', 'テ': 'てテでデ', 'ト': 'とトどド',
+  'ナ': 'なナ', 'ニ': 'にニ', 'ヌ': 'ぬヌ', 'ネ': 'ねネ', 'ノ': 'のノ',
+  'ハ': 'はハばバぱパ', 'ヒ': 'ひヒびビぴピ', 'フ': 'ふフぶブぷプ', 'ヘ': 'へヘべベぺペ', 'ホ': 'ほホぼボぽポ',
+  'マ': 'まマ', 'ミ': 'みミ', 'ム': 'むム', 'メ': 'めメ', 'モ': 'もモ',
+  'ヤ': 'やヤ', 'ユ': 'ゆユ', 'ヨ': 'よヨ',
+  'ラ': 'らラ', 'リ': 'りリ', 'ル': 'るル', 'レ': 'れレ', 'ロ': 'ろロ',
+  'ワ': 'わワ', 'ン': 'んン'
+};
 
 export default function TabletReception({ productionId, onBackToAdmin, onBack }) {
   const [stages, setStages] = useState([]);
@@ -33,7 +47,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
     }
 
     try {
-      // 1. ステージ取得（stage_date と performance_date の両方に対応）
+      // 1. ステージ取得
       const { data: stagesData } = await supabase
         .from('stages')
         .select('*')
@@ -41,7 +55,6 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
         .order('start_time', { ascending: true });
 
       if (stagesData && stagesData.length > 0) {
-        // 日付順にソート
         const sortedStages = stagesData.sort((a, b) => {
           const dateA = a.stage_date || a.performance_date || '';
           const dateB = b.stage_date || b.performance_date || '';
@@ -57,7 +70,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
         .eq('production_id', productionId);
       if (ticketsData) setTicketTypes(ticketsData);
 
-      // 3. 予約名簿取得（ステージID配列も含めて安全に抽出）
+      // 3. 予約名簿取得
       const stageIds = (stagesData || []).map(s => s.id);
       let query = supabase.from('reservations').select('*');
 
@@ -72,7 +85,6 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
       if (!resError && resData) {
         setReservations(resData);
       } else {
-        // フォールバック取得
         const { data: fallback } = await supabase.from('reservations').select('*');
         if (fallback) setReservations(fallback);
       }
@@ -87,7 +99,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
     fetchData();
   }, [productionId]);
 
-  // 来場トグル（checked_in と is_checked_in の両方を更新）
+  // 来場トグル
   const handleToggleCheckin = async (resItem) => {
     const currentStatus = resItem.checked_in || resItem.is_checked_in || false;
     const nextStatus = !currentStatus;
@@ -112,12 +124,12 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
     return ticket || { name: '一般', price: 0 };
   };
 
-  // 選択中ステージの予約（all の場合は全件）
+  // 選択中ステージの予約
   const currentStageReservations = selectedStageId === 'all'
     ? reservations
     : reservations.filter(r => r.stage_id === selectedStageId);
 
-  // 50音・キーワード検索フィルター
+  // 50音・検索フィルター
   const filteredList = currentStageReservations.filter(r => {
     const name = r.customer_name || r.name || '';
     const kana = r.customer_name_kana || r.kana || '';
@@ -136,33 +148,21 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
       if (!matchName && !matchKana && !matchPhone && !matchMemo && !matchStaff) return false;
     }
 
-    // 50音判定
+    // 🎯 50音ボタン判定
     if (selectedKana) {
-      const kanaMap = {
-        'ア': 'あいうえおアイウエオ',
-        'カ': 'かきくけこがぎぐげごカキクケコガギグゲゴ',
-        'サ': 'さしすせそざじずぜぞサシスセソザジズゼゾ',
-        'タ': 'たちつてとだぢづでどタチツテトダヂヅデド',
-        'ナ': 'なにぬねのナニヌネノ',
-        'ハ': 'はひふへほばびぶべぼぱぴぷぺぽハヒフヘホバビブベボパピプペポ',
-        'マ': 'まみむめもマミムメモ',
-        'ヤ': 'やゆよヤユヨ',
-        'ラ': 'らりるれろラリルレロ',
-        'ワ': 'わをんワヲン',
-      };
-      const allowedChars = kanaMap[selectedKana] || '';
+      const allowedChars = CHAR_MAP[selectedKana] || selectedKana;
 
-      // 1. かなカラムの先頭文字をチェック
+      // 1. かなカラムの先頭1文字
       const firstKana = kana.trim().charAt(0);
       let match = allowedChars.includes(firstKana);
 
-      // 2. メモ欄に「【かな】: xxx」があればそれもチェック
+      // 2. メモ欄の「【かな】: xxx」から抽出した先頭1文字
       if (!match && memo.includes('【かな】:')) {
         const memoKana = memo.split('【かな】:')[1]?.trim()?.charAt(0) || '';
         match = allowedChars.includes(memoKana);
       }
 
-      // 3. お名前自体がひらがな・カタカナの場合もチェック
+      // 3. お名前自体がひらがな・カタカナの場合
       if (!match) {
         const firstName = name.trim().charAt(0);
         match = allowedChars.includes(firstName);
