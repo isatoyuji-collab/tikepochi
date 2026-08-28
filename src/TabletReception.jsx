@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { 
   ArrowLeft, Search, Check, Users, RefreshCw, X, Eye, 
-  Gift, DollarSign, Calculator, Armchair, HeartHandshake, CheckCircle2, UserCheck, AlertCircle 
+  Gift, Armchair, HeartHandshake, UserCheck, AlertCircle 
 } from 'lucide-react';
 import { COLORS, FONTS, RADIUS } from './theme';
 
@@ -32,6 +32,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
   const [stages, setStages] = useState([]);
   const [reservations, setReservations] = useState([]);
   const [ticketTypes, setTicketTypes] = useState([]);
+  const [castList, setCastList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedStageId, setSelectedStageId] = useState('all');
 
@@ -42,7 +43,6 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
   const [activeRes, setActiveRes] = useState(null);
   const [receivedCash, setReceivedCash] = useState('');
   const [giftTargetCast, setGiftTargetCast] = useState('');
-  const [giftNote, setGiftNote] = useState('');
   const [hasGift, setHasGift] = useState(false);
   const [savingAction, setSavingAction] = useState(false);
 
@@ -79,7 +79,15 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
         .eq('production_id', productionId);
       if (ticketsData) setTicketTypes(ticketsData);
 
-      // 3. 予約名簿取得
+      // 3. キャスト一覧取得（差し入れプルダウン用）
+      const { data: castsData } = await supabase
+        .from('cast_staff')
+        .select('*')
+        .eq('production_id', productionId)
+        .order('name', { ascending: true });
+      if (castsData) setCastList(castsData);
+
+      // 4. 予約名簿取得
       const stageIds = (stagesData || []).map(s => s.id);
       let query = supabase.from('reservations').select('*');
 
@@ -122,14 +130,25 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
     return (tk.price * count) + (res.donation_amount || 0);
   };
 
+  // ふりがな取得（安全抽出）
+  const getKana = (res) => {
+    if (!res) return '';
+    if (res.customer_name_kana) return res.customer_name_kana;
+    if (res.kana) return res.kana;
+    if (res.memo?.includes('【かな】:')) {
+      return res.memo.split('【かな】:')[1]?.split('\n')[0]?.trim() || '';
+    }
+    return '';
+  };
+
   // モーダルを開く
   const handleOpenModal = (res) => {
     setActiveRes(res);
     setReceivedCash('');
     const currentStaff = res.staff_name || res.cast_name || (res.memo?.includes('【扱い】:') ? res.memo.split('【扱い】:')[1]?.split('\n')[0]?.trim() : '');
-    setGiftTargetCast(res.gift_target_cast || currentStaff || '');
-    setGiftNote(res.gift_note || '');
-    setHasGift(Boolean(res.has_gift || res.gift_note || res.gift_target_cast));
+    const initialTarget = res.gift_target_cast || currentStaff || '劇団全体・カンパニー宛';
+    setGiftTargetCast(initialTarget);
+    setHasGift(Boolean(res.has_gift || res.gift_target_cast));
   };
 
   // 精算完了トグル
@@ -188,15 +207,22 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
     }
   };
 
-  // 差し入れ情報の保存（チェックイン後もいつでも実行可能）
-  const handleSaveGift = async () => {
+  // 🎁 差し入れの即時自動保存＆チェックイン後なら自動クローズ
+  const handleAutoSaveGift = async (nextHasGift, nextTargetCast) => {
     if (!activeRes) return;
-    setSavingAction(true);
+    setHasGift(nextHasGift);
+    setGiftTargetCast(nextTargetCast);
+
+    const count = activeRes.count || 1;
+    const checkedCount = activeRes.checked_in_count !== undefined && activeRes.checked_in_count !== null 
+      ? Number(activeRes.checked_in_count) 
+      : (activeRes.checked_in || activeRes.is_checked_in ? count : 0);
+    const isFullyChecked = checkedCount >= count;
+
     try {
       const giftPayload = {
-        has_gift: hasGift,
-        gift_target_cast: hasGift ? giftTargetCast.trim() : null,
-        gift_note: hasGift ? giftNote.trim() : null,
+        has_gift: nextHasGift,
+        gift_target_cast: nextHasGift ? nextTargetCast : null,
       };
 
       await supabase
@@ -207,11 +233,15 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
       const updated = { ...activeRes, ...giftPayload };
       setActiveRes(updated);
       setReservations(prev => prev.map(r => r.id === activeRes.id ? updated : r));
-      alert('🎁 差し入れ情報を保存・連携しました！');
+
+      // 🎯 チェックイン完了後に差し入れを登録した場合は、0.35秒後に自動でモーダルを閉じる
+      if (isFullyChecked && nextHasGift) {
+        setTimeout(() => {
+          setActiveRes(null);
+        }, 350);
+      }
     } catch (e) {
-      alert('差し入れ情報の保存に失敗しました: ' + e.message);
-    } finally {
-      setSavingAction(false);
+      console.error('Gift auto save error:', e);
     }
   };
 
@@ -222,7 +252,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
 
   const filteredList = currentStageReservations.filter(r => {
     const name = r.customer_name || r.name || '';
-    const kana = r.customer_name_kana || r.kana || '';
+    const kana = getKana(r);
     const phone = r.customer_phone || r.phone || '';
     const memo = r.memo || '';
     const staff = r.staff_name || r.cast_name || '';
@@ -241,11 +271,6 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
       const allowedChars = CHAR_MAP[selectedKana] || selectedKana;
       const firstKana = kana.trim().charAt(0);
       let match = allowedChars.includes(firstKana);
-
-      if (!match && memo.includes('【かな】:')) {
-        const memoKana = memo.split('【かな】:')[1]?.trim()?.charAt(0) || '';
-        match = allowedChars.includes(memoKana);
-      }
 
       if (!match) {
         const firstName = name.trim().charAt(0);
@@ -443,12 +468,12 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
               const isPaid = res.payment_status === 'paid' || res.is_paid === true;
 
               const name = res.customer_name || res.name || 'お名前なし';
-              const kana = res.customer_name_kana || res.kana || '';
+              const kana = getKana(res);
               const tk = getTicketInfo(res.ticket_type_id);
               const totalAmt = calculateTotal(res);
               const staff = res.staff_name || res.cast_name || (res.memo?.includes('【扱い】:') ? res.memo.split('【扱い】:')[1]?.split('\n')[0]?.trim() : '劇団扱い');
               const hasSeatOption = res.seat_number || res.memo?.includes('指定席') || res.memo?.includes('最前列');
-              const hasGiftMark = res.has_gift || res.gift_note || res.gift_target_cast;
+              const hasGiftMark = res.has_gift || res.gift_target_cast;
 
               return (
                 <div
@@ -470,7 +495,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
                   <div style={{ flex: 1, minWidth: 0, paddingRight: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
                       <span style={{ fontWeight: 800, fontSize: '17px', color: COLORS.text }}>{name} 様</span>
-                      {kana && <span style={{ fontSize: '12px', color: COLORS.muted }}>（{kana}）</span>}
+                      {kana && <span style={{ fontSize: '13px', fontWeight: 700, color: COLORS.gold }}>（{kana}）</span>}
                       
                       <span style={{ fontSize: '11px', fontWeight: 800, color: COLORS.gold, backgroundColor: COLORS.surfaceAlt, padding: '2px 8px', borderRadius: '4px' }}>
                         {count}枚
@@ -490,7 +515,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
                       {/* 🎁 差し入れバッジ */}
                       {hasGiftMark && (
                         <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', backgroundColor: '#fdf2f8', color: '#be185d', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '3px', border: '1px solid #fbcfe8' }}>
-                          <Gift size={12} /> 差し入れ預かり済
+                          <Gift size={12} /> 差し入れ預かり済（{res.gift_target_cast || '劇団'}）
                         </span>
                       )}
                     </div>
@@ -539,7 +564,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
         const isPaid = activeRes.payment_status === 'paid' || activeRes.is_paid === true;
         const totalAmt = calculateTotal(activeRes);
         const name = activeRes.customer_name || activeRes.name || 'お名前なし';
-        const kana = activeRes.customer_name_kana || activeRes.kana || '';
+        const kana = getKana(activeRes);
         const tk = getTicketInfo(activeRes.ticket_type_id);
         const staff = activeRes.staff_name || activeRes.cast_name || (activeRes.memo?.includes('【扱い】:') ? activeRes.memo.split('【扱い】:')[1]?.split('\n')[0]?.trim() : '劇団扱い');
         const hasSeatOption = activeRes.seat_number || activeRes.memo?.includes('指定席') || activeRes.memo?.includes('最前列');
@@ -554,13 +579,13 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
                 <X size={22} />
               </button>
 
-              {/* 1. お客様ヘッダー */}
+              {/* 1. お客様ヘッダー（ふりがなを大きく明記） */}
               <div style={{ borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '14px', marginBottom: '16px' }}>
-                <div style={{ fontSize: '12px', color: COLORS.gold, fontWeight: 700, marginBottom: '2px' }}>
-                  {kana ? `${kana}` : 'ご予約受付'}
+                <div style={{ fontSize: '14px', color: COLORS.gold, fontWeight: 800, marginBottom: '2px' }}>
+                  {kana ? `【ふりがな】 ${kana}` : 'ご予約受付'}
                 </div>
-                <h2 style={{ margin: '0 0 6px 0', fontSize: '22px', fontWeight: 900, color: COLORS.text }}>
-                  {name} <span style={{ fontSize: '15px', fontWeight: 500 }}>様</span>
+                <h2 style={{ margin: '0 0 6px 0', fontSize: '24px', fontWeight: 900, color: COLORS.text }}>
+                  {name} <span style={{ fontSize: '16px', fontWeight: 500 }}>様</span>
                 </h2>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ fontSize: '12px', fontWeight: 800, backgroundColor: COLORS.surfaceAlt, color: COLORS.gold, padding: '3px 8px', borderRadius: '6px' }}>
@@ -663,7 +688,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
                 </button>
               </div>
 
-              {/* 4. 🎟️ チェックイン（入場）エリア（分割来場対応＆ロック制御） */}
+              {/* 4. 🎟️ チェックイン（入場）エリア */}
               <div style={{ backgroundColor: COLORS.surface, border: `1.5px solid ${COLORS.border}`, borderRadius: '14px', padding: '16px', marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                   <span style={{ fontSize: '13px', fontWeight: 800 }}>
@@ -680,7 +705,7 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
                   </div>
                 )}
 
-                {/* 複数人の場合の人数ステッパー */}
+                {/* 複数人の場合の個別人数ステッパー */}
                 {count > 1 && isPaid && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '10px', padding: '8px', backgroundColor: COLORS.surfaceAlt, borderRadius: '10px' }}>
                     <span style={{ fontSize: '12px', fontWeight: 700 }}>来場人数の個別調整:</span>
@@ -729,62 +754,36 @@ export default function TabletReception({ productionId, onBackToAdmin, onBack })
                 </button>
               </div>
 
-              {/* 5. 🎁 差し入れ預かり ＆ キャスト即時連携（常時操作可能） */}
+              {/* 5. 🎁 差し入れ預かり（文字入力なし・プルダウン選択＆自動保存＆自動クローズ） */}
               <div style={{ backgroundColor: '#fdf2f8', border: '1.5px solid #fbcfe8', borderRadius: '14px', padding: '16px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 800, color: '#be185d', marginBottom: '8px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 800, color: '#be185d', marginBottom: '6px' }}>
                   <input
                     type="checkbox"
                     checked={hasGift}
-                    onChange={(e) => setHasGift(e.target.checked)}
+                    onChange={(e) => handleAutoSaveGift(e.target.checked, giftTargetCast)}
                     style={{ width: '18px', height: '18px', accentColor: '#be185d', cursor: 'pointer' }}
                   />
-                  <Gift size={17} /> 差し入れを預かる（キャストアプリへ自動連携）
+                  <Gift size={17} /> 差し入れを預かる（キャストへ自動連携）
                 </label>
 
                 {hasGift && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#be185d', marginBottom: '2px' }}>
-                        宛先キャスト名
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="例: 岸根勇人"
-                        value={giftTargetCast}
-                        onChange={(e) => setGiftTargetCast(e.target.value)}
-                        style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #fbcfe8', fontSize: '13px', boxSizing: 'border-box' }}
-                      />
+                  <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#be185d' }}>
+                      宛先キャストを選択（自動保存されます）
                     </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#be185d', marginBottom: '2px' }}>
-                        品名・メッセージメモ
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="例: お菓子、お手紙、差し入れ弁当など"
-                        value={giftNote}
-                        onChange={(e) => setGiftNote(e.target.value)}
-                        style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #fbcfe8', fontSize: '13px', boxSizing: 'border-box' }}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      disabled={savingAction}
-                      onClick={handleSaveGift}
-                      style={{
-                        padding: '10px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        backgroundColor: '#be185d',
-                        color: '#fff',
-                        fontWeight: 800,
-                        fontSize: '13px',
-                        cursor: 'pointer',
-                        marginTop: '4px'
-                      }}
+                    <select
+                      value={giftTargetCast}
+                      onChange={(e) => handleAutoSaveGift(true, e.target.value)}
+                      style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #fbcfe8', backgroundColor: '#fff', fontSize: '14px', fontWeight: 700, color: COLORS.text }}
                     >
-                      差し入れ情報を保存・連携する
-                    </button>
+                      <option value="劇団全体・カンパニー宛">🌟 劇団全体・カンパニー宛</option>
+                      {castList.map(c => (
+                        <option key={c.id} value={c.name}>👤 {c.name}</option>
+                      ))}
+                    </select>
+                    <div style={{ fontSize: '11px', color: '#15803d', fontWeight: 700, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      ✓ 選択と同時に役者アプリへ連携保存されました
+                    </div>
                   </div>
                 )}
               </div>
