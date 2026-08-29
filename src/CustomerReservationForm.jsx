@@ -16,6 +16,34 @@ const COLORS = {
   danger: '#e85a45',
 };
 
+// -----------------------------------------------------------------
+// マスコット画像（切り出し済み・個別ファイル）
+// public/images/mascot/ にこのファイル名で配置してください
+// -----------------------------------------------------------------
+const MASCOT = {
+  iconApp: '/images/mascot/icon_app_yellow.png',
+  pochitto: '/images/mascot/pose_pochitto_dog.png',      // ポチッ！（確定・通常）
+  ticketWait: '/images/mascot/pose_ticket_wait_dog.png',  // チケット待ち…（読み込み中）
+  checking: '/images/mascot/pose_checking_dog.png',       // チェック中！（入力エラー・注意）
+  naruhodo: '/images/mascot/pose_naruhodo_dog.png',       // なるほど！（案内・ステップ説明）
+  waai: '/images/mascot/pose_waai_dog.png',                // わーい！（予約完了）
+};
+
+const MascotSprite = ({ src, size = 48, borderRadius = '14px', style = {} }) => (
+  <img
+    src={src}
+    alt=""
+    style={{
+      width: `${size}px`,
+      height: `${size}px`,
+      objectFit: 'contain',
+      borderRadius,
+      flexShrink: 0,
+      ...style,
+    }}
+  />
+);
+
 function ProgressDots({ steps, stepIndex }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginBottom: '18px' }}>
@@ -427,8 +455,9 @@ export default function CustomerReservationForm({ productionId }) {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.text, fontFamily: 'sans-serif' }}>
-        予約フォームを読み込み中...
+      <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", gap: '12px' }}>
+        <MascotSprite src={MASCOT.ticketWait} size={84} />
+        <div style={{ fontWeight: 700, fontSize: '14px' }}>予約フォームを読み込み中...</div>
       </div>
     );
   }
@@ -436,9 +465,19 @@ export default function CustomerReservationForm({ productionId }) {
   if (submitSuccess) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '32px 16px', boxSizing: 'border-box' }}>
+        <style>{`
+          @keyframes pouchi-pop {
+            0% { transform: scale(0.5) rotate(-6deg); opacity: 0; }
+            60% { transform: scale(1.1) rotate(3deg); opacity: 1; }
+            100% { transform: scale(1) rotate(0deg); opacity: 1; }
+          }
+          .pouchi-pop { animation: pouchi-pop 0.4s ease-out; }
+        `}</style>
         <div style={{ maxWidth: '580px', margin: '0 auto', backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '16px', padding: '32px 24px', textAlign: 'center', boxShadow: '0 4px 12px rgba(43, 36, 56, 0.06)' }}>
-          <CheckCircle2 size={56} color={COLORS.success} style={{ margin: '0 auto 16px auto' }} />
-          <h2 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 10px 0' }}>ご予約が完了いたしました</h2>
+          <div className="pouchi-pop" style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}>
+            <MascotSprite src={MASCOT.waai} size={100} />
+          </div>
+          <h2 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 10px 0' }}>ご予約が完了いたしました！</h2>
           <p style={{ fontSize: '14px', color: COLORS.muted, lineHeight: '1.6', margin: '0 0 24px 0' }}>
             ご登録のメールアドレス（{customerEmail}）宛に予約確認メールを送信いたしました。
             {reservationMode === 'both' && <><br /><strong>※両公演（A公演・B公演）ともにお席を確保いたしました。</strong></>}
@@ -446,8 +485,9 @@ export default function CustomerReservationForm({ productionId }) {
 
           <a
             href={`${window.location.origin}/mypage?token=${mypageToken}`}
-            style={{ display: 'inline-block', width: '100%', padding: '14px', backgroundColor: COLORS.gold, color: '#ffffff', textDecoration: 'none', borderRadius: '10px', fontWeight: 700, fontSize: '15px', boxSizing: 'border-box' }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', padding: '14px', backgroundColor: COLORS.gold, color: '#ffffff', textDecoration: 'none', borderRadius: '10px', fontWeight: 700, fontSize: '15px', boxSizing: 'border-box' }}
           >
+            <MascotSprite src={MASCOT.pochitto} size={22} borderRadius="6px" />
             予約内容の確認・変更（マイページへ）
           </a>
         </div>
@@ -460,6 +500,9 @@ export default function CustomerReservationForm({ productionId }) {
       <div style={{ maxWidth: '580px', margin: '0 auto' }}>
 
         <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '6px' }}>
+            <MascotSprite src={MASCOT.iconApp} size={56} borderRadius="16px" />
+          </div>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: COLORS.gold, fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>
             <Sparkles size={13} /> office Knight プロデュース公演
           </div>
@@ -471,15 +514,17 @@ export default function CustomerReservationForm({ productionId }) {
         <ProgressDots steps={steps} stepIndex={stepIndex} />
 
         {stepError && (
-          <div style={{ padding: '10px 12px', backgroundColor: 'rgba(232,90,69,0.1)', color: COLORS.danger, borderRadius: '8px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
-            <AlertCircle size={16} /> {stepError}
+          <div style={{ padding: '10px 12px', backgroundColor: 'rgba(232,90,69,0.1)', color: COLORS.danger, borderRadius: '8px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+            <MascotSprite src={MASCOT.checking} size={26} />
+            {stepError}
           </div>
         )}
 
         {/* STEP 1: 公演選択 */}
         {currentStepKey === 'select' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <p style={{ textAlign: 'center', fontSize: '14px', fontWeight: 700, color: COLORS.text, margin: '0 0 4px 0' }}>
+            <p style={{ textAlign: 'center', fontSize: '14px', fontWeight: 700, color: COLORS.text, margin: '0 0 4px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+              <MascotSprite src={MASCOT.naruhodo} size={26} />
               観劇する公演をお選びください
             </p>
 
@@ -897,8 +942,9 @@ export default function CustomerReservationForm({ productionId }) {
                 </div>
 
                 {errorMessage && (
-                  <div style={{ padding: '12px', backgroundColor: 'rgba(232,90,69,0.1)', color: COLORS.danger, borderRadius: '8px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <AlertCircle size={16} /> {errorMessage}
+                  <div style={{ padding: '12px', backgroundColor: 'rgba(232,90,69,0.1)', color: COLORS.danger, borderRadius: '8px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <MascotSprite src={MASCOT.checking} size={26} />
+                    {errorMessage}
                   </div>
                 )}
               </div>
