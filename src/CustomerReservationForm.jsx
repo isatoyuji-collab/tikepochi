@@ -3,13 +3,21 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { User, CheckCircle2, AlertCircle, Sparkles, MapPin, ChevronLeft, ChevronRight, HeartHandshake, Ticket, Calendar } from 'lucide-react';
 
+// -----------------------------------------------------------------
+// チケポチ ブランドカラー（マイページと共通）
+// -----------------------------------------------------------------
 const COLORS = {
-  bg: '#faf5ea',
+  bg: '#fff8e6',
   surface: '#ffffff',
-  surfaceAlt: '#f7efe0',
-  border: 'rgba(201,121,31,0.22)',
-  gold: '#c9791f',
-  indigo: '#4338ca',
+  surfaceAlt: '#fff3d1',
+  border: 'rgba(245, 158, 11, 0.3)',
+  yellow: '#ffb300',
+  yellowSoft: '#ffe08a',
+  yellowDeep: '#f59e0b',
+  blue: '#2f6fed',
+  blueDeep: '#1e4fc4',
+  blueSoft: '#e3edff',
+  pouchiDark: '#3a2a18',
   text: '#2b2438',
   muted: '#8a8398',
   success: '#1f9a56',
@@ -18,15 +26,16 @@ const COLORS = {
 
 // -----------------------------------------------------------------
 // マスコット画像（切り出し済み・個別ファイル）
-// public/images/mascot/ にこのファイル名で配置してください
+// public/images/mascot/ に配置
 // -----------------------------------------------------------------
 const MASCOT = {
   iconApp: '/images/mascot/icon_app_yellow.png',
-  pochitto: '/images/mascot/pose_pochitto_dog.png',      // ポチッ！（確定・通常）
-  ticketWait: '/images/mascot/pose_ticket_wait_dog.png',  // チケット待ち…（読み込み中）
-  checking: '/images/mascot/pose_checking_dog.png',       // チェック中！（入力エラー・注意）
-  naruhodo: '/images/mascot/pose_naruhodo_dog.png',       // なるほど！（案内・ステップ説明）
-  waai: '/images/mascot/pose_waai_dog.png',                // わーい！（予約完了）
+  bigdog: '/images/mascot/bigdog_only.png',
+  pochitto: '/images/mascot/pose_pochitto_dog.png',
+  ticketWait: '/images/mascot/pose_ticket_wait_dog.png',
+  checking: '/images/mascot/pose_checking_dog.png',
+  naruhodo: '/images/mascot/pose_naruhodo_dog.png',
+  waai: '/images/mascot/pose_waai_dog.png',
 };
 
 const MascotSprite = ({ src, size = 48, borderRadius = '14px', style = {} }) => (
@@ -44,20 +53,104 @@ const MascotSprite = ({ src, size = 48, borderRadius = '14px', style = {} }) => 
   />
 );
 
-function ProgressDots({ steps, stepIndex }) {
+const StickerBadge = ({ children, bg, color = '#fff', rotate = -3 }) => (
+  <span
+    style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '4px',
+      fontSize: '11px',
+      fontWeight: 900,
+      color,
+      backgroundColor: bg,
+      padding: '4px 10px',
+      borderRadius: '999px',
+      transform: `rotate(${rotate}deg)`,
+      boxShadow: '0 2px 0 rgba(0,0,0,0.12)',
+      border: '2px solid rgba(255,255,255,0.6)',
+    }}
+  >
+    {children}
+  </span>
+);
+
+const PageChrome = () => (
+  <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Zen+Kaku+Gothic+New:wght@500;700;900&display=swap');
+
+    body { background-color: ${COLORS.bg}; }
+
+    .pouchi-page-bg {
+      background-color: ${COLORS.bg};
+      background-image:
+        radial-gradient(circle at 12px 12px, rgba(245,158,11,0.08) 2px, transparent 2.6px),
+        radial-gradient(circle at 30px 30px, rgba(47,111,237,0.06) 2px, transparent 2.6px);
+      background-size: 42px 42px;
+    }
+
+    .pouchi-corner-peek {
+      position: fixed;
+      bottom: -14px;
+      right: -10px;
+      width: 90px;
+      height: auto;
+      opacity: 0.9;
+      pointer-events: none;
+      z-index: 0;
+      filter: drop-shadow(0 4px 8px rgba(0,0,0,0.12));
+    }
+
+    .pouchi-font {
+      font-family: 'Zen Maru Gothic', 'Zen Kaku Gothic New', sans-serif;
+    }
+
+    .btn-bounce:active { transform: scale(0.96); }
+
+    .btn-pouchi-primary {
+      background: linear-gradient(180deg, #ffc94d, #ffb300);
+      color: ${COLORS.pouchiDark};
+      border: 2px solid #e8940a;
+      box-shadow: 0 4px 0 #d9820a;
+    }
+    .btn-pouchi-primary:active { box-shadow: 0 1px 0 #d9820a; transform: translateY(3px); }
+    .btn-pouchi-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    @keyframes pouchi-pop {
+      0% { transform: scale(0.5) rotate(-6deg); opacity: 0; }
+      60% { transform: scale(1.1) rotate(3deg); opacity: 1; }
+      100% { transform: scale(1) rotate(0deg); opacity: 1; }
+    }
+    .pouchi-pop { animation: pouchi-pop 0.4s ease-out; }
+
+    @keyframes pouchi-confetti-fall {
+      0% { transform: translateY(-10px) rotate(0deg); opacity: 0; }
+      15% { opacity: 1; }
+      100% { transform: translateY(90px) rotate(200deg); opacity: 0; }
+    }
+    .pouchi-confetti span {
+      position: absolute;
+      font-size: 18px;
+      animation: pouchi-confetti-fall 1.6s ease-in forwards;
+    }
+  `}</style>
+);
+
+function ProgressPaws({ steps, stepIndex }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginBottom: '18px' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '18px' }}>
       {steps.map((s, i) => (
-        <div
+        <span
           key={s}
           style={{
-            width: i === stepIndex ? '20px' : '7px',
-            height: '7px',
-            borderRadius: '4px',
-            backgroundColor: i <= stepIndex ? COLORS.gold : COLORS.border,
+            fontSize: i === stepIndex ? '18px' : '13px',
+            filter: i <= stepIndex ? 'grayscale(0)' : 'grayscale(1)',
+            opacity: i <= stepIndex ? 1 : 0.35,
+            transform: i === stepIndex ? 'scale(1.15)' : 'scale(1)',
             transition: 'all 0.2s ease',
           }}
-        />
+        >
+          🐾
+        </span>
       ))}
     </div>
   );
@@ -70,7 +163,7 @@ function NavButtons({ onBack, onNext, nextLabel = '次へ', nextDisabled = false
         <button
           type="button"
           onClick={onBack}
-          style={{ flex: '0 0 88px', padding: '14px 0', borderRadius: '12px', border: `1px solid ${COLORS.border}`, backgroundColor: COLORS.surface, color: COLORS.text, fontWeight: 700, fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}
+          style={{ flex: '0 0 88px', padding: '14px 0', borderRadius: '999px', border: `2px solid ${COLORS.border}`, backgroundColor: COLORS.surface, color: COLORS.text, fontWeight: 700, fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}
         >
           <ChevronLeft size={16} /> 戻る
         </button>
@@ -79,7 +172,8 @@ function NavButtons({ onBack, onNext, nextLabel = '次へ', nextDisabled = false
         type="button"
         onClick={onNext}
         disabled={nextDisabled}
-        style={{ flex: 1, padding: '14px 0', borderRadius: '12px', border: 'none', backgroundColor: COLORS.gold, color: '#fff', fontWeight: 700, fontSize: '15px', cursor: nextDisabled ? 'not-allowed' : 'pointer', opacity: nextDisabled ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', boxShadow: '0 4px 12px rgba(201,121,31,0.25)' }}
+        className="btn-bounce btn-pouchi-primary"
+        style={{ flex: 1, padding: '14px 0', borderRadius: '999px', fontWeight: 800, fontSize: '15px', cursor: nextDisabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
       >
         {nextLabel} {nextLabel === '次へ' && <ChevronRight size={16} />}
       </button>
@@ -89,7 +183,7 @@ function NavButtons({ onBack, onNext, nextLabel = '次へ', nextDisabled = false
 
 function CardWrap({ children }) {
   return (
-    <div style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '14px', padding: '18px' }}>
+    <div style={{ backgroundColor: COLORS.surface, border: `2px solid ${COLORS.border}`, borderRadius: '20px', padding: '18px', boxShadow: '0 4px 0 rgba(245,158,11,0.08)' }}>
       {children}
     </div>
   );
@@ -108,6 +202,8 @@ function buildSteps(reservationMode) {
   return steps;
 }
 
+const CONFETTI_EMOJI = ['🎉', '🐾', '✨', '🎊', '⭐'];
+
 export default function CustomerReservationForm({ productionId }) {
   const [productions, setProductions] = useState([]);
   const [stagesMap, setStagesMap] = useState({});
@@ -119,7 +215,7 @@ export default function CustomerReservationForm({ productionId }) {
   const [stepIndex, setStepIndex] = useState(0);
 
   const [customerName, setCustomerName] = useState('');
-  const [customerKana, setCustomerKana] = useState(''); // 🎯 ふりがな入力ステート
+  const [customerKana, setCustomerKana] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerMemo, setCustomerMemo] = useState('');
@@ -147,7 +243,6 @@ export default function CustomerReservationForm({ productionId }) {
         const urlParams = new URLSearchParams(window.location.search);
         const staffParam = urlParams.get('staff') || '';
 
-        // 1. 公演情報の取得
         let thisProd = null;
         if (productionId.length === 36) {
           const { data, error } = await supabase
@@ -170,7 +265,6 @@ export default function CustomerReservationForm({ productionId }) {
 
         if (!thisProd) throw new Error('公演情報が見つかりませんでした');
 
-        // 2. 同じ劇団の全公演を取得
         let prodList = [thisProd];
         if (thisProd.organization_id) {
           const { data: orgProds } = await supabase
@@ -189,7 +283,6 @@ export default function CustomerReservationForm({ productionId }) {
         }
         setProductions(prodList);
 
-        // 3. 全ステージ・券種・キャストを取得
         const prodIds = prodList.map(p => p.id);
         const [{ data: stageData }, { data: ticketData }, { data: staffData }] = await Promise.all([
           supabase.from('stages').select('*').in('production_id', prodIds).order('start_time', { ascending: true }),
@@ -422,7 +515,6 @@ export default function CustomerReservationForm({ productionId }) {
           fullMemo = `【両公演セット予約】\n${fullMemo}`.trim();
         }
 
-        // DBに確実に登録するペイロード（customer_name_kana も含めて送信）
         recordsToInsert.push({
           production_id: prod.id,
           stage_id: stageId,
@@ -450,34 +542,36 @@ export default function CustomerReservationForm({ productionId }) {
     }
   };
 
-  const inputStyle = { width: '100%', padding: '10px 12px', borderRadius: '8px', border: `1px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '14px', backgroundColor: COLORS.surface };
-  const labelStyle = { display: 'block', fontSize: '12px', fontWeight: 700, color: COLORS.gold, marginBottom: '4px' };
+  const inputStyle = { width: '100%', padding: '11px 12px', borderRadius: '12px', border: `2px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '14px', backgroundColor: COLORS.surface };
+  const labelStyle = { display: 'block', fontSize: '12px', fontWeight: 700, color: COLORS.yellowDeep, marginBottom: '4px' };
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", gap: '12px' }}>
+      <div className="pouchi-page-bg" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", gap: '12px' }}>
+        <PageChrome />
         <MascotSprite src={MASCOT.ticketWait} size={84} />
-        <div style={{ fontWeight: 700, fontSize: '14px' }}>予約フォームを読み込み中...</div>
+        <div className="pouchi-font" style={{ fontWeight: 800, fontSize: '14px' }}>予約フォームを読み込み中...</div>
       </div>
     );
   }
 
   if (submitSuccess) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '32px 16px', boxSizing: 'border-box' }}>
-        <style>{`
-          @keyframes pouchi-pop {
-            0% { transform: scale(0.5) rotate(-6deg); opacity: 0; }
-            60% { transform: scale(1.1) rotate(3deg); opacity: 1; }
-            100% { transform: scale(1) rotate(0deg); opacity: 1; }
-          }
-          .pouchi-pop { animation: pouchi-pop 0.4s ease-out; }
-        `}</style>
-        <div style={{ maxWidth: '580px', margin: '0 auto', backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: '16px', padding: '32px 24px', textAlign: 'center', boxShadow: '0 4px 12px rgba(43, 36, 56, 0.06)' }}>
+      <div className="pouchi-page-bg" style={{ minHeight: '100vh', color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '32px 16px', boxSizing: 'border-box' }}>
+        <PageChrome />
+        <div style={{ maxWidth: '580px', margin: '0 auto', backgroundColor: COLORS.surface, border: `2.5px solid ${COLORS.border}`, borderRadius: '28px', padding: '32px 24px', textAlign: 'center', boxShadow: '0 8px 0 rgba(245,158,11,0.1), 0 10px 24px rgba(43, 36, 56, 0.08)', position: 'relative', overflow: 'hidden' }}>
+          <div className="pouchi-confetti" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+            {[...Array(10)].map((_, i) => (
+              <span key={i} style={{ left: `${8 + i * 9}%`, animationDelay: `${(i % 5) * 0.15}s` }}>
+                {CONFETTI_EMOJI[i % CONFETTI_EMOJI.length]}
+              </span>
+            ))}
+          </div>
+
           <div className="pouchi-pop" style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}>
             <MascotSprite src={MASCOT.waai} size={100} />
           </div>
-          <h2 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 10px 0' }}>ご予約が完了いたしました！</h2>
+          <h2 className="pouchi-font" style={{ fontSize: '21px', fontWeight: 900, margin: '0 0 10px 0' }}>ご予約が完了いたしました！</h2>
           <p style={{ fontSize: '14px', color: COLORS.muted, lineHeight: '1.6', margin: '0 0 24px 0' }}>
             ご登録のメールアドレス（{customerEmail}）宛に予約確認メールを送信いたしました。
             {reservationMode === 'both' && <><br /><strong>※両公演（A公演・B公演）ともにお席を確保いたしました。</strong></>}
@@ -485,7 +579,8 @@ export default function CustomerReservationForm({ productionId }) {
 
           <a
             href={`${window.location.origin}/mypage?token=${mypageToken}`}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', padding: '14px', backgroundColor: COLORS.gold, color: '#ffffff', textDecoration: 'none', borderRadius: '10px', fontWeight: 700, fontSize: '15px', boxSizing: 'border-box' }}
+            className="btn-bounce btn-pouchi-primary"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', padding: '14px', textDecoration: 'none', borderRadius: '18px', fontWeight: 900, fontSize: '15px', boxSizing: 'border-box' }}
           >
             <MascotSprite src={MASCOT.pochitto} size={22} borderRadius="6px" />
             予約内容の確認・変更（マイページへ）
@@ -496,25 +591,28 @@ export default function CustomerReservationForm({ productionId }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: COLORS.bg, color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '24px 16px 60px 16px', boxSizing: 'border-box' }}>
-      <div style={{ maxWidth: '580px', margin: '0 auto' }}>
+    <div className="pouchi-page-bg" style={{ minHeight: '100vh', color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '24px 16px 60px 16px', boxSizing: 'border-box', position: 'relative' }}>
+      <PageChrome />
+      <img src={MASCOT.bigdog} alt="" className="pouchi-corner-peek" />
+
+      <div style={{ maxWidth: '580px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
 
         <div style={{ textAlign: 'center', marginBottom: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '6px' }}>
-            <MascotSprite src={MASCOT.iconApp} size={56} borderRadius="16px" />
+            <MascotSprite src={MASCOT.iconApp} size={58} borderRadius="18px" style={{ boxShadow: '0 3px 0 rgba(217,119,6,0.3)' }} />
           </div>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: COLORS.gold, fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: COLORS.yellowDeep, fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>
             <Sparkles size={13} /> office Knight プロデュース公演
           </div>
-          <h1 style={{ fontSize: '19px', fontWeight: 700, margin: '0 0 6px 0', color: COLORS.text }}>
+          <h1 className="pouchi-font" style={{ fontSize: '19px', fontWeight: 900, margin: '0 0 6px 0', color: COLORS.text }}>
             vol.3 & vol.3.5 『秋の大笑会-ダイエンカイ-』
           </h1>
         </div>
 
-        <ProgressDots steps={steps} stepIndex={stepIndex} />
+        <ProgressPaws steps={steps} stepIndex={stepIndex} />
 
         {stepError && (
-          <div style={{ padding: '10px 12px', backgroundColor: 'rgba(232,90,69,0.1)', color: COLORS.danger, borderRadius: '8px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+          <div style={{ padding: '10px 12px', backgroundColor: 'rgba(232,90,69,0.1)', color: COLORS.danger, borderRadius: '14px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', border: `2px solid rgba(232,90,69,0.2)` }}>
             <MascotSprite src={MASCOT.checking} size={26} />
             {stepError}
           </div>
@@ -523,7 +621,7 @@ export default function CustomerReservationForm({ productionId }) {
         {/* STEP 1: 公演選択 */}
         {currentStepKey === 'select' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <p style={{ textAlign: 'center', fontSize: '14px', fontWeight: 700, color: COLORS.text, margin: '0 0 4px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+            <p className="pouchi-font" style={{ textAlign: 'center', fontSize: '14px', fontWeight: 800, color: COLORS.text, margin: '0 0 4px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
               <MascotSprite src={MASCOT.naruhodo} size={26} />
               観劇する公演をお選びください
             </p>
@@ -531,26 +629,26 @@ export default function CustomerReservationForm({ productionId }) {
             {productions.map((prod, idx) => {
               const isA = prod.title?.includes('あなたとコンビ');
               const label = isA ? 'A公演' : 'B公演';
-              const tagCol = isA ? COLORS.gold : COLORS.indigo;
+              const tagCol = isA ? COLORS.yellowDeep : COLORS.blue;
 
               return (
                 <button
                   key={prod.id}
                   type="button"
                   onClick={() => selectProduction(`single_${idx}`)}
+                  className="btn-bounce"
                   style={{
                     textAlign: 'left',
                     padding: '18px',
-                    borderRadius: '14px',
-                    border: `2px solid ${COLORS.border}`,
+                    borderRadius: '20px',
+                    border: `2.5px solid ${COLORS.border}`,
                     backgroundColor: COLORS.surface,
                     cursor: 'pointer',
+                    boxShadow: '0 4px 0 rgba(245,158,11,0.08)',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#ffffff', backgroundColor: tagCol, padding: '2px 8px', borderRadius: '4px' }}>
-                      {label}
-                    </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <StickerBadge bg={tagCol} rotate={-3}>{label}</StickerBadge>
                     <span style={{ fontSize: '12px', color: COLORS.muted, display: 'flex', alignItems: 'center', gap: '2px' }}>
                       <MapPin size={12} color={tagCol} /> {prod.venue_name || '布施PEベース'}
                     </span>
@@ -564,16 +662,18 @@ export default function CustomerReservationForm({ productionId }) {
               <button
                 type="button"
                 onClick={() => selectProduction('both')}
+                className="btn-bounce"
                 style={{
                   textAlign: 'left',
                   padding: '18px',
-                  borderRadius: '14px',
-                  border: `2px solid ${COLORS.gold}`,
+                  borderRadius: '20px',
+                  border: `2.5px solid ${COLORS.yellowDeep}`,
                   backgroundColor: COLORS.surfaceAlt,
                   cursor: 'pointer',
+                  boxShadow: '0 4px 0 rgba(245,158,11,0.15)',
                 }}
               >
-                <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.gold, marginBottom: '6px' }}>⭐ セット予約（通し券）</div>
+                <div style={{ fontSize: '11px', fontWeight: 800, color: COLORS.yellowDeep, marginBottom: '6px' }}>⭐ セット予約（通し券）</div>
                 <div style={{ fontSize: '15px', fontWeight: 700, color: COLORS.text }}>両方観劇する（A公演 ＆ B公演）</div>
               </button>
             )}
@@ -599,16 +699,14 @@ export default function CustomerReservationForm({ productionId }) {
           return (
             <>
               <CardWrap>
-                <div style={{ borderBottom: `1px solid ${COLORS.border}`, paddingBottom: '10px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ borderBottom: `2px dashed ${COLORS.yellowSoft}`, paddingBottom: '10px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#ffffff', backgroundColor: isA ? COLORS.gold : COLORS.indigo, padding: '2px 8px', borderRadius: '4px' }}>
-                      {isA ? 'A公演' : 'B公演'}
-                    </span>
-                    <h3 style={{ fontSize: '15px', fontWeight: 700, margin: '4px 0 0 0', color: COLORS.text }}>
+                    <StickerBadge bg={isA ? COLORS.yellowDeep : COLORS.blue} rotate={-3}>{isA ? 'A公演' : 'B公演'}</StickerBadge>
+                    <h3 className="pouchi-font" style={{ fontSize: '15px', fontWeight: 800, margin: '6px 0 0 0', color: COLORS.text }}>
                       {prod.title}
                     </h3>
                   </div>
-                  <div style={{ fontSize: '12px', color: COLORS.gold, fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  <div style={{ fontSize: '12px', color: COLORS.yellowDeep, fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px' }}>
                     <MapPin size={13} /> {prod.venue_name || '布施PEベース'}
                   </div>
                 </div>
@@ -685,8 +783,8 @@ export default function CustomerReservationForm({ productionId }) {
                   </div>
 
                   {optionTickets.length > 0 && (
-                    <div style={{ padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '8px', border: `1px solid ${COLORS.border}` }}>
-                      <div style={{ fontSize: '12px', fontWeight: 700, color: COLORS.indigo, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <div style={{ padding: '10px 12px', backgroundColor: COLORS.blueSoft, borderRadius: '14px', border: `1.5px solid rgba(47,111,237,0.25)` }}>
+                      <div style={{ fontSize: '12px', fontWeight: 700, color: COLORS.blueDeep, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <Sparkles size={13} /> 追加オプション（任意）
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -698,10 +796,10 @@ export default function CustomerReservationForm({ productionId }) {
                                 type="checkbox"
                                 checked={isChecked}
                                 onChange={() => handleToggleOption(idx, opt.id)}
-                                style={{ accentColor: COLORS.indigo, width: '16px', height: '16px' }}
+                                style={{ accentColor: COLORS.blue, width: '16px', height: '16px' }}
                               />
                               <span>{opt.name}</span>
-                              <span style={{ fontSize: '12px', color: COLORS.gold, marginLeft: 'auto' }}>
+                              <span style={{ fontSize: '12px', color: COLORS.yellowDeep, marginLeft: 'auto' }}>
                                 +¥{opt.price?.toLocaleString()}
                               </span>
                             </label>
@@ -714,7 +812,7 @@ export default function CustomerReservationForm({ productionId }) {
                   <div>
                     <label style={labelStyle}>扱いキャスト・スタッフ</label>
                     {isSecondOfBoth && isSameStaff ? (
-                      <div style={{ padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '8px', border: `1px solid ${COLORS.border}`, fontSize: '13px', color: COLORS.muted }}>
+                      <div style={{ padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '12px', border: `2px solid ${COLORS.border}`, fontSize: '13px', color: COLORS.muted }}>
                         A公演と同じ扱い（{selectedStaffNames[0] || '劇団扱い'}）
                       </div>
                     ) : (
@@ -752,7 +850,7 @@ export default function CustomerReservationForm({ productionId }) {
                           setIsSameStaff(e.target.checked);
                           if (e.target.checked) setSelectedStaffNames(prev => [prev[0], prev[0]]);
                         }}
-                        style={{ accentColor: COLORS.gold, width: '16px', height: '16px', cursor: 'pointer' }}
+                        style={{ accentColor: COLORS.yellowDeep, width: '16px', height: '16px', cursor: 'pointer' }}
                       />
                       <label htmlFor="sameStaffCheck" style={{ fontSize: '12px', color: COLORS.text, cursor: 'pointer', fontWeight: 700 }}>
                         B公演も同じ扱いに設定する
@@ -771,11 +869,10 @@ export default function CustomerReservationForm({ productionId }) {
           <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <CardWrap>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: COLORS.gold, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
+                <div style={{ fontSize: '14px', fontWeight: 800, color: COLORS.yellowDeep, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
                   <User size={15} /> お客様情報
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {/* お名前 */}
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>お名前（必須）</label>
                     <input
@@ -788,7 +885,6 @@ export default function CustomerReservationForm({ productionId }) {
                     />
                   </div>
 
-                  {/* 🎯 ふりがな（追加） */}
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>ふりがな（必須）</label>
                     <input
@@ -801,7 +897,6 @@ export default function CustomerReservationForm({ productionId }) {
                     />
                   </div>
 
-                  {/* メールアドレス */}
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>メールアドレス（必須）</label>
                     <input
@@ -814,7 +909,6 @@ export default function CustomerReservationForm({ productionId }) {
                     />
                   </div>
 
-                  {/* お電話番号 */}
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>お電話番号</label>
                     <input
@@ -826,7 +920,6 @@ export default function CustomerReservationForm({ productionId }) {
                     />
                   </div>
 
-                  {/* 備考 */}
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>備考</label>
                     <textarea
@@ -846,15 +939,15 @@ export default function CustomerReservationForm({ productionId }) {
                     type="checkbox"
                     checked={hasDonation}
                     onChange={(e) => setHasDonation(e.target.checked)}
-                    style={{ accentColor: COLORS.gold, width: '16px', height: '16px' }}
+                    style={{ accentColor: COLORS.yellowDeep, width: '16px', height: '16px' }}
                   />
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: COLORS.gold }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: COLORS.yellowDeep }}>
                     <HeartHandshake size={15} /> 劇団・キャスト応援カンパを送る（任意）
                   </span>
                 </label>
 
                 {hasDonation && (
-                  <div style={{ marginTop: '12px', padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '8px', border: `1px solid ${COLORS.border}` }}>
+                  <div style={{ marginTop: '12px', padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '12px', border: `2px solid ${COLORS.border}` }}>
                     <div style={{ fontSize: '12px', color: COLORS.muted, marginBottom: '6px' }}>
                       下限500円から、100円刻みでお好きな金額をご入力いただけます。
                     </div>
@@ -866,7 +959,7 @@ export default function CustomerReservationForm({ productionId }) {
                         step={100}
                         value={donationAmount}
                         onChange={(e) => setDonationAmount(e.target.value)}
-                        style={{ width: '150px', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${COLORS.border}`, fontSize: '14px', backgroundColor: COLORS.surface }}
+                        style={{ width: '150px', padding: '8px 10px', borderRadius: '10px', border: `2px solid ${COLORS.border}`, fontSize: '14px', backgroundColor: COLORS.surface }}
                       />
                       <span style={{ fontSize: '13px', fontWeight: 700 }}>円</span>
                     </div>
@@ -899,10 +992,8 @@ export default function CustomerReservationForm({ productionId }) {
                   return (
                     <CardWrap key={prod.id}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#ffffff', backgroundColor: isA ? COLORS.gold : COLORS.indigo, padding: '2px 8px', borderRadius: '4px' }}>
-                          {isA ? 'A公演' : 'B公演'}
-                        </span>
-                        <span style={{ fontSize: '12px', color: COLORS.gold, fontWeight: 700 }}>
+                        <StickerBadge bg={isA ? COLORS.yellowDeep : COLORS.blue} rotate={-3}>{isA ? 'A公演' : 'B公演'}</StickerBadge>
+                        <span style={{ fontSize: '12px', color: COLORS.yellowDeep, fontWeight: 700 }}>
                           <MapPin size={12} /> {prod.venue_name || '布施PEベース'}
                         </span>
                       </div>
@@ -921,13 +1012,13 @@ export default function CustomerReservationForm({ productionId }) {
 
                 {hasDonation && (
                   <CardWrap>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.gold, marginBottom: '4px' }}>応援カンパ</div>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.yellowDeep, marginBottom: '4px' }}>応援カンパ</div>
                     <div style={{ fontSize: '14px', fontWeight: 700 }}>¥{(parseInt(donationAmount, 10) || 500).toLocaleString()}</div>
                   </CardWrap>
                 )}
 
                 <CardWrap>
-                  <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.gold, marginBottom: '6px' }}>お客様情報</div>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.yellowDeep, marginBottom: '6px' }}>お客様情報</div>
                   <div style={{ fontSize: '13px', lineHeight: '1.9', color: COLORS.text }}>
                     <div>お名前：{customerName}（{customerKana}）</div>
                     <div>メール：{customerEmail}</div>
@@ -936,13 +1027,13 @@ export default function CustomerReservationForm({ productionId }) {
                   </div>
                 </CardWrap>
 
-                <div style={{ backgroundColor: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ backgroundColor: COLORS.surfaceAlt, border: `2.5px solid ${COLORS.yellowDeep}`, borderRadius: '18px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 0 rgba(245,158,11,0.15)' }}>
                   <span style={{ fontWeight: 700, fontSize: '14px' }}>合計お支払い予定額（当日精算）</span>
-                  <span style={{ fontSize: '20px', fontWeight: 800, color: COLORS.gold }}>¥{total.toLocaleString()}</span>
+                  <span style={{ fontSize: '20px', fontWeight: 900, color: COLORS.yellowDeep }}>¥{total.toLocaleString()}</span>
                 </div>
 
                 {errorMessage && (
-                  <div style={{ padding: '12px', backgroundColor: 'rgba(232,90,69,0.1)', color: COLORS.danger, borderRadius: '8px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ padding: '12px', backgroundColor: 'rgba(232,90,69,0.1)', color: COLORS.danger, borderRadius: '14px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', border: `2px solid rgba(232,90,69,0.2)` }}>
                     <MascotSprite src={MASCOT.checking} size={26} />
                     {errorMessage}
                   </div>
