@@ -24,11 +24,26 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const { data: settings, error: dbError } = await supabaseAdmin
+    // production_id指定、なければ最新の決済設定をフォールバック取得
+    let { data: settings, error: dbError } = await supabaseAdmin
       .from("payment_settings")
       .select("stripe_secret_key, stripe_enabled")
       .eq("production_id", productionId)
-      .single();
+      .maybeSingle();
+
+    if (!settings || !settings.stripe_secret_key) {
+      const { data: fallbackSettings } = await supabaseAdmin
+        .from("payment_settings")
+        .select("stripe_secret_key, stripe_enabled")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      settings = fallbackSettings;
+    }
+
+    if (!settings || !settings.stripe_enabled || !settings.stripe_secret_key) {
+      throw new Error("Stripe決済の設定が見つからないか、無効になっています。");
+    }
 
     if (dbError || !settings || !settings.stripe_enabled || !settings.stripe_secret_key) {
       throw new Error("Stripe決済の設定が見つからないか、無効になっています。");
