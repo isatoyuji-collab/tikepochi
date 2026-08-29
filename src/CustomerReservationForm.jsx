@@ -1,7 +1,11 @@
 // src/CustomerReservationForm.jsx (TIKEPOCHI側)
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { User, CheckCircle2, AlertCircle, Sparkles, MapPin, ChevronLeft, ChevronRight, HeartHandshake, Ticket, Calendar } from 'lucide-react';
+import { 
+  User, CheckCircle2, AlertCircle, Sparkles, MapPin, 
+  ChevronLeft, ChevronRight, HeartHandshake, Ticket, Calendar,
+  CreditCard, Building2, Banknote, ShieldCheck
+} from 'lucide-react';
 
 // -----------------------------------------------------------------
 // チケポチ ブランドカラー（マイページと共通）
@@ -25,8 +29,7 @@ const COLORS = {
 };
 
 // -----------------------------------------------------------------
-// マスコット画像（切り出し済み・個別ファイル）
-// public/images/mascot/ に配置
+// マスコット画像
 // -----------------------------------------------------------------
 const MASCOT = {
   iconApp: '/images/mascot/icon_app_yellow.png',
@@ -114,6 +117,23 @@ const PageChrome = () => (
     }
     .btn-pouchi-primary:active { box-shadow: 0 1px 0 #d9820a; transform: translateY(3px); }
     .btn-pouchi-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .payment-option-card {
+      border: 2px solid ${COLORS.border};
+      border-radius: 14px;
+      padding: 12px 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background-color: ${COLORS.surface};
+      transition: all 0.15s ease;
+    }
+    .payment-option-card.selected {
+      border-color: ${COLORS.yellowDeep};
+      background-color: ${COLORS.surfaceAlt};
+      box-shadow: 0 2px 0 rgba(245,158,11,0.2);
+    }
 
     @keyframes pouchi-pop {
       0% { transform: scale(0.5) rotate(-6deg); opacity: 0; }
@@ -211,6 +231,10 @@ export default function CustomerReservationForm({ productionId }) {
   const [allStaff, setAllStaff] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // 決済設定の状態
+  const [paymentSettings, setPaymentSettings] = useState(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('STRIPE_CARD'); // デフォルトはクレカ
+
   const [reservationMode, setReservationMode] = useState('');
   const [stepIndex, setStepIndex] = useState(0);
 
@@ -284,11 +308,20 @@ export default function CustomerReservationForm({ productionId }) {
         setProductions(prodList);
 
         const prodIds = prodList.map(p => p.id);
-        const [{ data: stageData }, { data: ticketData }, { data: staffData }] = await Promise.all([
+        const [{ data: stageData }, { data: ticketData }, { data: staffData }, { data: pSettings }] = await Promise.all([
           supabase.from('stages').select('*').in('production_id', prodIds).order('start_time', { ascending: true }),
           supabase.from('ticket_types').select('*').in('production_id', prodIds).order('price', { ascending: true }),
           supabase.from('cast_staff').select('*').in('production_id', prodIds),
+          supabase.from('payment_settings').select('*').eq('production_id', thisProd.id).maybeSingle()
         ]);
+
+        if (pSettings) {
+          setPaymentSettings(pSettings);
+          // クレカが無効な場合は別の方法を初期選択
+          if (!pSettings.stripe_enabled) {
+            setSelectedPaymentMethod(pSettings.bank_enabled ? 'BANK_TRANSFER' : 'CASH');
+          }
+        }
 
         const sMap = {};
         const tMap = {};
@@ -485,6 +518,7 @@ export default function CustomerReservationForm({ productionId }) {
 
       const isBoth = reservationMode === 'both';
       const targetIndices = isBoth ? [0, 1] : [parseInt(reservationMode.replace('single_', ''), 10)];
+      const totalAmount = calculateTotal();
 
       for (let i = 0; i < targetIndices.length; i++) {
         const idx = targetIndices[i];
@@ -526,12 +560,52 @@ export default function CustomerReservationForm({ productionId }) {
           count: count,
           memo: fullMemo || null,
           mypage_token: sharedMypageToken,
+          payment_method: selectedPaymentMethod,
+          payment_status: selectedPaymentMethod === 'STRIPE_CARD' ? 'UNPAID' : 'PENDING'
         });
       }
 
-      const { error } = await supabase.from('reservations').insert(recordsToInsert);
-      if (error) throw error;
+      // 1. Supabaseの予約テーブルに登録
+      const { data: insertedRecords, error: insertError } = await supabase
+        .from('reservations')
+        .insert(recordsToInsert)
+        .select();
 
+      if (insertError) throw insertError;
+
+      // 2. クレジットカード決済の場合は Stripe Checkout を呼び出してリダイレクト
+      if (selectedPaymentMethod === 'STRIPE_CARD') {
+        const primaryProdId = productions[0]?.id || productionId;
+        const reservationId = insertedRecords[0]?.id;
+        const ticketTitle = isBoth 
+          ? `【両公演セット】${productions[0]?.title} & ${productions[1]?.title}`
+          : `${productions[targetIndices[0]]?.title || '公演'} チケット`;
+
+        const { data: sessionData, error: functionError } = await supabase.functions.invoke(
+          'create-stripe-checkout',
+          {
+            body: {
+              productionId: primaryProdId,
+              reservationId: reservationId,
+              ticketTitle: ticketTitle,
+              amount: totalAmount,
+              quantity: 1,
+              customerEmail: customerEmail.trim(),
+              returnUrl: `${window.location.origin}/mypage?token=${sharedMypageToken}`,
+            },
+          }
+        );
+
+        if (functionError || !sessionData?.url) {
+          throw new Error(functionError?.message || sessionData?.error || 'カード決済画面の生成に失敗しました');
+        }
+
+        // Stripe Checkout 決済画面へ遷移
+        window.location.href = sessionData.url;
+        return;
+      }
+
+      // 3. 銀行振込または当日精算の場合は完了画面へ
       setMypageToken(sharedMypageToken);
       setSubmitSuccess(true);
     } catch (err) {
@@ -574,6 +648,7 @@ export default function CustomerReservationForm({ productionId }) {
           <h2 className="pouchi-font" style={{ fontSize: '21px', fontWeight: 900, margin: '0 0 10px 0' }}>ご予約が完了いたしました！</h2>
           <p style={{ fontSize: '14px', color: COLORS.muted, lineHeight: '1.6', margin: '0 0 24px 0' }}>
             ご登録のメールアドレス（{customerEmail}）宛に予約確認メールを送信いたしました。
+            {selectedPaymentMethod === 'BANK_TRANSFER' && <><br /><strong style={{ color: COLORS.yellowDeep }}>※振込先口座情報をメールにてご案内しております。</strong></>}
             {reservationMode === 'both' && <><br /><strong>※両公演（A公演・B公演）ともにお席を確保いたしました。</strong></>}
           </p>
 
@@ -971,7 +1046,7 @@ export default function CustomerReservationForm({ productionId }) {
           </>
         )}
 
-        {/* STEP 4: 最終確認 */}
+        {/* STEP 4: 最終確認 ＆ お支払い方法の選択 */}
         {currentStepKey === 'confirm' && (() => {
           const targetIndices = reservationMode === 'both' ? [0, 1] : [parseInt(reservationMode.replace('single_', ''), 10)];
           const total = calculateTotal();
@@ -1027,8 +1102,63 @@ export default function CustomerReservationForm({ productionId }) {
                   </div>
                 </CardWrap>
 
+                {/* 💳 お支払い方法選択カード */}
+                <CardWrap>
+                  <div style={{ fontSize: '13px', fontWeight: 800, color: COLORS.yellowDeep, marginBottom: '10px' }}>
+                    お支払い方法を選択してください
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    
+                    {/* クレジットカード決済 */}
+                    {(!paymentSettings || paymentSettings.stripe_enabled) && (
+                      <div 
+                        className={`payment-option-card ${selectedPaymentMethod === 'STRIPE_CARD' ? 'selected' : ''}`}
+                        onClick={() => setSelectedPaymentMethod('STRIPE_CARD')}
+                      >
+                        <CreditCard size={20} color={COLORS.gold} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '14px', fontWeight: 700 }}>クレジットカード決済（即時精算）</div>
+                          <div style={{ fontSize: '11px', color: COLORS.muted }}>Visa, Mastercard, JCB, AMEX 対応・安全に即時決済</div>
+                        </div>
+                        <input type="radio" name="payMethod" checked={selectedPaymentMethod === 'STRIPE_CARD'} readOnly style={{ accentColor: COLORS.yellowDeep }} />
+                      </div>
+                    )}
+
+                    {/* 銀行振込 */}
+                    {(!paymentSettings || paymentSettings.bank_enabled) && (
+                      <div 
+                        className={`payment-option-card ${selectedPaymentMethod === 'BANK_TRANSFER' ? 'selected' : ''}`}
+                        onClick={() => setSelectedPaymentMethod('BANK_TRANSFER')}
+                      >
+                        <Building2 size={20} color={COLORS.yellowDeep} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '14px', fontWeight: 700 }}>銀行振込（事前精算）</div>
+                          <div style={{ fontSize: '11px', color: COLORS.muted }}>予約完了後、メールにて振込先口座をご案内します</div>
+                        </div>
+                        <input type="radio" name="payMethod" checked={selectedPaymentMethod === 'BANK_TRANSFER'} readOnly style={{ accentColor: COLORS.yellowDeep }} />
+                      </div>
+                    )}
+
+                    {/* 当日現金精算 */}
+                    <div 
+                      className={`payment-option-card ${selectedPaymentMethod === 'CASH' ? 'selected' : ''}`}
+                      onClick={() => setSelectedPaymentMethod('CASH')}
+                    >
+                      <Banknote size={20} color={COLORS.success} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '14px', fontWeight: 700 }}>当日劇場で精算（現金）</div>
+                        <div style={{ fontSize: '11px', color: COLORS.muted }}>公演当日の受付にて現金でお支払いいただきます</div>
+                      </div>
+                      <input type="radio" name="payMethod" checked={selectedPaymentMethod === 'CASH'} readOnly style={{ accentColor: COLORS.yellowDeep }} />
+                    </div>
+
+                  </div>
+                </CardWrap>
+
                 <div style={{ backgroundColor: COLORS.surfaceAlt, border: `2.5px solid ${COLORS.yellowDeep}`, borderRadius: '18px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 0 rgba(245,158,11,0.15)' }}>
-                  <span style={{ fontWeight: 700, fontSize: '14px' }}>合計お支払い予定額（当日精算）</span>
+                  <span style={{ fontWeight: 700, fontSize: '14px' }}>
+                    合計お支払い額（{selectedPaymentMethod === 'STRIPE_CARD' ? 'カード即時精算' : selectedPaymentMethod === 'BANK_TRANSFER' ? '銀行振込' : '当日精算'}）
+                  </span>
                   <span style={{ fontSize: '20px', fontWeight: 900, color: COLORS.yellowDeep }}>¥{total.toLocaleString()}</span>
                 </div>
 
@@ -1043,7 +1173,13 @@ export default function CustomerReservationForm({ productionId }) {
               <NavButtons
                 onBack={goBack}
                 onNext={handleSubmit}
-                nextLabel={isSubmitting ? '予約処理中...' : '予約を確定する'}
+                nextLabel={
+                  isSubmitting 
+                    ? '処理中...' 
+                    : selectedPaymentMethod === 'STRIPE_CARD' 
+                      ? 'カード決済へ進む（Stripe）' 
+                      : '予約を確定する'
+                }
                 nextDisabled={isSubmitting}
               />
             </>
