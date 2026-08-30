@@ -16,6 +16,7 @@ import TabletReception from './TabletReception';
 import CustomerReservationForm from './CustomerReservationForm';
 import CustomerPortal from './CustomerPortal';
 import Myreservationspag from './Myreservationspag';
+import StaffReservationsPage from './StaffReservationsPage';
 import { LogOut, Building2 } from 'lucide-react';
 
 const ADMIN_BYPASS_KEY = "knight2026admin";
@@ -28,6 +29,12 @@ export default function App() {
   if (reservationMatch) return <CustomerReservationForm productionId={reservationMatch[1]} />;
 
   if (window.location.pathname === '/mypage') return <Myreservationspag />;
+
+  // 担当キャスト・スタッフ向け個別ページ
+  // アクセス例: https://tikepochi-eta.vercel.app/staff?staff=山田太郎
+  // ※ ?staff= の値は AdminStaffSettings.jsx で発行する personalUrl の
+  //   末尾クエリと一致させる必要があります（要確認）
+  if (window.location.pathname === '/staff') return <StaffReservationsPage />;
 
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);

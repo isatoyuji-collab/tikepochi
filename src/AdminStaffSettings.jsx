@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { ArrowLeft, UserPlus, Trash2, X, Copy, Check, Edit2, Shield, Tag, Link2, Sparkles, FileText, Share2 } from 'lucide-react';
+import { ArrowLeft, UserPlus, Trash2, X, Copy, Check, Edit2, Shield, Tag, Link2, Sparkles, FileText, Share2, Eye, EyeOff, LayoutDashboard } from 'lucide-react';
 import { COLORS, FONTS, RADIUS } from './theme';
 
 export default function AdminStaffSettings({ productionId, org, onBack }) {
@@ -24,16 +24,23 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
   const [memberType, setMemberType] = useState('cast');
   const [staffTeam, setStaffTeam] = useState('共通・両公演');
   const [hasPersonalUrl, setHasPersonalUrl] = useState(true);
+  const [ticketVisibility, setTicketVisibility] = useState('assigned_only'); // 'assigned_only' | 'all_stages'
 
   const [copiedId, setCopiedId] = useState(null);
+  const [copiedDashId, setCopiedDashId] = useState(null);
   const [copiedAll, setCopiedAll] = useState(false);
 
-  // 短縮URL生成ヘルパー（公演ID先頭8文字 + 日本語キャスト名）
+  // 短縮URL生成ヘルパー（公演ID先頭8文字 + 日本語キャスト名）＝予約フォーム用
   const getShortStaffUrl = (name) => {
     const targetProdId = productionId || (productions[0]?.id) || '';
     const shortId = targetProdId ? targetProdId.slice(0, 8) : '';
     const base = `${window.location.origin}/r/${shortId}`;
     return name ? `${base}?staff=${name}` : base;
+  };
+
+  // ダッシュボード用URL（担当分の予約を確認する個人ページ）
+  const getDashboardUrl = (name) => {
+    return `${window.location.origin}/staff?staff=${name}`;
   };
 
   // 劇団に紐づく全公演のキャストを一括取得
@@ -65,6 +72,8 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
 
         if (!error && allStaff) {
           // キャスト名の重複を排除（同一人物が複数公演に存在しても1名として管理）
+          // ※ ticket_visibility 等の「人単位の設定」は、同名の行のうち最初に
+          //   見つかったものを代表値として画面に出す。保存時は同名の行すべてに反映する。
           const uniqueList = [];
           const seenNames = new Set();
           allStaff.forEach(m => {
@@ -96,6 +105,12 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
   const handleShareLine = (text, url) => {
     const shareText = encodeURIComponent(`${text}\n${url}`);
     window.open(`https://line.me/R/msg/text/?${shareText}`, '_blank');
+  };
+
+  // 同じ名前を持つ cast_staff の全行に同じ値を反映する（複数公演所属対応）
+  const updateAllRowsByName = async (name, patch) => {
+    const { error } = await supabase.from('cast_staff').update(patch).eq('name', name);
+    if (error) throw error;
   };
 
   // テキスト解析
@@ -179,7 +194,8 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
         team_tag: item.teamTag,
         has_personal_url: item.hasPersonalUrl,
         cast_slug: item.name,
-        personal_url: pUrl
+        personal_url: pUrl,
+        ticket_visibility: 'assigned_only'
       };
     });
 
@@ -215,16 +231,49 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const handleCopyDashboardUrl = (id, url) => {
+    navigator.clipboard.writeText(url);
+    setCopiedDashId(id);
+    setTimeout(() => setCopiedDashId(null), 2000);
+  };
+
   const handleCopyAllUrlsText = () => {
     const list = staffList.filter(m => m.has_personal_url !== false);
     if (list.length === 0) {
       alert('コピー対象の個別URLがありません。');
       return;
     }
-    const text = list.map(m => `【${m.name} 扱い専用予約URL】\n${getShortStaffUrl(m.name)}`).join('\n\n');
+    const text = list.map(m =>
+      `【${m.name} 扱い専用予約URL】\n${getShortStaffUrl(m.name)}\n【${m.name} 予約管理ダッシュボード】\n${getDashboardUrl(m.name)}`
+    ).join('\n\n');
     navigator.clipboard.writeText(text);
     setCopiedAll(true);
     setTimeout(() => setCopiedAll(false), 2000);
+  };
+
+  // 全体タブ表示可否の個別トグル
+  const handleToggleVisibility = async (member) => {
+    const next = member.ticket_visibility === 'all_stages' ? 'assigned_only' : 'all_stages';
+    try {
+      await updateAllRowsByName(member.name, { ticket_visibility: next });
+      fetchStaffAndProductions();
+    } catch (e) {
+      alert('更新に失敗しました: ' + e.message);
+    }
+  };
+
+  // 全体タブ表示可否の一括変更
+  const handleBulkSetVisibility = async (value) => {
+    const label = value === 'all_stages' ? '全員「全体タブを見せる」' : '全員「自分の予約のみ」';
+    if (!confirm(`${label}に一括変更します。よろしいですか？`)) return;
+    try {
+      const names = [...new Set(staffList.map(m => m.name))];
+      await Promise.all(names.map(name => updateAllRowsByName(name, { ticket_visibility: value })));
+      fetchStaffAndProductions();
+      alert('一括変更が完了しました！');
+    } catch (e) {
+      alert('一括変更に失敗しました: ' + e.message);
+    }
   };
 
   const handleOpenInviteModal = () => {
@@ -234,6 +283,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
     setMemberType('cast');
     setStaffTeam('共通・両公演');
     setHasPersonalUrl(true);
+    setTicketVisibility('assigned_only');
     setIsModalOpen(true);
   };
 
@@ -244,6 +294,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
     setMemberType(member.member_type || 'cast');
     setStaffTeam(member.team_tag || '共通・両公演');
     setHasPersonalUrl(member.has_personal_url !== false);
+    setTicketVisibility(member.ticket_visibility || 'assigned_only');
     setIsModalOpen(true);
   };
 
@@ -257,6 +308,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
     const pUrl = hasPersonalUrl ? getShortStaffUrl(staffName.trim()) : '';
 
     if (editingMember) {
+      // 名前を変更した場合も含め、同名だった行全部に新しい可視性設定を反映
       await supabase.from('cast_staff').update({
         name: staffName.trim(),
         role: staffRole,
@@ -264,8 +316,14 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
         team_tag: staffTeam,
         has_personal_url: hasPersonalUrl,
         cast_slug: staffName.trim(),
-        personal_url: pUrl
+        personal_url: pUrl,
+        ticket_visibility: ticketVisibility
       }).eq('id', editingMember.id);
+
+      // 同一人物の他公演分の行にも可視性設定を揃える
+      if (editingMember.name === staffName.trim()) {
+        await updateAllRowsByName(staffName.trim(), { ticket_visibility: ticketVisibility });
+      }
     } else {
       await supabase.from('cast_staff').insert([{
         production_id: targetProdId,
@@ -275,7 +333,8 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
         team_tag: staffTeam,
         has_personal_url: hasPersonalUrl,
         cast_slug: staffName.trim(),
-        personal_url: pUrl
+        personal_url: pUrl,
+        ticket_visibility: ticketVisibility
       }]);
     }
 
@@ -333,6 +392,23 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
         }
         .btn-gold:hover { filter: brightness(1.08); }
 
+        .btn-indigo {
+          padding: 12px 20px;
+          background-color: ${COLORS.indigo};
+          color: #ffffff;
+          border: none;
+          border-radius: ${RADIUS.sm};
+          font-size: 14px;
+          font-weight: 700;
+          cursor: pointer;
+          font-family: ${FONTS.body};
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+        }
+        .btn-indigo:hover { filter: brightness(1.08); }
+
         .btn-line {
           padding: 10px 16px;
           background-color: #06C755;
@@ -372,6 +448,18 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
           display: inline-flex;
           align-items: center;
           gap: 3px;
+        }
+
+        .visibility-toggle {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 5px 10px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 700;
+          cursor: pointer;
+          border: 1px solid transparent;
         }
       `}</style>
 
@@ -418,7 +506,7 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
         </div>
 
         {/* アクションボタン */}
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
           <button onClick={() => setIsAiModalOpen(true)} className="btn-gold" style={{ flex: 1, minWidth: '220px' }}>
             <Sparkles size={16} /> AIでキャスト/スタッフを一括抽出
           </button>
@@ -437,6 +525,22 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
           </button>
         </div>
 
+        {/* 全体タブ表示可否の一括変更 */}
+        <div style={{ backgroundColor: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '12px 16px', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ fontSize: '12px', color: COLORS.muted, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Eye size={14} color={COLORS.indigo} />
+            個別ダッシュボードの「全体タブ」表示可否をまとめて変更できます
+          </div>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button onClick={() => handleBulkSetVisibility('all_stages')} className="btn-outline">
+              <Eye size={13} /> 全員に見せる
+            </button>
+            <button onClick={() => handleBulkSetVisibility('assigned_only')} className="btn-outline">
+              <EyeOff size={13} /> 全員「自分の分」のみ
+            </button>
+          </div>
+        </div>
+
         {/* メンバー一覧 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
@@ -453,11 +557,13 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
           ) : (
             staffList.map(member => {
               const shortUrl = getShortStaffUrl(member.name);
+              const dashUrl = getDashboardUrl(member.name);
+              const canViewAll = member.ticket_visibility === 'all_stages';
 
               return (
                 <div key={member.id} className="form-card" style={{ marginBottom: 0 }}>
 
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                       <span style={{ fontWeight: 700, fontSize: '16px', color: COLORS.text, fontFamily: FONTS.display }}>
                         {member.name}
@@ -478,6 +584,20 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
                           <Tag size={10} color={COLORS.gold} /> {member.team_tag}
                         </span>
                       )}
+
+                      {/* 全体タブ表示可否トグル */}
+                      <button
+                        onClick={() => handleToggleVisibility(member)}
+                        className="visibility-toggle"
+                        style={{
+                          backgroundColor: canViewAll ? 'rgba(67,56,202,0.1)' : COLORS.surfaceAlt,
+                          color: canViewAll ? COLORS.indigo : COLORS.muted,
+                          border: `1px solid ${canViewAll ? 'rgba(67,56,202,0.3)' : COLORS.border}`,
+                        }}
+                      >
+                        {canViewAll ? <Eye size={12} /> : <EyeOff size={12} />}
+                        全体タブ：{canViewAll ? '見える' : '自分の分のみ'}
+                      </button>
                     </div>
 
                     <div style={{ display: 'flex', gap: '4px' }}>
@@ -491,10 +611,10 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
                   </div>
 
                   {member.has_personal_url !== false ? (
-                    <div style={{ padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '10px', border: `1px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+                    <div style={{ padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '10px', border: `1px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', marginBottom: '8px' }}>
                       <div style={{ flex: 1, minWidth: '220px' }}>
                         <div style={{ fontSize: '11px', color: COLORS.gold, fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-                          <Link2 size={12} /> {member.name} 扱い専用予約URL
+                          <Link2 size={12} /> {member.name} 扱い専用予約URL（お客様に送る用）
                         </div>
                         <div style={{ fontSize: '12px', color: COLORS.text, wordBreak: 'break-all', fontWeight: 600 }}>
                           {shortUrl}
@@ -512,8 +632,30 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
                       </div>
                     </div>
                   ) : (
-                    <div style={{ fontSize: '12px', color: COLORS.muted }}>※扱い窓口なし</div>
+                    <div style={{ fontSize: '12px', color: COLORS.muted, marginBottom: '8px' }}>※扱い窓口なし</div>
                   )}
+
+                  {/* ダッシュボード用URL（本人が自分の予約を確認する用） */}
+                  <div style={{ padding: '10px 12px', backgroundColor: 'rgba(67,56,202,0.06)', borderRadius: '10px', border: '1px solid rgba(67,56,202,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: '220px' }}>
+                      <div style={{ fontSize: '11px', color: COLORS.indigo, fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+                        <LayoutDashboard size={12} /> {member.name} さん本人用の予約確認ダッシュボード
+                      </div>
+                      <div style={{ fontSize: '12px', color: COLORS.text, wordBreak: 'break-all', fontWeight: 600 }}>
+                        {dashUrl}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button onClick={() => handleCopyDashboardUrl(member.id, dashUrl)} className="btn-outline" style={{ color: COLORS.indigo, borderColor: 'rgba(67,56,202,0.3)' }}>
+                        {copiedDashId === member.id ? <Check size={14} color={COLORS.success} /> : <Copy size={14} />}
+                        {copiedDashId === member.id ? '完了' : 'コピー'}
+                      </button>
+                      <button onClick={() => handleShareLine(`【${member.name}さん 予約確認ダッシュボード】`, dashUrl)} className="btn-line" style={{ padding: '6px 10px', fontSize: '12px' }}>
+                        <Share2 size={14} /> LINE送信
+                      </button>
+                    </div>
+                  </div>
 
                 </div>
               );
@@ -616,6 +758,18 @@ export default function AdminStaffSettings({ productionId, org, onBack }) {
                   <option value="B公演（爆弾よりもハードです）">B公演（爆弾よりもハードです）</option>
                   <option value="共通・スタッフ">共通・スタッフ</option>
                 </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: COLORS.gold }}>個別ダッシュボードの「全体タブ」</label>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+                  <label style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `1px solid ${ticketVisibility === 'assigned_only' ? COLORS.gold : COLORS.border}`, backgroundColor: ticketVisibility === 'assigned_only' ? COLORS.surfaceAlt : COLORS.surface, cursor: 'pointer', textAlign: 'center', fontWeight: 700, fontSize: '12px' }}>
+                    <input type="radio" checked={ticketVisibility === 'assigned_only'} onChange={() => setTicketVisibility('assigned_only')} style={{ accentColor: COLORS.gold }} /> 自分の分のみ
+                  </label>
+                  <label style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `1px solid ${ticketVisibility === 'all_stages' ? COLORS.indigo : COLORS.border}`, backgroundColor: ticketVisibility === 'all_stages' ? 'rgba(67,56,202,0.08)' : COLORS.surface, cursor: 'pointer', textAlign: 'center', fontWeight: 700, fontSize: '12px' }}>
+                    <input type="radio" checked={ticketVisibility === 'all_stages'} onChange={() => setTicketVisibility('all_stages')} style={{ accentColor: COLORS.indigo }} /> 全体を見せる
+                  </label>
+                </div>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
