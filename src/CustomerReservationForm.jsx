@@ -139,34 +139,11 @@ const PageChrome = () => (
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      cursor: pointer;
+      user-select: none;
       border: 1.5px solid;
       transition: all 0.12s ease;
-      user-select: none;
     }
     .seat-btn:active { transform: scale(0.95); }
-
-    .seat-btn.selected {
-      background-color: ${COLORS.yellowDeep} !important;
-      color: #fff !important;
-      border-color: #d9820a !important;
-      box-shadow: 0 3px 0 #b45309;
-      transform: translateY(-2px);
-    }
-    .seat-btn.occupied {
-      background-color: #fee2e2 !important;
-      color: ${COLORS.danger} !important;
-      border-color: ${COLORS.danger} !important;
-      cursor: not-allowed !important;
-      opacity: 0.6;
-    }
-    .seat-btn.disabled-type {
-      background-color: #f1f5f9 !important;
-      color: #cbd5e1 !important;
-      border-color: #e2e8f0 !important;
-      cursor: not-allowed !important;
-      opacity: 0.35;
-    }
 
     @keyframes pouchi-pop {
       0% { transform: scale(0.5) rotate(-6deg); opacity: 0; }
@@ -260,7 +237,7 @@ export default function CustomerReservationForm({ productionId }) {
   const [productions, setProductions] = useState([]);
   const [stagesMap, setStagesMap] = useState({});
   const [ticketTypesMap, setTicketTypesMap] = useState({});
-  const [seatMapsMap, setSeatMapsMap] = useState({}); // prod.id -> seat_maps.seat_data
+  const [seatMapsMap, setSeatMapsMap] = useState({});
   const [allStaff, setAllStaff] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -283,9 +260,8 @@ export default function CustomerReservationForm({ productionId }) {
   const [selectedStaffNames, setSelectedStaffNames] = useState(['', '']);
   const [selectedOptions, setSelectedOptions] = useState([[], []]);
 
-  // 💺 選択された座席ID（例: ["A-1", "A-2"]）
   const [selectedSeatIds, setSelectedSeatIds] = useState([[], []]);
-  const [occupiedSeats, setOccupiedSeats] = useState({}); // stage_id -> { seatId: { status, lockedUntil, sessionId } }
+  const [occupiedSeats, setOccupiedSeats] = useState({});
   const [lockExpiresAt, setLockExpiresAt] = useState(null);
   const [timeLeftStr, setTimeLeftStr] = useState('');
 
@@ -300,7 +276,6 @@ export default function CustomerReservationForm({ productionId }) {
   const [errorMessage, setErrorMessage] = useState('');
   const [urlStaffParam, setUrlStaffParam] = useState('');
 
-  // ブラウザごとのユニークセッションID
   const sessionIdRef = useRef('');
   useEffect(() => {
     let sid = sessionStorage.getItem('tp_seat_session_id');
@@ -311,7 +286,6 @@ export default function CustomerReservationForm({ productionId }) {
     sessionIdRef.current = sid;
   }, []);
 
-  // 10分カウントダウンタイマー
   useEffect(() => {
     if (!lockExpiresAt) {
       setTimeLeftStr('');
@@ -335,7 +309,6 @@ export default function CustomerReservationForm({ productionId }) {
     return () => clearInterval(timer);
   }, [lockExpiresAt]);
 
-  // 初期データ読み込み
   useEffect(() => {
     async function loadData() {
       setLoading(true);
@@ -451,7 +424,6 @@ export default function CustomerReservationForm({ productionId }) {
     if (productionId) loadData();
   }, [productionId]);
 
-  // 指定席オプションが選択されているかを判定
   const getSeatRequirement = (idx) => {
     const prod = productions[idx];
     if (!prod) return { required: false, type: null };
@@ -470,7 +442,6 @@ export default function CustomerReservationForm({ productionId }) {
     return { required: false, type: null };
   };
 
-  // 動的ステップ生成
   const steps = useMemo(() => {
     if (!reservationMode) return ['select'];
     const s = ['select'];
@@ -492,7 +463,6 @@ export default function CustomerReservationForm({ productionId }) {
 
   const currentStepKey = steps[stepIndex] || 'select';
 
-  // リアルタイム排他制御
   const activeStageId = useMemo(() => {
     if (currentStepKey === 'seat_0') return selectedStageIds[0];
     if (currentStepKey === 'seat_1') return selectedStageIds[1];
@@ -536,19 +506,16 @@ export default function CustomerReservationForm({ productionId }) {
     };
   }, [activeStageId]);
 
-  // 💺 座席タップ時の10分間仮押さえ処理
   const handleSelectSeat = async (prodIdx, seat) => {
     const stageId = selectedStageIds[prodIdx];
     const prod = productions[prodIdx];
     const req = getSeatRequirement(prodIdx);
     const count = reservationMode === 'both' ? ticketCounts[0] : ticketCounts[prodIdx];
 
-    // 機材卓・関係者留めは選択不可
     if (seat.status === 'equipment' || seat.status === 'reserved_staff') {
       return;
     }
 
-    // 席種制限チェック
     if (req.type === 'front_row' && seat.status !== 'front_row') {
       alert('最前列指定席をお選びのため、最前列（A列）以外の座席は選択できません。');
       return;
@@ -562,7 +529,6 @@ export default function CustomerReservationForm({ productionId }) {
     const isAlreadySelected = currentSeats.includes(seat.id);
 
     if (isAlreadySelected) {
-      // 選択解除
       await supabase
         .from('seat_reservations')
         .delete()
@@ -820,7 +786,6 @@ export default function CustomerReservationForm({ productionId }) {
         });
       }
 
-      // 1. 予約登録
       const { data: insertedRecords, error: insertError } = await supabase
         .from('reservations')
         .insert(recordsToInsert)
@@ -828,7 +793,6 @@ export default function CustomerReservationForm({ productionId }) {
 
       if (insertError) throw insertError;
 
-      // 2. 座席を CONFIRMED（購入確定）に昇格
       for (let i = 0; i < targetIndices.length; i++) {
         const idx = targetIndices[i];
         const resId = insertedRecords[i]?.id;
@@ -843,7 +807,6 @@ export default function CustomerReservationForm({ productionId }) {
         }
       }
 
-      // 3. クレカ決済の場合は Stripe Checkout へ
       if (selectedPaymentMethod === 'STRIPE_CARD') {
         const primaryProdId = productions[0]?.id || productionId;
         const reservationId = insertedRecords[0]?.id;
@@ -1233,7 +1196,7 @@ export default function CustomerReservationForm({ productionId }) {
           );
         })()}
 
-        {/* 💺 STEP 2.5: 座席選択ステップ（AdminSeatSettings準拠） */}
+        {/* 💺 STEP 2.5: 座席選択ステップ */}
         {currentStepKey.startsWith('seat_') && (() => {
           const idx = parseInt(currentStepKey.split('_')[1], 10);
           const prod = productions[idx];
@@ -1269,12 +1232,10 @@ export default function CustomerReservationForm({ productionId }) {
                   {req.type === 'reserved' && <span style={{ color: COLORS.yellowDeep, fontWeight: 700 }}><br />※一般指定席のため、2列目以降からお選びいただけます。</span>}
                 </div>
 
-                {/* 舞台 (STAGE) */}
                 <div style={{ width: '80%', margin: '0 auto 16px auto', padding: '8px 0', backgroundColor: COLORS.yellowDeep, color: '#ffffff', textAlign: 'center', fontWeight: 900, borderRadius: '8px', fontSize: '12px', letterSpacing: '2px', boxShadow: '0 2px 0 #d9820a' }}>
                   舞台 (STAGE)
                 </div>
 
-                {/* 客席グリッド */}
                 <div style={{ overflowX: 'auto', paddingBottom: '10px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', alignItems: 'center', minWidth: '380px' }}>
                     {Object.keys(seatMap).map(row => (
@@ -1289,10 +1250,8 @@ export default function CustomerReservationForm({ productionId }) {
                             const occ = stageOccupied[seat.id];
                             const isOccupiedByOther = occ && occ.session_id !== sessionIdRef.current;
 
-                            // 選択不可（機材卓、関係者留め）
                             const isKeepOrEquip = seat.status === 'equipment' || seat.status === 'reserved_staff';
 
-                            // 席種制限
                             const isTypeDisabled = 
                               isKeepOrEquip ||
                               (req.type === 'front_row' && seat.status !== 'front_row') ||
@@ -1302,25 +1261,35 @@ export default function CustomerReservationForm({ productionId }) {
                             let border = COLORS.border;
                             let color = COLORS.text;
                             let label = seat.num;
+                            let cursor = 'pointer';
 
-                            if (seat.status === 'front_row') {
-                              bg = '#fef3c7';
-                              border = COLORS.yellowDeep;
-                              color = '#b45309';
-                            } else if (seat.status === 'reserved') {
-                              bg = '#e0e7ff';
-                              border = COLORS.blue;
-                              color = COLORS.blueDeep;
-                            } else if (seat.status === 'reserved_staff') {
+                            if (isSelected) {
+                              bg = COLORS.yellowDeep;
+                              border = '#d9820a';
+                              color = '#ffffff';
+                            } else if (isOccupiedByOther) {
                               bg = '#fee2e2';
                               border = COLORS.danger;
                               color = COLORS.danger;
-                              label = '留';
-                            } else if (seat.status === 'equipment') {
-                              bg = '#f3f4f6';
-                              border = '#9ca3af';
-                              color = '#4b5563';
-                              label = '卓';
+                              label = '済';
+                              cursor = 'not-allowed';
+                            } else if (isTypeDisabled) {
+                              bg = '#f1f5f9';
+                              border = '#e2e8f0';
+                              color = '#94a3b8';
+                              cursor = 'not-allowed';
+                              if (seat.status === 'reserved_staff') label = '留';
+                              if (seat.status === 'equipment') label = '卓';
+                            } else {
+                              if (seat.status === 'front_row') {
+                                bg = '#fef3c7';
+                                border = COLORS.yellowDeep;
+                                color = '#b45309';
+                              } else if (seat.status === 'reserved') {
+                                bg = '#e0e7ff';
+                                border = COLORS.blue;
+                                color = COLORS.blueDeep;
+                              }
                             }
 
                             return (
@@ -1329,14 +1298,19 @@ export default function CustomerReservationForm({ productionId }) {
                                 type="button"
                                 disabled={isOccupiedByOther || isTypeDisabled}
                                 onClick={() => handleSelectSeat(idx, seat)}
-                                className={`seat-btn ${isSelected ? 'selected' : isOccupiedByOther ? 'occupied' : isTypeDisabled ? 'disabled-type' : ''}`}
+                                className="seat-btn"
                                 style={{
                                   backgroundColor: bg,
                                   borderColor: border,
                                   color: color,
+                                  cursor: cursor,
+                                  opacity: isTypeDisabled ? 0.38 : 1,
+                                  boxShadow: isSelected ? '0 3px 0 #b45309' : 'none',
+                                  transform: isSelected ? 'translateY(-2px)' : 'none',
+                                  fontWeight: isSelected ? 900 : 700,
                                 }}
                               >
-                                {isOccupiedByOther ? '済' : label}
+                                {label}
                               </button>
                             );
                           })}
@@ -1350,7 +1324,6 @@ export default function CustomerReservationForm({ productionId }) {
                   </div>
                 </div>
 
-                {/* 凡例 */}
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '14px', fontSize: '11px', color: COLORS.muted, flexWrap: 'wrap' }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#fef3c7', border: `1px solid ${COLORS.yellowDeep}` }} /> 👑 最前列
