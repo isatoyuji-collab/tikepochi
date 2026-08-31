@@ -112,29 +112,25 @@ export default function Myreservationspag() {
   const [seatMaps, setSeatMaps] = useState({});
   const [loading, setLoading] = useState(true);
 
-  const [activeModal, setActiveModal] = useState(null); // 'edit' | 'survey' | 'cancel' | 'video' | 'pwaGuide' | 'notifList' | 'notifConfig' | 'donation' | 'seatChange' | 'refundBank'
+  const [activeModal, setActiveModal] = useState(null);
   const [selectedRes, setSelectedRes] = useState(null);
   const [selectedVideo, setSelectedVideo] = useState({ url: '', title: '', venue: '' });
   const [editCount, setEditCount] = useState(1);
   const [editMemo, setEditMemo] = useState('');
 
-  // 💖 カンパ追加ステート
   const [extraDonation, setExtraDonation] = useState(1000);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
-  // 💺 座席変更ステート
   const [currentSeatIds, setCurrentSeatIds] = useState([]);
   const [occupiedSeats, setOccupiedSeats] = useState({});
   const sessionIdRef = useRef(crypto.randomUUID());
 
-  // 🏦 銀行返金先口座ステート
   const [bankInfo, setBankInfo] = useState('');
 
   const [rating, setRating] = useState(5);
   const [surveyText, setSurveyText] = useState('');
   const [surveySent, setSurveySent] = useState(false);
 
-  // 🔔 通知モード: 'ALL' | 'BADGE_ONLY' | 'OFF'
   const [notifMode, setNotifMode] = useState('ALL');
   const [isLineLinked, setIsLineLinked] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -596,7 +592,7 @@ export default function Myreservationspag() {
     const prod = firstRes ? productions[firstRes.production_id] : null;
     const stage = firstRes ? stages[firstRes.stage_id] : null;
     
-    const stageDateStr = stage ? `${stage.performance_date || stage.stage_date || ''} ${stage.start_time?.slice(0, 5)}開演` : '';
+    const stageDateStr = stage ? `${stage.performance_date || stage.stage_date || ''} ${stage.start_time?.slice(0, 5) || ''}開演` : '';
     const text = `【チケポチ問い合わせ】\n予約番号: #${firstRes?.id?.slice(0, 6) || 'なし'}\nお名前: ${firstRes?.customer_name || 'お客様'} 様\n公演: ${prod?.title || '秋の大笑会'}\n日時: ${stageDateStr}\n---\n【お問い合わせ内容】\n`;
     
     return `https://line.me/R/oaMessage/@officeknight/?${encodeURIComponent(text)}`;
@@ -1014,9 +1010,9 @@ export default function Myreservationspag() {
                 const tk = ticketTypes[res.ticket_type_id] || { name: '一般', price: 0 };
                 const subtotal = (tk.price * (res.count || 1)) + (res.donation_amount || 0);
 
-                const isA = prod.title?.includes('あなたとコンビ');
-                const badgeColor = isA ? COLORS.yellowDeep : COLORS.blue;
-                const badgeText = isA ? 'A公演' : 'B公演';
+                const isFuse = prod.title?.includes('あなたとコンビ') || prod.title?.includes('布施');
+                const badgeColor = isFuse ? COLORS.yellowDeep : COLORS.blue;
+                const badgeText = isFuse ? '布施公演' : '天王寺公演';
                 const isPaid = res.payment_status === 'PAID';
                 const hasSeat = res.memo?.includes('【座席】:');
 
@@ -1081,7 +1077,6 @@ export default function Myreservationspag() {
                       )}
                     </div>
 
-                    {/* 💳 未払いの場合のみ：今すぐカードで支払うボタン */}
                     {!isPaid && (
                       <button
                         onClick={() => handlePayWithStripe(res)}
@@ -1105,7 +1100,6 @@ export default function Myreservationspag() {
                       </button>
                     )}
 
-                    {/* 💺 座席変更 ＆ 💖 カンパ追加ボタン */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
                       <button
                         onClick={() => handleOpenSeatChange(res)}
@@ -1524,7 +1518,7 @@ export default function Myreservationspag() {
         </div>
       )}
 
-      {/* 📲 PWAガイドモーダル（安心補足付き） */}
+      {/* 📲 PWAガイドモーダル */}
       {activeModal === 'pwaGuide' && (
         <div onClick={() => setActiveModal(null)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '440px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '22px', border: `2.5px solid ${COLORS.border}`, maxHeight: '90vh', overflowY: 'auto' }}>
@@ -1549,7 +1543,6 @@ export default function Myreservationspag() {
               </ul>
             </div>
 
-            {/* 💡 受付時の画面提示不要の安心案内 */}
             <div style={{ backgroundColor: '#ecfdf5', borderRadius: '14px', padding: '10px 12px', marginBottom: '14px', border: '1.5px solid #a7f3d0', fontSize: '11px', color: '#065f46', lineHeight: '1.5' }}>
               <strong>💡 当日のご入場について</strong><br />
               受付でのスマホ画面提示は不要です。受付スタッフにお名前をお伝えいただくだけでスムーズにご入場いただけますワン🐾

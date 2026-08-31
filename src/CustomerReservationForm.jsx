@@ -275,7 +275,6 @@ export default function CustomerReservationForm({ productionId }) {
   const [errorMessage, setErrorMessage] = useState('');
   const [urlStaffParam, setUrlStaffParam] = useState('');
 
-  // 予約ごとに固有のセッションIDを発行
   const sessionIdRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
@@ -338,8 +337,8 @@ export default function CustomerReservationForm({ productionId }) {
 
           if (orgProds && orgProds.length > 0) {
             prodList = orgProds.sort((a, b) => {
-              if (a.title?.includes('あなたとコンビ')) return -1;
-              if (b.title?.includes('あなたとコンビ')) return 1;
+              if (a.title?.includes('あなたとコンビ') || a.title?.includes('布施')) return -1;
+              if (b.title?.includes('あなたとコンビ') || b.title?.includes('布施')) return 1;
               return 0;
             });
           }
@@ -618,14 +617,14 @@ export default function CustomerReservationForm({ productionId }) {
 
   const getSortedStaffOptions = (prod) => {
     if (!prod) return { currentProdStaff: allStaff, otherStaff: [] };
-    const isA = prod.title?.includes('あなたとコンビ');
+    const isFuse = prod.title?.includes('あなたとコンビ') || prod.title?.includes('布施');
 
     const currentProdStaff = allStaff.filter((s) => {
       const tag = s.team_tag || '';
       if (tag.includes('スタッフ')) return false;
       if (tag === '共通・両公演' || tag === 'チームなし（共通・シングル）' || !tag) return true;
-      if (isA) return tag.includes('A公演') || tag.includes('Aチーム') || tag.includes('A班') || tag.includes('コンビ');
-      return tag.includes('B公演') || tag.includes('Bチーム') || tag.includes('B班') || tag.includes('爆弾');
+      if (isFuse) return tag.includes('布施') || tag.includes('A公演') || tag.includes('Aチーム') || tag.includes('A班') || tag.includes('コンビ');
+      return tag.includes('天王寺') || tag.includes('B公演') || tag.includes('Bチーム') || tag.includes('B班') || tag.includes('爆弾');
     });
 
     const otherStaff = allStaff.filter((s) => !currentProdStaff.some((cp) => cp.id === s.id));
@@ -904,7 +903,7 @@ export default function CustomerReservationForm({ productionId }) {
           <p style={{ fontSize: '14px', color: COLORS.muted, lineHeight: '1.6', margin: '0 0 24px 0' }}>
             ご登録のメールアドレス（{customerEmail}）宛に予約確認メールを送信いたしました。
             {selectedPaymentMethod === 'BANK_TRANSFER' && <><br /><strong style={{ color: COLORS.yellowDeep }}>※振込先口座情報をメールにてご案内しております。</strong></>}
-            {reservationMode === 'both' && <><br /><strong>※両公演（A公演・B公演）ともにお席を確保いたしました。</strong></>}
+            {reservationMode === 'both' && <><br /><strong>※両公演（布施公演・天王寺公演）ともにお席を確保いたしました。</strong></>}
           </p>
 
           <a
@@ -970,9 +969,9 @@ export default function CustomerReservationForm({ productionId }) {
             </p>
 
             {productions.map((prod, idx) => {
-              const isA = prod.title?.includes('あなたとコンビ');
-              const label = isA ? 'A公演' : 'B公演';
-              const tagCol = isA ? COLORS.yellowDeep : COLORS.blue;
+              const isFuse = prod.title?.includes('あなたとコンビ') || prod.title?.includes('布施');
+              const label = isFuse ? '布施公演' : '天王寺公演';
+              const tagCol = isFuse ? COLORS.yellowDeep : COLORS.blue;
 
               return (
                 <button
@@ -1017,7 +1016,7 @@ export default function CustomerReservationForm({ productionId }) {
                 }}
               >
                 <div style={{ fontSize: '11px', fontWeight: 800, color: COLORS.yellowDeep, marginBottom: '6px' }}>⭐ セット予約（通し券）</div>
-                <div style={{ fontSize: '15px', fontWeight: 700, color: COLORS.text }}>両方観劇する（A公演 ＆ B公演）</div>
+                <div style={{ fontSize: '15px', fontWeight: 700, color: COLORS.text }}>両方観劇する（布施公演 ＆ 天王寺公演）</div>
               </button>
             )}
           </div>
@@ -1069,7 +1068,7 @@ export default function CustomerReservationForm({ productionId }) {
             });
 
           const { currentProdStaff, otherStaff } = getSortedStaffOptions(prod);
-          const isA = prod.title?.includes('あなたとコンビ');
+          const isFuse = prod.title?.includes('あなたとコンビ') || prod.title?.includes('布施');
           const isBothMode = reservationMode === 'both';
           const isFirstOfBoth = isBothMode && idx === 0;
 
@@ -1078,7 +1077,7 @@ export default function CustomerReservationForm({ productionId }) {
               <CardWrap>
                 <div style={{ borderBottom: `2px dashed ${COLORS.yellowSoft}`, paddingBottom: '10px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <StickerBadge bg={isA ? COLORS.yellowDeep : COLORS.blue} rotate={-3}>{isA ? 'A公演' : 'B公演'}</StickerBadge>
+                    <StickerBadge bg={isFuse ? COLORS.yellowDeep : COLORS.blue} rotate={-3}>{isFuse ? '布施公演' : '天王寺公演'}</StickerBadge>
                     <h3 className="pouchi-font" style={{ fontSize: '15px', fontWeight: 800, margin: '6px 0 0 0', color: COLORS.text }}>
                       {prod.title}
                     </h3>
@@ -1228,7 +1227,7 @@ export default function CustomerReservationForm({ productionId }) {
                         style={{ accentColor: COLORS.yellowDeep, width: '16px', height: '16px', cursor: 'pointer' }}
                       />
                       <label htmlFor={`sameStaffCheck_${idx}`} style={{ fontSize: '12px', color: COLORS.text, cursor: 'pointer', fontWeight: 700 }}>
-                        {isFirstOfBoth ? 'B公演も同じ扱いに設定する' : 'A公演と同じ扱いに設定する'}
+                        {isFirstOfBoth ? '天王寺公演も同じ扱いに設定する' : '布施公演と同じ扱いに設定する'}
                       </label>
                     </div>
                   )}
@@ -1512,7 +1511,7 @@ export default function CustomerReservationForm({ productionId }) {
                 {targetIndices.map(idx => {
                   const prod = productions[idx];
                   if (!prod) return null;
-                  const isA = prod.title?.includes('あなたとコンビ');
+                  const isFuse = prod.title?.includes('あなたとコンビ') || prod.title?.includes('布施');
                   const stage = (stagesMap[prod.id] || []).find(s => s.id === selectedStageIds[idx]);
                   const ticket = (ticketTypesMap[prod.id] || []).find(t => t.id === selectedTicketTypeIds[idx]);
                   const allOpts = ticketTypesMap[prod.id] || [];
@@ -1524,7 +1523,7 @@ export default function CustomerReservationForm({ productionId }) {
                   return (
                     <CardWrap key={prod.id}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <StickerBadge bg={isA ? COLORS.yellowDeep : COLORS.blue} rotate={-3}>{isA ? 'A公演' : 'B公演'}</StickerBadge>
+                        <StickerBadge bg={isFuse ? COLORS.yellowDeep : COLORS.blue} rotate={-3}>{isFuse ? '布施公演' : '天王寺公演'}</StickerBadge>
                         <span style={{ fontSize: '12px', color: COLORS.yellowDeep, fontWeight: 700 }}>
                           <MapPin size={12} /> {prod.venue_name || '布施PEベース'}
                         </span>
