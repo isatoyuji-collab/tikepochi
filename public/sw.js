@@ -7,33 +7,28 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-// プッシュ通知受信時のバッジ点灯
+// プッシュ通知の受信
 self.addEventListener('push', (event) => {
   let data = {
     title: 'チケポチ！からのお知らせ🐾',
     body: '観劇に関する新しいお知らせがありますワン！',
     icon: '/images/mascot/icon_app_yellow.png',
     badge: '/images/mascot/icon_app_yellow.png',
-    url: '/'
+    url: '/',
+    notifMode: 'ALL' // 'ALL' | 'BADGE_ONLY' | 'OFF'
   };
 
   if (event.data) {
     try {
-      data = event.data.json();
+      data = { ...data, ...event.data.json() };
     } catch (e) {
       data.body = event.data.text();
     }
   }
 
-  const options = {
-    body: data.body,
-    icon: data.icon || '/images/mascot/icon_app_yellow.png',
-    badge: data.badge || '/images/mascot/icon_app_yellow.png',
-    vibrate: [100, 50, 100],
-    data: {
-      url: data.url || '/'
-    }
-  };
+  if (data.notifMode === 'OFF') {
+    return;
+  }
 
   event.waitUntil(
     (async () => {
@@ -45,19 +40,34 @@ self.addEventListener('push', (event) => {
           console.error('Badge error:', err);
         }
       }
+
+      // バッジのみの場合はバナー表示をスキップ
+      if (data.notifMode === 'BADGE_ONLY') {
+        return;
+      }
+
+      const options = {
+        body: data.body,
+        icon: data.icon || '/images/mascot/icon_app_yellow.png',
+        badge: data.badge || '/images/mascot/icon_app_yellow.png',
+        vibrate: [100, 50, 100],
+        data: {
+          url: data.url || '/'
+        }
+      };
+
       return self.registration.showNotification(data.title, options);
     })()
   );
 });
 
-// 通知タップ時のバッジ消去 ＆ 画面オープン
+// 通知タップ時
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const targetUrl = event.notification.data?.url || '/';
 
   event.waitUntil(
     (async () => {
-      // ⚪ バッジをクリア
       if ('clearAppBadge' in navigator) {
         try {
           await navigator.clearAppBadge();

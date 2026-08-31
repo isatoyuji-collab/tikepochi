@@ -4,7 +4,8 @@ import { supabase } from './supabaseClient';
 import {
   Ticket, Calendar, MapPin, Bell, ExternalLink,
   Smartphone, Star, CheckCircle2, AlertCircle, X,
-  Send, Edit3, Video, PlayCircle, HelpCircle, Lock, Unlock, Sparkles, Check, MessageSquare
+  Send, Edit3, Video, PlayCircle, HelpCircle, Lock, Unlock, Sparkles, Check,
+  Volume2, BellOff, CircleDot
 } from 'lucide-react';
 
 const COLORS = {
@@ -99,7 +100,7 @@ export default function Myreservationspag() {
   const [productions, setProductions] = useState({});
   const [loading, setLoading] = useState(true);
 
-  const [activeModal, setActiveModal] = useState(null); // 'edit' | 'survey' | 'cancel' | 'video' | 'pwaGuide' | 'notifList'
+  const [activeModal, setActiveModal] = useState(null); // 'edit' | 'survey' | 'cancel' | 'video' | 'pwaGuide' | 'notifList' | 'notifConfig'
   const [selectedRes, setSelectedRes] = useState(null);
   const [selectedVideo, setSelectedVideo] = useState({ url: '', title: '', venue: '' });
   const [editCount, setEditCount] = useState(1);
@@ -109,11 +110,11 @@ export default function Myreservationspag() {
   const [surveyText, setSurveyText] = useState('');
   const [surveySent, setSurveySent] = useState(false);
 
-  const [pushEnabled, setPushEnabled] = useState(false);
+  // 🔔 通知モード: 'ALL' (すべて) | 'BADGE_ONLY' (バッジ・一覧のみ) | 'OFF' (オフ)
+  const [notifMode, setNotifMode] = useState('ALL');
   const [isLineLinked, setIsLineLinked] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
 
-  // 未読通知数
   const unreadNotifCount = notifications.filter(n => !n.is_read).length;
 
   useEffect(() => {
@@ -125,19 +126,31 @@ export default function Myreservationspag() {
       localStorage.setItem('tp_mypage_token', t);
       fetchMypageData(t);
       fetchNotifications(t);
+      loadNotificationSetting(t);
     } else {
       setLoading(false);
     }
 
-    if ('Notification' in window && Notification.permission === 'granted') {
-      setPushEnabled(true);
-    }
-
-    // アイコンのバッジをクリア
     if ('clearAppBadge' in navigator) {
       navigator.clearAppBadge().catch(() => {});
     }
   }, []);
+
+  const loadNotificationSetting = async (mypageToken) => {
+    try {
+      const { data } = await supabase
+        .from('push_subscriptions')
+        .select('notif_mode')
+        .eq('mypage_token', mypageToken)
+        .maybeSingle();
+
+      if (data && data.notif_mode) {
+        setNotifMode(data.notif_mode);
+      }
+    } catch (e) {
+      console.error('Load notif config error:', e);
+    }
+  };
 
   const fetchNotifications = async (mypageToken) => {
     try {
@@ -205,16 +218,29 @@ export default function Myreservationspag() {
     }
   };
 
-  const handleTogglePush = async () => {
+  // 🔔 通知モード更新処理
+  const handleSaveNotifMode = async (mode) => {
+    setNotifMode(mode);
+
+    if (mode === 'OFF') {
+      await supabase
+        .from('push_subscriptions')
+        .update({ notif_mode: 'OFF' })
+        .eq('mypage_token', token);
+      alert('通知をオフに設定しましたワン！');
+      setActiveModal(null);
+      return;
+    }
+
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      alert('お使いのブラウザはWebプッシュ通知に対応していません。');
+      alert('お使いのブラウザはプッシュ通知に対応していません。');
       return;
     }
 
     try {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
-        alert('通知がブロックされました。ブラウザの設定から通知を許可してください。');
+        alert('ブラウザの通知権限が許可されていません。設定から許可してください。');
         return;
       }
 
@@ -235,21 +261,24 @@ export default function Myreservationspag() {
           mypage_token: token,
           endpoint: subJson.endpoint,
           p256dh: subJson.keys?.p256dh || '',
-          auth: subJson.keys?.auth || ''
+          auth: subJson.keys?.auth || '',
+          notif_mode: mode
         }, { onConflict: 'endpoint' });
 
-        setPushEnabled(true);
-        alert('開演前リマインドのプッシュ通知をONにしましたワン！🐾\n公演前日にリマインドが届きます。');
+        if (mode === 'ALL') {
+          alert('開演前リマインドなどの通知をすべてONに設定しましたワン！🐾');
+        } else {
+          alert('「バッジ・一覧のみ」に設定しましたワン！画面ポップアップなしで静かに確認できます。');
+        }
       }
     } catch (err) {
-      console.error('Push notification error:', err);
-      alert('通知設定を完了できませんでした。ホーム画面に追加してから再度お試しください。');
+      console.error('Notification mode save error:', err);
     }
+    setActiveModal(null);
   };
 
   const handleOpenNotifModal = async () => {
     setActiveModal('notifList');
-    // 開いたタイミングですべて既読にする
     if (unreadNotifCount > 0) {
       await supabase
         .from('customer_notifications')
@@ -426,6 +455,23 @@ export default function Myreservationspag() {
         transform: translateY(3px);
       }
 
+      .notif-option-card {
+        border: 2px solid ${COLORS.border};
+        border-radius: 16px;
+        padding: 12px 14px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background-color: ${COLORS.surface};
+        transition: all 0.15s ease;
+      }
+      .notif-option-card.selected {
+        border-color: ${COLORS.yellowDeep};
+        background-color: ${COLORS.surfaceAlt};
+        box-shadow: 0 2px 0 rgba(245,158,11,0.2);
+      }
+
       .btn-video {
         background-color: #fef2f2;
         border: 1.5px solid #fca5a5;
@@ -506,7 +552,7 @@ export default function Myreservationspag() {
 
       <div style={{ maxWidth: '540px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
 
-        {/* 🐶 チケポチ ヘッダー（通知トレイ＆プッシュ設定ボタン） */}
+        {/* 🐶 チケポチ ヘッダー（通知トレイ＆通知設定ボタン） */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', backgroundColor: '#ffffff', padding: '12px 16px', borderRadius: '24px', border: `2.5px solid ${COLORS.border}`, boxShadow: '0 4px 0 rgba(245,158,11,0.1), 0 4px 10px rgba(0,0,0,0.04)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <MascotSprite src={MASCOT_ICONAPP} size={52} borderRadius="16px" style={{ boxShadow: '0 3px 0 rgba(217,119,6,0.3)' }} />
@@ -564,16 +610,16 @@ export default function Myreservationspag() {
               )}
             </button>
 
-            {/* プッシュ通知ON/OFF設定 */}
+            {/* ⚙️ 通知設定ボタン（モード表示付き） */}
             <button
-              onClick={handleTogglePush}
+              onClick={() => setActiveModal('notifConfig')}
               className="btn-bounce"
               style={{
                 padding: '7px 12px',
                 borderRadius: '999px',
-                border: `2px solid ${pushEnabled ? COLORS.success : COLORS.yellowDeep}`,
-                backgroundColor: pushEnabled ? '#f0fdf4' : COLORS.surfaceAlt,
-                color: pushEnabled ? COLORS.success : COLORS.yellowDeep,
+                border: `2px solid ${notifMode === 'OFF' ? COLORS.border : COLORS.yellowDeep}`,
+                backgroundColor: notifMode === 'OFF' ? '#f3f4f6' : COLORS.surfaceAlt,
+                color: notifMode === 'OFF' ? COLORS.muted : COLORS.yellowDeep,
                 fontSize: '11px',
                 fontWeight: 800,
                 cursor: 'pointer',
@@ -582,7 +628,9 @@ export default function Myreservationspag() {
                 gap: '3px'
               }}
             >
-              {pushEnabled ? '✓ 通知ON' : '通知設定'}
+              {notifMode === 'ALL' && '🔔 通知ON'}
+              {notifMode === 'BADGE_ONLY' && '🔴 バッジのみ'}
+              {notifMode === 'OFF' && '🔕 通知オフ'}
             </button>
           </div>
         </div>
@@ -856,6 +904,84 @@ export default function Myreservationspag() {
 
       </div>
 
+      {/* ⚙️ 通知モード設定モーダル */}
+      {activeModal === 'notifConfig' && (
+        <div
+          onClick={() => setActiveModal(null)}
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: '420px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '22px', border: `2.5px solid ${COLORS.border}`, boxShadow: '0 12px 30px rgba(0,0,0,0.25)' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MascotSprite src={MASCOT.naruhodo} size={32} />
+                <h3 className="pouchi-font" style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: COLORS.pouchiDark }}>
+                  通知の受け取り設定 🔔
+                </h3>
+              </div>
+              <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={20} /></button>
+            </div>
+
+            <div style={{ fontSize: '12px', color: COLORS.muted, marginBottom: '14px', lineHeight: '1.5' }}>
+              前日リマインドやお知らせの通知スタイルをお好みで選べるワン！🐾
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '18px' }}>
+              
+              {/* 1. すべて受け取る */}
+              <div
+                className={`notif-option-card ${notifMode === 'ALL' ? 'selected' : ''}`}
+                onClick={() => handleSaveNotifMode('ALL')}
+              >
+                <Volume2 size={20} color={COLORS.yellowDeep} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark }}>すべて受け取る（推奨）</div>
+                  <div style={{ fontSize: '11px', color: COLORS.muted }}>画面ポップアップ・音・バッジでお知らせ</div>
+                </div>
+                <input type="radio" name="notifModeOpt" checked={notifMode === 'ALL'} readOnly style={{ accentColor: COLORS.yellowDeep }} />
+              </div>
+
+              {/* 2. バッジ・一覧のみ */}
+              <div
+                className={`notif-option-card ${notifMode === 'BADGE_ONLY' ? 'selected' : ''}`}
+                onClick={() => handleSaveNotifMode('BADGE_ONLY')}
+              >
+                <CircleDot size={20} color={COLORS.yellowDeep} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark }}>バッジ・一覧のみ（静かに受け取る）</div>
+                  <div style={{ fontSize: '11px', color: COLORS.muted }}>ポップアップなし・未読バッジと通知トレイのみ</div>
+                </div>
+                <input type="radio" name="notifModeOpt" checked={notifMode === 'BADGE_ONLY'} readOnly style={{ accentColor: COLORS.yellowDeep }} />
+              </div>
+
+              {/* 3. 通知オフ */}
+              <div
+                className={`notif-option-card ${notifMode === 'OFF' ? 'selected' : ''}`}
+                onClick={() => handleSaveNotifMode('OFF')}
+              >
+                <BellOff size={20} color={COLORS.danger} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark }}>通知を受け取らない</div>
+                  <div style={{ fontSize: '11px', color: COLORS.muted }}>リマインドなどの外部通知を停止</div>
+                </div>
+                <input type="radio" name="notifModeOpt" checked={notifMode === 'OFF'} readOnly style={{ accentColor: COLORS.yellowDeep }} />
+              </div>
+
+            </div>
+
+            <button
+              onClick={() => setActiveModal(null)}
+              className="btn-bounce btn-pouchi-primary"
+              style={{ width: '100%', padding: '12px', borderRadius: '999px', fontWeight: 900, cursor: 'pointer', fontSize: '13px' }}
+            >
+              とじる
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 🔔 お知らせ・通知履歴モーダル */}
       {activeModal === 'notifList' && (
         <div
@@ -962,7 +1088,6 @@ export default function Myreservationspag() {
               </ul>
             </div>
 
-            {/* iOS の手順 */}
             <div style={{ marginBottom: '14px', border: `1.5px solid ${COLORS.border}`, borderRadius: '16px', padding: '12px' }}>
               <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 🍎 iPhone (Safari) の場合
@@ -974,7 +1099,6 @@ export default function Myreservationspag() {
               </ol>
             </div>
 
-            {/* Android の手順 */}
             <div style={{ marginBottom: '16px', border: `1.5px solid ${COLORS.border}`, borderRadius: '16px', padding: '12px' }}>
               <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 🤖 Android (Chrome) の場合
