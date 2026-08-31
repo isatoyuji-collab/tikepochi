@@ -3,8 +3,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from './supabaseClient';
 import {
   Calendar, MapPin, Ticket, Mail, Phone, Edit3, Send,
-  Users, TicketCheck, CheckSquare, Square, X, ChevronDown,
-  CreditCard, Building2, Banknote
+  Users, CheckSquare, Square, X,
+  CreditCard, Building2, Banknote, Share2, Sparkles, Video
 } from 'lucide-react';
 
 const COLORS = {
@@ -81,13 +81,44 @@ const PageChrome = () => (
     }
     .btn-pouchi-primary:active { box-shadow: 0 1px 0 #d9820a; transform: translateY(3px); }
     .btn-pouchi-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-pouchi-blue {
-      background: linear-gradient(180deg, #5b8bfa, #2f6fed);
-      color: #fff;
-      border: 2px solid #1e4fc4;
-      box-shadow: 0 3px 0 #1e4fc4;
+    
+    .btn-channel {
+      flex: 1;
+      padding: 10px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      border: 2px solid ${COLORS.border};
+      background-color: #fff;
+      transition: all 0.15s ease;
     }
-    .btn-pouchi-blue:active { box-shadow: 0 1px 0 #1e4fc4; transform: translateY(2px); }
+    .btn-channel.active {
+      border-color: ${COLORS.yellowDeep};
+      background-color: ${COLORS.surfaceAlt};
+      color: ${COLORS.pouchiDark};
+    }
+
+    .tmpl-tab {
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+      border: 1.5px solid ${COLORS.border};
+      background-color: #fff;
+      color: ${COLORS.muted};
+    }
+    .tmpl-tab.active {
+      background-color: ${COLORS.yellowDeep};
+      color: #fff;
+      border-color: ${COLORS.yellowDeep};
+    }
+
     .stage-filter-btn {
       padding: 8px 14px; border-radius: 999px; font-size: 12px; font-weight: 800;
       cursor: pointer; white-space: nowrap; transition: all 0.15s ease;
@@ -101,14 +132,12 @@ const PageChrome = () => (
   `}</style>
 );
 
-// memoから「【扱い】: 名前」を抜き出す
 function parseAssignedStaff(memo) {
   if (!memo) return '';
   const match = memo.match(/【扱い】[:：]\s*([^\n]+)/);
   return match ? match[1].trim() : '';
 }
 
-// memoから管理用タグを取り除いた備考を抜き出す
 function parseVisibleMemo(memo) {
   if (!memo) return '';
   return memo
@@ -160,6 +189,8 @@ export default function StaffReservationsPage() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [messageTarget, setMessageTarget] = useState(null);
   const [messageBody, setMessageBody] = useState('');
+  const [selectedChannel, setSelectedChannel] = useState('line'); // 'line' | 'mypage' | 'email'
+  const [templateType, setTemplateType] = useState('thanks'); // 'thanks' | 'remind' | 'custom'
   const [isSending, setIsSending] = useState(false);
   const [sendDone, setSendDone] = useState(false);
 
@@ -177,7 +208,6 @@ export default function StaffReservationsPage() {
   const loadData = async (staff) => {
     setLoading(true);
     try {
-      // 1. cast_staffから権限・情報を取得
       const { data: staffRows } = await supabase
         .from('cast_staff')
         .select('*')
@@ -186,7 +216,6 @@ export default function StaffReservationsPage() {
       const staffRow = staffRows && staffRows.length > 0 ? staffRows[0] : null;
       setCanViewAll(staffRow?.ticket_visibility === 'all_stages');
 
-      // 2. 公演一覧を取得
       let prodQuery = supabase.from('productions').select('*').order('created_at', { ascending: true });
       if (staffRow?.organization_id) {
         prodQuery = prodQuery.eq('organization_id', staffRow.organization_id);
@@ -203,7 +232,6 @@ export default function StaffReservationsPage() {
 
       const prodIds = sortedProds.map(p => p.id);
 
-      // 3. ステージ・券種・予約一覧を取得
       let stageData = [];
       let ticketData = [];
       let resData = [];
@@ -254,7 +282,6 @@ export default function StaffReservationsPage() {
     }
   };
 
-  // 自分の担当分だけ抽出（空白や記号のブレを吸収）
   const myReservations = useMemo(() => {
     if (!staffName) return [];
     const cleanTarget = staffName.replace(/\s+/g, '');
@@ -317,22 +344,88 @@ export default function StaffReservationsPage() {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
-  const DEFAULT_TEMPLATE = (r) => {
-    const { prod } = getProdAndStage(r);
-    return `${r.customer_name}様\n\nこの度は『${prod.title || ''}』のご予約、誠にありがとうございました！\n当日、劇場にてお待ちしております🐾\n\n── ${staffName}`;
+  // 📝 テンプレート生成関数（自動差し込み対応）
+  const generateTemplateText = (type, target) => {
+    const isBulk = target === 'bulk';
+    const firstRes = isBulk ? myReservations.find(r => selectedIds.includes(r.id)) : target;
+    const { prod, stage, tk } = firstRes ? getProdAndStage(firstRes) : {};
+
+    const nameStr = isBulk ? '皆様' : `${firstRes?.customer_name || 'お客様'} 様`;
+    const prodTitle = prod?.title || '公演';
+    const dateTimeStr = stage ? `${stage.performance_date || stage.stage_date} ${stage.start_time?.slice(0, 5)}開演` : '';
+    const countStr = isBulk ? '' : `（${tk?.name} × ${firstRes?.count || 1}枚）`;
+    const venueStr = prod?.venue_name || '劇場';
+    const videoStr = prod?.venue_video_url ? `\n🎬 会場への道順動画はこちら：\n${prod.venue_video_url}` : '';
+    const mypageStr = firstRes?.mypage_token ? `\n\n🐾 チケット確認・マイページ：\n${window.location.origin}/mypage?token=${firstRes.mypage_token}` : '';
+
+    if (type === 'thanks') {
+      return `${nameStr}
+
+この度は『${prodTitle}』のご予約をいただき、誠にありがとうございます！
+
+【ご予約内容】
+・日時：${dateTimeStr}
+・枚数：${countStr}
+・会場：${venueStr}${mypageStr}
+
+劇場でお会いできることを心より楽しみにしております！🐾
+
+── ${staffName}`;
+    }
+
+    if (type === 'remind') {
+      return `${nameStr}
+
+いよいよ明日は『${prodTitle}』の開演日です！
+
+【ご来場のご案内】
+・開演日時：${dateTimeStr}
+・会場：${venueStr}${videoStr}${mypageStr}
+
+道中お気をつけてお越しくださいませ。
+劇場にてお待ちしております！🐾
+
+── ${staffName}`;
+    }
+
+    return '';
   };
 
   const openMessageModal = (target) => {
     setMessageTarget(target);
     setSendDone(false);
-    if (target === 'bulk') {
-      setMessageBody(`皆様\n\nこの度はご予約いただき、誠にありがとうございました！\n当日、劇場にてお待ちしております🐾\n\n── ${staffName}`);
-    } else {
-      setMessageBody(DEFAULT_TEMPLATE(target));
+    setSelectedChannel('line');
+    setTemplateType('thanks');
+    setMessageBody(generateTemplateText('thanks', target));
+  };
+
+  const handleTemplateChange = (type) => {
+    setTemplateType(type);
+    if (type !== 'custom') {
+      setMessageBody(generateTemplateText(type, messageTarget));
     }
   };
 
+  // 🚀 メッセージ送信・共有実行
   const handleSendMessage = async () => {
+    if (!messageBody.trim()) {
+      alert('メッセージ本文を入力してください');
+      return;
+    }
+
+    // 1. 🟢 LINEで送る場合：LINE共有URLを起動
+    if (selectedChannel === 'line') {
+      const shareUrl = `https://line.me/R/msg/text/?${encodeURIComponent(messageBody)}`;
+      window.open(shareUrl, '_blank');
+      setSendDone(true);
+      setTimeout(() => {
+        setMessageTarget(null);
+        setSendDone(false);
+      }, 1500);
+      return;
+    }
+
+    // 2. 💌 マイページ or ✉️ メールの場合：Supabaseへ記録
     setIsSending(true);
     try {
       const targets = messageTarget === 'bulk'
@@ -341,7 +434,7 @@ export default function StaffReservationsPage() {
 
       const rows = targets.map(r => ({
         reservation_id: r.id,
-        channel: r.line_user_id ? 'line' : 'email',
+        channel: selectedChannel,
         body: messageBody,
         sent_by: staffName,
       }));
@@ -356,7 +449,7 @@ export default function StaffReservationsPage() {
         setSendDone(false);
       }, 1800);
     } catch (e) {
-      alert('送信ログの記録に失敗しました: ' + e.message);
+      alert('送信に失敗しました: ' + e.message);
     } finally {
       setIsSending(false);
     }
@@ -470,7 +563,7 @@ export default function StaffReservationsPage() {
                       className="btn-bounce btn-pouchi-primary"
                       style={{ padding: '6px 14px', borderRadius: '999px', fontSize: '12px', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                     >
-                      <Send size={13} /> 一括でお礼を送る
+                      <Send size={13} /> 一括連絡・リマインド
                     </button>
                   </div>
                 )}
@@ -480,7 +573,6 @@ export default function StaffReservationsPage() {
                     const { prod, stage, tk } = getProdAndStage(r);
                     const isA = prod.title?.includes('あなたとコンビ');
                     const isSelected = selectedIds.includes(r.id);
-                    const stages = stagesMap[prod.id] || [];
 
                     return (
                       <div key={r.id} style={{ backgroundColor: '#fff', border: `2px solid ${isSelected ? COLORS.yellowDeep : COLORS.border}`, borderRadius: '20px', padding: '16px', position: 'relative' }}>
@@ -496,7 +588,7 @@ export default function StaffReservationsPage() {
                             className="btn-bounce"
                             style={{ padding: '6px 12px', borderRadius: '999px', border: `2px solid ${COLORS.yellowDeep}`, backgroundColor: COLORS.surfaceAlt, color: COLORS.yellowDeep, fontSize: '11px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                           >
-                            <Send size={12} /> お礼
+                            <Send size={12} /> お礼・連絡
                           </button>
                         </div>
 
@@ -658,42 +750,117 @@ export default function StaffReservationsPage() {
         );
       })()}
 
-      {/* 💌 お礼メッセージモーダル */}
+      {/* 💌 お礼・リマインド送信モーダル（マルチチャネル＆自動差し込み） */}
       {messageTarget && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
-          <div style={{ width: '100%', maxWidth: '440px', backgroundColor: '#fff', borderRadius: '24px', padding: '22px', border: `2.5px solid ${COLORS.border}` }}>
+          <div style={{ width: '100%', maxWidth: '460px', backgroundColor: '#fff', borderRadius: '24px', padding: '22px', border: `2.5px solid ${COLORS.border}`, maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 className="pouchi-font" style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: COLORS.pouchiDark }}>
-                お礼メッセージ 💌
+              <h3 className="pouchi-font" style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: COLORS.pouchiDark, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Sparkles size={16} color={COLORS.yellowDeep} />
+                {messageTarget === 'bulk' ? `一括メッセージ作成（${selectedIds.length}件）` : `${messageTarget.customer_name} 様へ連絡`}
               </h3>
               <button onClick={() => setMessageTarget(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={20} /></button>
             </div>
 
             {sendDone ? (
-              <div className="pouchi-pop" style={{ textAlign: 'center', padding: '16px 0' }}>
-                <MascotSprite src={MASCOT.waai} size={72} style={{ margin: '0 auto 8px auto', display: 'block' }} />
-                <div className="pouchi-font" style={{ fontWeight: 900, fontSize: '15px', color: COLORS.success }}>送信予約が完了しましたワン！</div>
+              <div className="pouchi-pop" style={{ textAlign: 'center', padding: '24px 0' }}>
+                <MascotSprite src={MASCOT.waai} size={80} style={{ margin: '0 auto 8px auto', display: 'block' }} />
+                <div className="pouchi-font" style={{ fontWeight: 900, fontSize: '16px', color: COLORS.success }}>
+                  {selectedChannel === 'line' ? 'LINEを開きましたワン！' : '送信処理が完了しましたワン！'}
+                </div>
               </div>
             ) : (
               <>
-                <div style={{ fontSize: '12px', color: COLORS.muted, marginBottom: '8px' }}>
-                  {messageTarget === 'bulk'
-                    ? `選択中の${selectedIds.length}名に送信します（各自の連絡方法：メールまたはLINE）`
-                    : `${messageTarget.customer_name}様に送信します（連絡方法：${messageTarget.line_user_id ? 'LINE' : 'メール'}）`}
+                {/* 1. 送信方法の選択 */}
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: COLORS.yellowDeep, display: 'block', marginBottom: '6px' }}>
+                    1. 送信方法を選択
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedChannel('line')}
+                      className={`btn-channel ${selectedChannel === 'line' ? 'active' : ''}`}
+                    >
+                      <span style={{ fontSize: '18px' }}>🟢</span>
+                      <span>LINEで送る</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedChannel('mypage')}
+                      className={`btn-channel ${selectedChannel === 'mypage' ? 'active' : ''}`}
+                    >
+                      <span style={{ fontSize: '18px' }}>💌</span>
+                      <span>マイページに届ける</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedChannel('email')}
+                      className={`btn-channel ${selectedChannel === 'email' ? 'active' : ''}`}
+                    >
+                      <span style={{ fontSize: '18px' }}>✉️</span>
+                      <span>メールで送信</span>
+                    </button>
+                  </div>
                 </div>
-                <textarea
-                  rows={7}
-                  value={messageBody}
-                  onChange={(e) => setMessageBody(e.target.value)}
-                  style={{ width: '100%', padding: '12px', borderRadius: '14px', border: `2px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '13px', lineHeight: '1.6', resize: 'vertical' }}
-                />
+
+                {/* 2. テンプレート切り替え */}
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: COLORS.yellowDeep, display: 'block', marginBottom: '6px' }}>
+                    2. テンプレートを選ぶ（自動差し込み）
+                  </label>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleTemplateChange('thanks')}
+                      className={`tmpl-tab ${templateType === 'thanks' ? 'active' : ''}`}
+                    >
+                      💌 予約お礼
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTemplateChange('remind')}
+                      className={`tmpl-tab ${templateType === 'remind' ? 'active' : ''}`}
+                    >
+                      ⏰ 前日リマインド（動画付）
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTemplateChange('custom')}
+                      className={`tmpl-tab ${templateType === 'custom' ? 'active' : ''}`}
+                    >
+                      ✏️ 自由作成
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. メッセージ編集 */}
+                <div style={{ marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 800, color: COLORS.yellowDeep }}>
+                      3. メッセージ内容（自由に編集できます）
+                    </label>
+                  </div>
+                  <textarea
+                    rows={8}
+                    value={messageBody}
+                    onChange={(e) => setMessageBody(e.target.value)}
+                    placeholder="ここにメッセージを入力してください"
+                    style={{ width: '100%', padding: '12px', borderRadius: '14px', border: `2px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '13px', lineHeight: '1.6', resize: 'vertical', fontFamily: 'inherit' }}
+                  />
+                </div>
+
                 <button
                   onClick={handleSendMessage}
                   disabled={isSending}
                   className="btn-bounce btn-pouchi-primary"
-                  style={{ width: '100%', padding: '14px', borderRadius: '999px', fontWeight: 900, cursor: isSending ? 'not-allowed' : 'pointer', marginTop: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '14px' }}
+                  style={{ width: '100%', padding: '14px', borderRadius: '999px', fontWeight: 900, cursor: isSending ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '14px' }}
                 >
-                  <Send size={15} /> {isSending ? '送信中...' : '送信する'}
+                  {selectedChannel === 'line' ? (
+                    <><Share2 size={16} /> 自分のLINEを開いて送信する</>
+                  ) : (
+                    <><Send size={16} /> {isSending ? '送信中...' : 'メッセージを届ける'}</>
+                  )}
                 </button>
               </>
             )}
