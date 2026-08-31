@@ -280,10 +280,6 @@ export default function CustomerReservationForm({ productionId }) {
           if (error) throw error;
           thisProd = data;
         } else {
-          // productionId は短縮URL用の先頭8文字。
-          // id列はuuid型のためLIKE演算子が使えず、以前はここでエラーになり
-          // 「公演カードが1枚も出ない白い画面」の原因になっていた。
-          // 一旦全件取得してJS側で前方一致させる方式に修正。
           const { data: allProds, error } = await supabase
             .from('productions')
             .select('*');
@@ -321,7 +317,6 @@ export default function CustomerReservationForm({ productionId }) {
 
         if (pSettings) {
           setPaymentSettings(pSettings);
-          // クレカが無効な場合は別の方法を初期選択
           if (!pSettings.stripe_enabled) {
             setSelectedPaymentMethod(pSettings.bank_enabled ? 'BANK_TRANSFER' : 'CASH');
           }
@@ -420,38 +415,34 @@ export default function CustomerReservationForm({ productionId }) {
     return { currentProdStaff, otherStaff };
   };
 
+  // ⭐ 合計金額の計算ロジック（両公演セット・単独・オプション・カンパを正しく合算）
   const calculateTotal = () => {
     let total = 0;
     const targetIndices = reservationMode === 'both' ? [0, 1] : [parseInt(reservationMode.replace('single_', ''), 10)];
 
-    if (reservationMode === 'both') {
-      const prodA = productions[0];
-      const tkA = (ticketTypesMap[prodA?.id] || []).find(t => t.id === selectedTicketTypeIds[0]);
-      const count = ticketCounts[0] || 1;
-      total += (tkA?.price || 0) * count;
-
-      [0, 1].forEach(idx => {
-        const prod = productions[idx];
-        const allOpts = ticketTypesMap[prod?.id] || [];
-        (selectedOptions[idx] || []).forEach(optId => {
-          const opt = allOpts.find(t => t.id === optId);
-          if (opt) total += (opt.price || 0) * count;
-        });
-      });
-    } else {
-      const idx = targetIndices[0];
+    targetIndices.forEach(idx => {
       const prod = productions[idx];
-      const tk = (ticketTypesMap[prod?.id] || []).find(t => t.id === selectedTicketTypeIds[idx]);
-      const count = ticketCounts[idx] || 1;
-      total += (tk?.price || 0) * count;
+      if (!prod) return;
 
-      const allOpts = ticketTypesMap[prod?.id] || [];
+      const count = reservationMode === 'both' ? (ticketCounts[0] || 1) : (ticketCounts[idx] || 1);
+      
+      // 1. 基本チケット代金
+      const tk = (ticketTypesMap[prod.id] || []).find(t => t.id === selectedTicketTypeIds[idx]);
+      if (tk) {
+        total += (tk.price || 0) * count;
+      }
+
+      // 2. 選択オプション代金
+      const allOpts = ticketTypesMap[prod.id] || [];
       (selectedOptions[idx] || []).forEach(optId => {
         const opt = allOpts.find(t => t.id === optId);
-        if (opt) total += (opt.price || 0) * count;
+        if (opt) {
+          total += (opt.price || 0) * count;
+        }
       });
-    }
+    });
 
+    // 3. 応援カンパ
     if (hasDonation) {
       total += (parseInt(donationAmount, 10) || 500);
     }
@@ -566,7 +557,8 @@ export default function CustomerReservationForm({ productionId }) {
           memo: fullMemo || null,
           mypage_token: sharedMypageToken,
           payment_method: selectedPaymentMethod,
-          payment_status: selectedPaymentMethod === 'STRIPE_CARD' ? 'UNPAID' : 'PENDING'
+          payment_status: selectedPaymentMethod === 'STRIPE_CARD' ? 'UNPAID' : 'PENDING',
+          donation_amount: (i === 0 && hasDonation) ? (parseInt(donationAmount, 10) || 500) : 0
         });
       }
 
@@ -1097,6 +1089,7 @@ export default function CustomerReservationForm({ productionId }) {
                   const allOpts = ticketTypesMap[prod.id] || [];
                   const chosenOpts = (selectedOptions[idx] || []).map(optId => allOpts.find(t => t.id === optId)).filter(Boolean);
                   const stageDateStr = stage ? (stage.performance_date || stage.stage_date || '') : '';
+                  const count = reservationMode === 'both' ? ticketCounts[0] : ticketCounts[idx];
 
                   return (
                     <CardWrap key={prod.id}>
@@ -1109,7 +1102,7 @@ export default function CustomerReservationForm({ productionId }) {
                       <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '6px' }}>{prod.title}</div>
                       <div style={{ fontSize: '13px', lineHeight: '1.9', color: COLORS.text }}>
                         <div>日時：{stage ? `${stageDateStr} ${stage.start_time?.slice(0, 5)}開演` : '未選択'}</div>
-                        <div>券種：{ticket?.name || '未選択'}（¥{ticket?.price?.toLocaleString()} × {ticketCounts[idx]}枚）</div>
+                        <div>券種：{ticket?.name || '未選択'}（¥{ticket?.price?.toLocaleString()} × {count}枚）</div>
                         {chosenOpts.length > 0 && (
                           <div>オプション：{chosenOpts.map(o => `${o.name} (+¥${o.price?.toLocaleString()})`).join(', ')}</div>
                         )}
