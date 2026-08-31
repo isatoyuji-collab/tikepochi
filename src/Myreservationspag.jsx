@@ -4,7 +4,7 @@ import { supabase } from './supabaseClient';
 import {
   Ticket, Calendar, MapPin, Bell, ExternalLink,
   Smartphone, Star, CheckCircle2, AlertCircle, X,
-  Send, Edit3, Video, PlayCircle, HelpCircle, Share, PlusSquare, MoreVertical
+  Send, Edit3, Video, PlayCircle, HelpCircle, UserPlus, Heart
 } from 'lucide-react';
 
 const COLORS = {
@@ -109,7 +109,6 @@ export default function Myreservationspag() {
   const [surveySent, setSurveySent] = useState(false);
 
   const [pushEnabled, setPushEnabled] = useState(false);
-  const [isLineLinked, setIsLineLinked] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
 
   useEffect(() => {
@@ -138,8 +137,6 @@ export default function Myreservationspag() {
       setReservations(resData || []);
 
       if (resData && resData.length > 0) {
-        if (resData[0].line_user_id) setIsLineLinked(true);
-
         const prodIds = [...new Set(resData.map(r => r.production_id).filter(Boolean))];
         const stageIds = [...new Set(resData.map(r => r.stage_id).filter(Boolean))];
         const ticketTypeIds = [...new Set(resData.map(r => r.ticket_type_id).filter(Boolean))];
@@ -187,10 +184,10 @@ export default function Myreservationspag() {
     }
   };
 
-  const handleLineLink = () => {
-    const liffUrl = `https://line.me/R/`;
-    alert('LINE連携画面へ進みます。連携すると別サイトの特典コンテンツが自動アンロックされます。');
-    window.location.href = liffUrl;
+  // 劇団公式LINEの友だち追加
+  const handleOpenOfficialLine = () => {
+    // office Knight 公式LINEのURL（友だち追加リンク）
+    window.open('https://line.me/R/ti/p/@officeknight', '_blank');
   };
 
   const handleOpenVideo = (prod) => {
@@ -298,7 +295,6 @@ export default function Myreservationspag() {
         background-size: 42px 42px;
       }
 
-      /* 🐶 右下のチケポチ（埋もれずしっかり可愛く表示） */
       .pouchi-floating-mascot {
         position: fixed;
         bottom: 12px;
@@ -508,10 +504,10 @@ export default function Myreservationspag() {
           </div>
         </div>
 
-        {/* 📲 ホーム画面追加 ＆ LINE連携カード */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.85fr', gap: '10px', marginBottom: '18px' }}>
+        {/* 📲 ホーム画面追加 ＆ 劇団公式LINE友だち追加カード */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '18px' }}>
           
-          {/* 💡 ホーム画面追加カード（タップで分かりやすい手順モーダルを開く） */}
+          {/* 💡 ホーム画面追加カード */}
           <div
             onClick={() => setActiveModal('pwaGuide')}
             className="btn-bounce"
@@ -529,47 +525,52 @@ export default function Myreservationspag() {
           >
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 900, color: COLORS.yellowDeep }}>
-                  <Smartphone size={16} /> ホーム画面に追加
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 900, color: COLORS.yellowDeep }}>
+                  <Smartphone size={15} /> ホーム画面追加
                 </div>
-                <span style={{ fontSize: '10px', backgroundColor: '#fef3c7', color: '#b45309', padding: '2px 6px', borderRadius: '999px', fontWeight: 800 }}>推奨</span>
+                <span style={{ fontSize: '9px', backgroundColor: '#fef3c7', color: '#b45309', padding: '1px 5px', borderRadius: '999px', fontWeight: 800 }}>推奨</span>
               </div>
               <div style={{ fontSize: '11px', color: COLORS.pouchiDark, lineHeight: '1.4', fontWeight: 700 }}>
-                通知を受け取る＆当日チケットを1秒で表示！🐾
+                当日1タップでチケット表示＆プッシュ通知！🐾
               </div>
             </div>
 
-            <div style={{ marginTop: '8px', fontSize: '11px', color: COLORS.yellowDeep, fontWeight: 900, display: 'flex', alignItems: 'center', gap: '3px' }}>
-              <HelpCircle size={13} /> 追加方法を見る ›
+            <div style={{ marginTop: '6px', fontSize: '11px', color: COLORS.yellowDeep, fontWeight: 900, display: 'flex', alignItems: 'center', gap: '2px' }}>
+              <HelpCircle size={12} /> やり方を見る ›
             </div>
           </div>
 
-          {/* LINE ID連携カード */}
-          <div style={{ backgroundColor: '#ffffff', border: `2px solid ${isLineLinked ? '#86efac' : COLORS.blueSoft}`, borderRadius: '20px', padding: '12px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 800, color: '#15803d' }}>
-              <div style={{ width: '16px', height: '16px', borderRadius: '4px', backgroundColor: '#06c755', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: 900 }}>L</div>
-              LINE ID連携
-            </div>
-
-            {isLineLinked ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '6px 0' }}>
-                <MascotSprite src={MASCOT.waai} size={28} />
-                <span style={{ fontSize: '10px', color: COLORS.success, fontWeight: 700 }}>連携中</span>
+          {/* 🟢 劇団公式LINE 友だち追加カード */}
+          <div
+            onClick={handleOpenOfficialLine}
+            className="btn-bounce"
+            style={{
+              backgroundColor: '#ffffff',
+              border: `2px solid #06c755`,
+              borderRadius: '20px',
+              padding: '12px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+              boxShadow: '0 3px 0 rgba(6,199,85,0.15)'
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 900, color: '#15803d', marginBottom: '4px' }}>
+                <div style={{ width: '16px', height: '16px', borderRadius: '4px', backgroundColor: '#06c755', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: 900 }}>L</div>
+                公式LINE友だち追加
               </div>
-            ) : (
-              <div style={{ fontSize: '10px', color: COLORS.muted, margin: '6px 0' }}>特典に即アクセス</div>
-            )}
+              <div style={{ fontSize: '10px', color: COLORS.muted, lineHeight: '1.35', fontWeight: 600 }}>
+                次回公演案内や最新情報をいち早くお届け！✨
+              </div>
+            </div>
 
-            {!isLineLinked && (
-              <button
-                onClick={handleLineLink}
-                className="btn-bounce"
-                style={{ width: '100%', padding: '6px', borderRadius: '999px', border: 'none', backgroundColor: '#06c755', color: '#fff', fontSize: '11px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', boxShadow: '0 3px 0 #049543' }}
-              >
-                連携する
-              </button>
-            )}
+            <div style={{ marginTop: '6px', width: '100%', padding: '5px 0', borderRadius: '999px', backgroundColor: '#06c755', color: '#fff', fontSize: '11px', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', boxShadow: '0 2px 0 #049543' }}>
+              <UserPlus size={12} /> 友だち追加
+            </div>
           </div>
+
         </div>
 
         {/* 🎟️ ご予約中のチケット一覧 */}
