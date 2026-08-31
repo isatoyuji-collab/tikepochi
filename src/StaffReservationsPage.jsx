@@ -13,13 +13,17 @@
 // 4. お礼メッセージは thank_you_messages テーブルに送信ログとして
 //    insert するところまでを実装。実際のメール／LINE送信は
 //    Supabase Edge Function等のバックエンド処理を別途接続する必要あり
+// 5. 「自分の予約」タブには reservations.payment_method /
+//    payment_status（CustomerReservationForm.jsx で保存）を見て
+//    決済方法・支払い状況バッジを表示している。全体タブには表示しない
 // ---------------------------------------------------------------
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from './supabaseClient';
 import {
   Calendar, MapPin, Ticket, Mail, Phone, Edit3, Send,
-  Users, TicketCheck, CheckSquare, Square, X, ChevronDown
+  Users, TicketCheck, CheckSquare, Square, X, ChevronDown,
+  CreditCard, Building2, Banknote
 } from 'lucide-react';
 
 const COLORS = {
@@ -132,6 +136,30 @@ function parseVisibleMemo(memo) {
     .replace(/【選択オプション】[:：][^\n]*\n?/g, '')
     .replace(/【両公演セット予約】\n?/g, '')
     .trim();
+}
+
+// 決済方法・支払い状況の表示情報を組み立てる
+// reservations.payment_method: 'STRIPE_CARD' | 'BANK_TRANSFER' | 'CASH'
+// reservations.payment_status: 'UNPAID' | 'PENDING' | 'PAID'
+function getPaymentInfo(r) {
+  const method = r.payment_method || 'CASH';
+  const status = r.payment_status || 'PENDING';
+
+  const methodMap = {
+    STRIPE_CARD: { icon: CreditCard, label: 'カード決済' },
+    BANK_TRANSFER: { icon: Building2, label: '銀行振込' },
+    CASH: { icon: Banknote, label: '当日現金' },
+  };
+
+  const statusMap = {
+    PAID: { label: '支払い済み', color: '#1f9a56', bg: '#e7f7ee' },
+    UNPAID: { label: '未決済', color: '#e85a45', bg: '#fdecea' },
+    PENDING: { label: method === 'CASH' ? '当日精算予定' : '入金待ち', color: '#f59e0b', bg: '#fff3d1' },
+  };
+
+  const m = methodMap[method] || methodMap.CASH;
+  const s = statusMap[status] || statusMap.PENDING;
+  return { Icon: m.icon, methodLabel: m.label, statusLabel: s.label, statusColor: s.color, statusBg: s.bg };
 }
 
 export default function StaffReservationsPage() {
@@ -490,6 +518,18 @@ export default function StaffReservationsPage() {
                               <Phone size={14} /> {r.customer_phone}
                             </div>
                           )}
+                          {(() => {
+                            const { Icon: PayIcon, methodLabel, statusLabel, statusColor, statusBg } = getPaymentInfo(r);
+                            return (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <PayIcon size={14} color={COLORS.muted} />
+                                <span>{methodLabel}</span>
+                                <span style={{ fontSize: '11px', fontWeight: 800, color: statusColor, backgroundColor: statusBg, padding: '2px 8px', borderRadius: '999px' }}>
+                                  {statusLabel}
+                                </span>
+                              </div>
+                            );
+                          })()}
                           {parseVisibleMemo(r.memo) && (
                             <div style={{ fontSize: '12px', color: COLORS.muted, backgroundColor: COLORS.surfaceAlt, padding: '6px 10px', borderRadius: '10px', marginTop: '2px' }}>
                               備考：{parseVisibleMemo(r.memo)}
