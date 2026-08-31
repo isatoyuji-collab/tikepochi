@@ -342,7 +342,6 @@ export default function Myreservationspag() {
     setActiveModal('video');
   };
 
-  // 💳 未払い予約をStripeクレジットカードで支払う
   const handlePayWithStripe = async (res) => {
     setIsProcessingPayment(true);
     try {
@@ -376,7 +375,6 @@ export default function Myreservationspag() {
     }
   };
 
-  // 💖 カンパの追加・決済
   const handleAddDonationSubmit = async () => {
     if (!selectedRes || extraDonation < 500) {
       alert('カンパは500円以上でご入力ください。');
@@ -401,7 +399,6 @@ export default function Myreservationspag() {
       );
 
       if (fnErr || !sessionData?.url) {
-        // Stripe未連携等の場合はDBのカンパ額に加算
         await supabase
           .from('reservations')
           .update({
@@ -423,10 +420,8 @@ export default function Myreservationspag() {
     }
   };
 
-  // 💺 座席変更モーダルを開く
   const handleOpenSeatChange = async (res) => {
     setSelectedRes(res);
-    // 既存の座席抽出（メモまたはseat_reservationsから）
     const { data: seatsData } = await supabase
       .from('seat_reservations')
       .select('seat_id')
@@ -435,7 +430,6 @@ export default function Myreservationspag() {
     const initialSeats = (seatsData || []).map(s => s.seat_id);
     setCurrentSeatIds(initialSeats);
 
-    // その公演回の全予約済み座席を取得
     const { data: allStageSeats } = await supabase
       .from('seat_reservations')
       .select('*')
@@ -451,7 +445,6 @@ export default function Myreservationspag() {
     setActiveModal('seatChange');
   };
 
-  // 💺 座席選択・変更処理
   const handleSelectSeatInModal = (seat) => {
     if (seat.status === 'equipment' || seat.status === 'reserved_staff') return;
     const maxCount = selectedRes.count || 1;
@@ -469,7 +462,6 @@ export default function Myreservationspag() {
     setCurrentSeatIds(prev => [...prev, seat.id]);
   };
 
-  // 💺 新しい座席をDBに保存
   const handleSaveSeatChange = async () => {
     if (!selectedRes) return;
     const maxCount = selectedRes.count || 1;
@@ -479,13 +471,11 @@ export default function Myreservationspag() {
     }
 
     try {
-      // 1. 古い座席予約を削除
       await supabase
         .from('seat_reservations')
         .delete()
         .eq('reservation_id', selectedRes.id);
 
-      // 2. 新しい座席を登録
       const inserts = currentSeatIds.map(seatId => ({
         stage_id: selectedRes.stage_id,
         seat_id: seatId,
@@ -497,7 +487,6 @@ export default function Myreservationspag() {
 
       await supabase.from('seat_reservations').insert(inserts);
 
-      // 3. 予約メモの座席表記を更新
       let newMemo = selectedRes.memo || '';
       if (newMemo.includes('【座席】:')) {
         newMemo = newMemo.replace(/【座席】: [^\n]+/, `【座席】: ${currentSeatIds.join(', ')}`);
@@ -518,14 +507,12 @@ export default function Myreservationspag() {
     }
   };
 
-  // ⚠️ 500円引キャンセル実行
   const handleConfirmCancel = async () => {
     if (!selectedRes) return;
     setIsCancelling(true);
 
     try {
       if (selectedRes.payment_status === 'PAID') {
-        // クレジットカード決済済み ➔ 500円差し引き返金API呼び出し
         const { data, error } = await supabase.functions.invoke(
           'refund-stripe-payment',
           {
@@ -542,12 +529,10 @@ export default function Myreservationspag() {
 
         alert(`キャンセル・返金手続きが完了しましたワン。\n決済額からキャンセル手数料500円を差し引いた【¥${data.refundAmount?.toLocaleString()}】をご利用のクレジットカードへ返金いたします。`);
       } else if (selectedRes.payment_method === 'BANK_TRANSFER' && selectedRes.payment_status === 'PENDING') {
-        // 銀行振込で振込完了報告後の場合、口座入力モーダルを開く
         setActiveModal('refundBank');
         setIsCancelling(false);
         return;
       } else {
-        // 当日現金精算または未決済 ➔ 通常キャンセル
         await supabase
           .from('seat_reservations')
           .delete()
@@ -570,7 +555,6 @@ export default function Myreservationspag() {
     }
   };
 
-  // 🏦 銀行返金口座送信
   const handleBankRefundSubmit = async () => {
     if (!bankInfo.trim()) {
       alert('返金先口座情報をご入力ください。');
@@ -612,7 +596,7 @@ export default function Myreservationspag() {
     const prod = firstRes ? productions[firstRes.production_id] : null;
     const stage = firstRes ? stages[firstRes.stage_id] : null;
     
-    const stageDateStr = stage ? `${stage.performance_date || stage.stage_date || ''} ${stage.start_time?.slice(0, 5) || ''}開演` : '';
+    const stageDateStr = stage ? `${stage.performance_date || stage.stage_date || ''} ${stage.start_time?.slice(0, 5)}開演` : '';
     const text = `【チケポチ問い合わせ】\n予約番号: #${firstRes?.id?.slice(0, 6) || 'なし'}\nお名前: ${firstRes?.customer_name || 'お客様'} 様\n公演: ${prod?.title || '秋の大笑会'}\n日時: ${stageDateStr}\n---\n【お問い合わせ内容】\n`;
     
     return `https://line.me/R/oaMessage/@officeknight/?${encodeURIComponent(text)}`;
@@ -959,7 +943,7 @@ export default function Myreservationspag() {
                 <span style={{ fontSize: '9px', backgroundColor: '#fef3c7', color: '#b45309', padding: '1px 5px', borderRadius: '999px', fontWeight: 800 }}>推奨</span>
               </div>
               <div style={{ fontSize: '11px', color: COLORS.pouchiDark, lineHeight: '1.4', fontWeight: 700 }}>
-                当日1タップでチケット表示＆プッシュ通知！🐾
+                開演前リマインド通知＆最新情報をアプリ感覚で確認！🐾
               </div>
             </div>
 
@@ -1540,7 +1524,7 @@ export default function Myreservationspag() {
         </div>
       )}
 
-      {/* 📲 PWAガイドモーダル */}
+      {/* 📲 PWAガイドモーダル（安心補足付き） */}
       {activeModal === 'pwaGuide' && (
         <div onClick={() => setActiveModal(null)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '440px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '22px', border: `2.5px solid ${COLORS.border}`, maxHeight: '90vh', overflowY: 'auto' }}>
@@ -1554,15 +1538,21 @@ export default function Myreservationspag() {
               <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={20} /></button>
             </div>
 
-            <div style={{ backgroundColor: COLORS.surfaceAlt, borderRadius: '16px', padding: '12px 14px', marginBottom: '16px', border: `1.5px solid ${COLORS.yellowSoft}` }}>
-              <div style={{ fontSize: '12px', fontWeight: 900, color: COLORS.yellowDeep, marginBottom: '4px' }}>
+            <div style={{ backgroundColor: COLORS.surfaceAlt, borderRadius: '16px', padding: '12px 14px', marginBottom: '14px', border: `1.5px solid ${COLORS.yellowSoft}` }}>
+              <div style={{ fontSize: '12px', fontWeight: 900, color: COLORS.yellowDeep, marginBottom: '6px' }}>
                 🌟 ホーム画面に追加するメリット
               </div>
               <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: COLORS.pouchiDark, lineHeight: '1.6' }}>
                 <li>開演前日の<strong>リマインド通知</strong>がスマホに直接届く！</li>
-                <li>役者からの<strong>メッセージやお礼</strong>を見逃さない！</li>
-                <li>観劇当日、アプリのように<strong>1タップでチケット表示</strong>！</li>
+                <li>役者からの<strong>限定動画やメッセージ</strong>をアプリ感覚で確認！</li>
+                <li>劇場への<strong>道順動画や指定座席</strong>を迷わず見返せる！</li>
               </ul>
+            </div>
+
+            {/* 💡 受付時の画面提示不要の安心案内 */}
+            <div style={{ backgroundColor: '#ecfdf5', borderRadius: '14px', padding: '10px 12px', marginBottom: '14px', border: '1.5px solid #a7f3d0', fontSize: '11px', color: '#065f46', lineHeight: '1.5' }}>
+              <strong>💡 当日のご入場について</strong><br />
+              受付でのスマホ画面提示は不要です。受付スタッフにお名前をお伝えいただくだけでスムーズにご入場いただけますワン🐾
             </div>
 
             <div style={{ marginBottom: '14px', border: `1.5px solid ${COLORS.border}`, borderRadius: '16px', padding: '12px' }}>
