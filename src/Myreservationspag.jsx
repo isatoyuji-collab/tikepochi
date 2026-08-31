@@ -291,8 +291,14 @@ export default function Myreservationspag() {
     }
   };
 
+  // 🔑 LINEログイン認証画面へ直接遷移（LINE User ID取得・連携）
   const handleLineLink = () => {
-    window.location.href = `https://office-knight-partner-site.vercel.app/link?token=${token}`;
+    const clientId = '2010532265';
+    const redirectUri = encodeURIComponent(window.location.origin + '/line-callback');
+    const state = encodeURIComponent(token);
+    const lineAuthUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}&scope=profile%20openid`;
+
+    window.location.href = lineAuthUrl;
   };
 
   const handleOpenVideo = (prod) => {

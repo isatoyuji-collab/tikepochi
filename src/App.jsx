@@ -17,6 +17,7 @@ import CustomerReservationForm from './CustomerReservationForm';
 import CustomerPortal from './CustomerPortal';
 import Myreservationspag from './Myreservationspag';
 import StaffReservationsPage from './StaffReservationsPage';
+import LineCallback from './LineCallback';
 import { LogOut, Building2 } from 'lucide-react';
 
 const ADMIN_BYPASS_KEY = "knight2026admin";
@@ -24,24 +25,29 @@ const ADMIN_BYPASS_KEY = "knight2026admin";
 export default function App() {
   const pathname = window.location.pathname;
 
-  // 1. 担当キャスト・スタッフ向け個別ページ（最優先で判定）
+  // 1. LINEログイン連携コールバック受け皿画面
+  if (pathname === '/line-callback' || pathname === '/line-callback/') {
+    return <LineCallback />;
+  }
+
+  // 2. 担当キャスト・スタッフ向け個別ページ（最優先で判定）
   // アクセス例: https://tikepochi-eta.vercel.app/staff?staff=たーりー
   if (pathname === '/staff' || pathname === '/staff/') {
     return <StaffReservationsPage />;
   }
 
-  // 2. お客様マイページ
+  // 3. お客様マイページ
   if (pathname === '/mypage' || pathname === '/mypage/') {
     return <Myreservationspag />;
   }
 
-  // 3. 劇団ポータル
+  // 4. 劇団ポータル
   const portalMatch = pathname.match(/^\/p\/([a-zA-Z0-9-]+)$/);
   if (portalMatch) {
     return <CustomerPortal orgId={portalMatch[1]} />;
   }
 
-  // 4. 一般予約フォーム
+  // 5. 一般予約フォーム
   const reservationMatch = pathname.match(/^\/r\/([a-zA-Z0-9-]+)$/);
   if (reservationMatch) {
     return <CustomerReservationForm productionId={reservationMatch[1]} />;
