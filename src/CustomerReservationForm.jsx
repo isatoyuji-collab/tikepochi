@@ -219,7 +219,6 @@ function CardWrap({ children }) {
   );
 }
 
-// 布施PEベース 65席構成（フォールバック用）
 const DEFAULT_65_SEATS_MAP = {
   'A': Array.from({ length: 8 }, (_, i) => ({ id: `A-${i+1}`, row: 'A', num: i + 1, status: 'front_row' })),
   'B': Array.from({ length: 8 }, (_, i) => ({ id: `B-${i+1}`, row: 'B', num: i + 1, status: i === 2 ? 'equipment' : 'reserved' })),
@@ -423,6 +422,24 @@ export default function CustomerReservationForm({ productionId }) {
 
     if (productionId) loadData();
   }, [productionId]);
+
+  // 💡 設定されているカンパ用オプション情報を取得
+  const donationInfo = useMemo(() => {
+    for (const prod of productions) {
+      const allTickets = ticketTypesMap[prod.id] || [];
+      const found = allTickets.find(t => t.is_donation || t.name?.includes('カンパ') || t.name?.includes('ダイエンカイ'));
+      if (found) {
+        return {
+          title: found.name || '劇団・キャスト応援カンパ',
+          description: found.description || ''
+        };
+      }
+    }
+    return {
+      title: '劇団・キャスト応援カンパを送る（任意）',
+      description: ''
+    };
+  }, [productions, ticketTypesMap]);
 
   const getSeatRequirement = (idx) => {
     const prod = productions[idx];
@@ -1022,8 +1039,44 @@ export default function CustomerReservationForm({ productionId }) {
 
           const stages = stagesMap[prod.id] || [];
           const allTickets = ticketTypesMap[prod.id] || [];
-          const baseTickets = allTickets.filter(t => !t.is_donation && !t.description?.includes('【オプション】'));
-          const optionTickets = allTickets.filter(t => !t.is_donation && t.description?.includes('【オプション】'));
+
+          // 1. 基本券種（当日券を除外）
+          const baseTickets = allTickets
+            .filter(t => !t.is_donation && !t.description?.includes('【オプション】') && !t.name?.includes('当日'))
+            .sort((a, b) => {
+              const aName = a.name || '';
+              const bName = b.name || '';
+              const aIsGeneral = aName.includes('一般') || aName.includes('前売');
+              const bIsGeneral = bName.includes('一般') || bName.includes('前売');
+              if (aIsGeneral && !bIsGeneral) return -1;
+              if (!aIsGeneral && bIsGeneral) return 1;
+
+              const aIsStudent = aName.includes('学割') || aName.includes('学生') || aName.includes('U22') || aName.includes('U-22');
+              const bIsStudent = bName.includes('学割') || bName.includes('学生') || bName.includes('U22') || bName.includes('U-22');
+              if (aIsStudent && !bIsStudent) return -1;
+              if (!aIsStudent && bIsStudent) return 1;
+
+              return (a.price || 0) - (b.price || 0);
+            });
+
+          // 2. 追加オプション（最前列指定席を最優先でソート、カンパはSTEP3で表示するため除外）
+          const optionTickets = allTickets
+            .filter(t => !t.is_donation && t.description?.includes('【オプション】') && !t.name?.includes('カンパ'))
+            .sort((a, b) => {
+              const aName = a.name || '';
+              const bName = b.name || '';
+              const aIsFront = aName.includes('最前列');
+              const bIsFront = bName.includes('最前列');
+              if (aIsFront && !bIsFront) return -1;
+              if (!aIsFront && bIsFront) return 1;
+
+              const aIsReserved = aName.includes('指定席');
+              const bIsReserved = bName.includes('指定席');
+              if (aIsReserved && !bIsReserved) return -1;
+              if (!aIsReserved && bIsReserved) return 1;
+
+              return (a.price || 0) - (b.price || 0);
+            });
 
           const { currentProdStaff, otherStaff } = getSortedStaffOptions(prod);
           const isA = prod.title?.includes('あなたとコンビ');
@@ -1413,6 +1466,7 @@ export default function CustomerReservationForm({ productionId }) {
                 </div>
               </CardWrap>
 
+              {/* 💖 応援カンパカード（管理画面のオプション名・備考を自動連動） */}
               <CardWrap>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '13px', color: COLORS.text }}>
                   <input
@@ -1421,15 +1475,22 @@ export default function CustomerReservationForm({ productionId }) {
                     onChange={(e) => setHasDonation(e.target.checked)}
                     style={{ accentColor: COLORS.yellowDeep, width: '16px', height: '16px' }}
                   />
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: COLORS.yellowDeep }}>
-                    <HeartHandshake size={15} /> 劇団・キャスト応援カンパを送る（任意）
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: COLORS.yellowDeep }}>
+                    <HeartHandshake size={16} /> <strong>{donationInfo.title}</strong>
                   </span>
                 </label>
 
+                {/* 備考・説明文がある場合は常に表示 */}
+                {donationInfo.description && (
+                  <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '6px', marginLeft: '24px', lineHeight: '1.4' }}>
+                    {donationInfo.description}
+                  </div>
+                )}
+
                 {hasDonation && (
-                  <div style={{ marginTop: '12px', padding: '10px 12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '12px', border: `2px solid ${COLORS.border}` }}>
+                  <div style={{ marginTop: '12px', padding: '12px', backgroundColor: COLORS.surfaceAlt, borderRadius: '12px', border: `2px solid ${COLORS.border}` }}>
                     <div style={{ fontSize: '12px', color: COLORS.muted, marginBottom: '6px' }}>
-                      下限500円から、100円刻みでお好きな金額をご入力いただけます。
+                      下限500円から、100円刻みでお好きな応援金額をご入力いただけます。
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span style={{ fontSize: '15px', fontWeight: 700 }}>¥</span>
@@ -1497,7 +1558,9 @@ export default function CustomerReservationForm({ productionId }) {
 
                 {hasDonation && (
                   <CardWrap>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.yellowDeep, marginBottom: '4px' }}>応援カンパ</div>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: COLORS.yellowDeep, marginBottom: '4px' }}>
+                      {donationInfo.title}
+                    </div>
                     <div style={{ fontSize: '14px', fontWeight: 700 }}>¥{(parseInt(donationAmount, 10) || 500).toLocaleString()}</div>
                   </CardWrap>
                 )}
