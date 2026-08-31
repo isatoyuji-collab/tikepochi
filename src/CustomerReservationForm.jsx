@@ -275,15 +275,8 @@ export default function CustomerReservationForm({ productionId }) {
   const [errorMessage, setErrorMessage] = useState('');
   const [urlStaffParam, setUrlStaffParam] = useState('');
 
-  const sessionIdRef = useRef('');
-  useEffect(() => {
-    let sid = sessionStorage.getItem('tp_seat_session_id');
-    if (!sid) {
-      sid = crypto.randomUUID();
-      sessionStorage.setItem('tp_seat_session_id', sid);
-    }
-    sessionIdRef.current = sid;
-  }, []);
+  // 💡 修正: 予約フォームの初期化ごとに新しいユニークなセッションIDを発行
+  const sessionIdRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
     if (!lockExpiresAt) {
@@ -423,7 +416,6 @@ export default function CustomerReservationForm({ productionId }) {
     if (productionId) loadData();
   }, [productionId]);
 
-  // 💡 設定されているカンパ用オプション情報を取得
   const donationInfo = useMemo(() => {
     for (const prod of productions) {
       const allTickets = ticketTypesMap[prod.id] || [];
@@ -1040,7 +1032,6 @@ export default function CustomerReservationForm({ productionId }) {
           const stages = stagesMap[prod.id] || [];
           const allTickets = ticketTypesMap[prod.id] || [];
 
-          // 1. 基本券種（当日券を除外）
           const baseTickets = allTickets
             .filter(t => !t.is_donation && !t.description?.includes('【オプション】') && !t.name?.includes('当日'))
             .sort((a, b) => {
@@ -1059,7 +1050,6 @@ export default function CustomerReservationForm({ productionId }) {
               return (a.price || 0) - (b.price || 0);
             });
 
-          // 2. 追加オプション（最前列指定席を最優先でソート、カンパはSTEP3で表示するため除外）
           const optionTickets = allTickets
             .filter(t => !t.is_donation && t.description?.includes('【オプション】') && !t.name?.includes('カンパ'))
             .sort((a, b) => {
@@ -1466,7 +1456,7 @@ export default function CustomerReservationForm({ productionId }) {
                 </div>
               </CardWrap>
 
-              {/* 💖 応援カンパカード（管理画面のオプション名・備考を自動連動） */}
+              {/* 💖 応援カンパカード */}
               <CardWrap>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '13px', color: COLORS.text }}>
                   <input
@@ -1480,7 +1470,6 @@ export default function CustomerReservationForm({ productionId }) {
                   </span>
                 </label>
 
-                {/* 備考・説明文がある場合は常に表示 */}
                 {donationInfo.description && (
                   <div style={{ fontSize: '11px', color: COLORS.muted, marginTop: '6px', marginLeft: '24px', lineHeight: '1.4' }}>
                     {donationInfo.description}
