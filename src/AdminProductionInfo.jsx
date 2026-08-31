@@ -1,6 +1,7 @@
+// src/AdminProductionInfo.jsx
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { ArrowLeft, Save, MapPin, FileText, CheckCircle2, AlertCircle, Link2, Copy, Check, Share2, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Save, MapPin, FileText, CheckCircle2, AlertCircle, Link2, Copy, Check, Share2, ExternalLink, Video } from 'lucide-react';
 import { COLORS, FONTS, RADIUS } from './theme';
 
 // 関西主要小劇場・ホール会場名プリセット
@@ -111,6 +112,7 @@ export default function AdminProductionInfo({ productionId, org, onBack }) {
   const [subtitle, setSubtitle] = useState('');
   const [venueName, setVenueName] = useState('');
   const [venueAddress, setVenueAddress] = useState('');
+  const [venueVideoUrl, setVenueVideoUrl] = useState('');
 
   // 劇団公式予約URL (/r/公演ID)
   const publicReservationUrl = `${window.location.origin}/r/${productionId || ''}`;
@@ -133,6 +135,7 @@ export default function AdminProductionInfo({ productionId, org, onBack }) {
           setSubtitle(data.subtitle || '');
           setVenueName(data.venue_name || '');
           setVenueAddress(data.venue_address || '');
+          setVenueVideoUrl(data.venue_video_url || '');
         }
       } catch (err) {
         console.error('Fetch production info error:', err);
@@ -174,6 +177,7 @@ export default function AdminProductionInfo({ productionId, org, onBack }) {
           subtitle: subtitle.trim() || null,
           venue_name: venueName.trim() || null,
           venue_address: venueAddress.trim() || null,
+          venue_video_url: venueVideoUrl.trim() || null,
         })
         .eq('id', productionId);
 
@@ -401,6 +405,24 @@ export default function AdminProductionInfo({ productionId, org, onBack }) {
                   onChange={(e) => setVenueAddress(e.target.value)}
                   className="text-input"
                 />
+              </div>
+
+              {/* 🎬 会場までの道のり動画URL */}
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: COLORS.gold, marginBottom: '4px' }}>
+                  <Video size={13} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} />
+                  会場アクセス・道のり動画URL（任意 / YouTubeなど）
+                </label>
+                <input
+                  type="url"
+                  placeholder="例: https://www.youtube.com/watch?v=xxxx または https://youtu.be/xxxx"
+                  value={venueVideoUrl}
+                  onChange={(e) => setVenueVideoUrl(e.target.value)}
+                  className="text-input"
+                />
+                <span style={{ fontSize: '11px', color: COLORS.muted, marginTop: '4px', display: 'block' }}>
+                  ※登録すると、お客様マイページに「🎬 道順動画」ボタンが自動表示され、アプリ内で動画をポップアップ再生できます。
+                </span>
               </div>
             </div>
           </div>
