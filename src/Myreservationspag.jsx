@@ -1,11 +1,11 @@
 // src/Myreservationspag.jsx (TIKEPOCHI側 - お客様マイページ)
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
 import {
   Ticket, Calendar, MapPin, Bell, ExternalLink,
   Smartphone, Star, CheckCircle2, AlertCircle, X,
   Send, Edit3, Video, PlayCircle, HelpCircle, Lock, Unlock, Sparkles, Check,
-  Volume2, BellOff, CircleDot, MessageSquare
+  Volume2, BellOff, CircleDot, MessageSquare, CreditCard, HeartHandshake, Armchair, Clock
 } from 'lucide-react';
 
 const COLORS = {
@@ -36,6 +36,17 @@ const MASCOT = {
   checking: '/images/mascot/pose_checking_dog.png',
   naruhodo: '/images/mascot/pose_naruhodo_dog.png',
   waai: '/images/mascot/pose_waai_dog.png',
+};
+
+const DEFAULT_65_SEATS_MAP = {
+  'A': Array.from({ length: 8 }, (_, i) => ({ id: `A-${i+1}`, row: 'A', num: i + 1, status: 'front_row' })),
+  'B': Array.from({ length: 8 }, (_, i) => ({ id: `B-${i+1}`, row: 'B', num: i + 1, status: i === 2 ? 'equipment' : 'reserved' })),
+  'C': Array.from({ length: 8 }, (_, i) => ({ id: `C-${i+1}`, row: 'C', num: i + 1, status: i === 2 ? 'equipment' : 'available' })),
+  'D': Array.from({ length: 9 }, (_, i) => ({ id: `D-${i+1}`, row: 'D', num: i + 1, status: i === 2 ? 'equipment' : 'available' })),
+  'E': Array.from({ length: 9 }, (_, i) => ({ id: `E-${i+1}`, row: 'E', num: i + 1, status: i === 2 ? 'equipment' : 'available' })),
+  'F': Array.from({ length: 9 }, (_, i) => ({ id: `F-${i+1}`, row: 'F', num: i + 1, status: i === 2 ? 'equipment' : 'available' })),
+  'G': Array.from({ length: 8 }, (_, i) => ({ id: `G-${i+1}`, row: 'G', num: i + 1, status: i < 2 ? 'reserved_staff' : 'available' })),
+  'H': Array.from({ length: 6 }, (_, i) => ({ id: `H-${i+1}`, row: 'H', num: i + 1, status: 'available' })),
 };
 
 const MascotSprite = ({ src, size = 48, borderRadius = '14px', style = {} }) => (
@@ -98,13 +109,26 @@ export default function Myreservationspag() {
   const [stages, setStages] = useState({});
   const [ticketTypes, setTicketTypes] = useState({});
   const [productions, setProductions] = useState({});
+  const [seatMaps, setSeatMaps] = useState({});
   const [loading, setLoading] = useState(true);
 
-  const [activeModal, setActiveModal] = useState(null); // 'edit' | 'survey' | 'cancel' | 'video' | 'pwaGuide' | 'notifList' | 'notifConfig'
+  const [activeModal, setActiveModal] = useState(null); // 'edit' | 'survey' | 'cancel' | 'video' | 'pwaGuide' | 'notifList' | 'notifConfig' | 'donation' | 'seatChange' | 'refundBank'
   const [selectedRes, setSelectedRes] = useState(null);
   const [selectedVideo, setSelectedVideo] = useState({ url: '', title: '', venue: '' });
   const [editCount, setEditCount] = useState(1);
   const [editMemo, setEditMemo] = useState('');
+
+  // 💖 カンパ追加ステート
+  const [extraDonation, setExtraDonation] = useState(1000);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
+  // 💺 座席変更ステート
+  const [currentSeatIds, setCurrentSeatIds] = useState([]);
+  const [occupiedSeats, setOccupiedSeats] = useState({});
+  const sessionIdRef = useRef(crypto.randomUUID());
+
+  // 🏦 銀行返金先口座ステート
+  const [bankInfo, setBankInfo] = useState('');
 
   const [rating, setRating] = useState(5);
   const [surveyText, setSurveyText] = useState('');
@@ -175,6 +199,8 @@ export default function Myreservationspag() {
         .from('reservations')
         .select('*')
         .eq('mypage_token', mypageToken)
+        .neq('payment_status', 'CANCELLED')
+        .neq('payment_status', 'REFUNDED')
         .order('created_at', { ascending: false });
 
       if (resErr) throw resErr;
@@ -192,11 +218,13 @@ export default function Myreservationspag() {
         const [
           { data: prodList },
           { data: stageList },
-          { data: ticketList }
+          { data: ticketList },
+          { data: seatMapList }
         ] = await Promise.all([
           supabase.from('productions').select('*').in('id', prodIds),
           supabase.from('stages').select('*').in('id', stageIds),
           supabase.from('ticket_types').select('*').in('id', ticketTypeIds),
+          supabase.from('seat_maps').select('*').in('production_id', prodIds)
         ]);
 
         const pMap = {};
@@ -210,6 +238,10 @@ export default function Myreservationspag() {
         const tMap = {};
         (ticketList || []).forEach(t => { tMap[t.id] = t; });
         setTicketTypes(tMap);
+
+        const smMap = {};
+        (seatMapList || []).forEach(sm => { smMap[sm.production_id] = sm.seat_data; });
+        setSeatMaps(smMap);
       }
     } catch (e) {
       console.error('Mypage fetch error:', e);
@@ -291,7 +323,6 @@ export default function Myreservationspag() {
     }
   };
 
-  // 🔑 LINEログイン認証画面へ直接遷移（LINE User ID取得・連携）
   const handleLineLink = () => {
     const clientId = '2010532265';
     const redirectUri = encodeURIComponent(window.location.origin + '/line-callback');
@@ -311,62 +342,260 @@ export default function Myreservationspag() {
     setActiveModal('video');
   };
 
-  const handleUpdateReservation = async () => {
-    if (!selectedRes) return;
+  // 💳 未払い予約をStripeクレジットカードで支払う
+  const handlePayWithStripe = async (res) => {
+    setIsProcessingPayment(true);
     try {
-      const { error } = await supabase
-        .from('reservations')
-        .update({
-          count: editCount,
-          memo: editMemo,
-        })
-        .eq('id', selectedRes.id);
+      const prod = productions[res.production_id] || {};
+      const tk = ticketTypes[res.ticket_type_id] || { price: 0 };
+      const subtotal = (tk.price * (res.count || 1)) + (res.donation_amount || 0);
 
-      if (error) throw error;
-      alert('予約内容を変更しました！🐾');
-      setActiveModal(null);
-      fetchMypageData(token);
-    } catch (e) {
-      alert('変更に失敗しました: ' + e.message);
+      const { data: sessionData, error: fnErr } = await supabase.functions.invoke(
+        'create-stripe-checkout',
+        {
+          body: {
+            productionId: res.production_id,
+            reservationId: res.id,
+            ticketTitle: `${prod.title || '公演'} チケット`,
+            amount: subtotal,
+            quantity: 1,
+            customerEmail: res.customer_email,
+            returnUrl: `${window.location.origin}/mypage?token=${token}`,
+          }
+        }
+      );
+
+      if (fnErr || !sessionData?.url) {
+        throw new Error(fnErr?.message || sessionData?.error || 'カード決済画面の生成に失敗しました');
+      }
+
+      window.location.href = sessionData.url;
+    } catch (err) {
+      alert('決済画面の起動に失敗しました: ' + err.message);
+      setIsProcessingPayment(false);
     }
   };
 
-  const handleCancelReservation = async () => {
-    if (!selectedRes) return;
-    setIsCancelling(true);
+  // 💖 カンパの追加・決済
+  const handleAddDonationSubmit = async () => {
+    if (!selectedRes || extraDonation < 500) {
+      alert('カンパは500円以上でご入力ください。');
+      return;
+    }
+    setIsProcessingPayment(true);
     try {
-      const { error } = await supabase
-        .from('reservations')
+      const prod = productions[selectedRes.production_id] || {};
+      const { data: sessionData, error: fnErr } = await supabase.functions.invoke(
+        'create-stripe-checkout',
+        {
+          body: {
+            productionId: selectedRes.production_id,
+            reservationId: selectedRes.id,
+            ticketTitle: `【応援カンパ追加】${prod.title || '秋の大笑会'}`,
+            amount: extraDonation,
+            quantity: 1,
+            customerEmail: selectedRes.customer_email,
+            returnUrl: `${window.location.origin}/mypage?token=${token}`,
+          }
+        }
+      );
+
+      if (fnErr || !sessionData?.url) {
+        // Stripe未連携等の場合はDBのカンパ額に加算
+        await supabase
+          .from('reservations')
+          .update({
+            donation_amount: (selectedRes.donation_amount || 0) + extraDonation
+          })
+          .eq('id', selectedRes.id);
+
+        alert(`応援カンパ ¥${extraDonation.toLocaleString()} を追加しましたワン！ありがとうございます🐾`);
+        setActiveModal(null);
+        fetchMypageData(token);
+        setIsProcessingPayment(false);
+        return;
+      }
+
+      window.location.href = sessionData.url;
+    } catch (err) {
+      alert('カンパ処理に失敗しました: ' + err.message);
+      setIsProcessingPayment(false);
+    }
+  };
+
+  // 💺 座席変更モーダルを開く
+  const handleOpenSeatChange = async (res) => {
+    setSelectedRes(res);
+    // 既存の座席抽出（メモまたはseat_reservationsから）
+    const { data: seatsData } = await supabase
+      .from('seat_reservations')
+      .select('seat_id')
+      .eq('reservation_id', res.id);
+
+    const initialSeats = (seatsData || []).map(s => s.seat_id);
+    setCurrentSeatIds(initialSeats);
+
+    // その公演回の全予約済み座席を取得
+    const { data: allStageSeats } = await supabase
+      .from('seat_reservations')
+      .select('*')
+      .eq('stage_id', res.stage_id);
+
+    const map = {};
+    (allStageSeats || []).forEach(sr => {
+      if (sr.reservation_id !== res.id) {
+        map[sr.seat_id] = sr;
+      }
+    });
+    setOccupiedSeats(map);
+    setActiveModal('seatChange');
+  };
+
+  // 💺 座席選択・変更処理
+  const handleSelectSeatInModal = (seat) => {
+    if (seat.status === 'equipment' || seat.status === 'reserved_staff') return;
+    const maxCount = selectedRes.count || 1;
+
+    if (currentSeatIds.includes(seat.id)) {
+      setCurrentSeatIds(prev => prev.filter(id => id !== seat.id));
+      return;
+    }
+
+    if (currentSeatIds.length >= maxCount) {
+      alert(`ご予約枚数は【${maxCount}枚】です。変更する場合は先に選択中の席を解除してください。`);
+      return;
+    }
+
+    setCurrentSeatIds(prev => [...prev, seat.id]);
+  };
+
+  // 💺 新しい座席をDBに保存
+  const handleSaveSeatChange = async () => {
+    if (!selectedRes) return;
+    const maxCount = selectedRes.count || 1;
+    if (currentSeatIds.length < maxCount) {
+      alert(`座席を【${maxCount}席】すべて選択してください。`);
+      return;
+    }
+
+    try {
+      // 1. 古い座席予約を削除
+      await supabase
+        .from('seat_reservations')
         .delete()
+        .eq('reservation_id', selectedRes.id);
+
+      // 2. 新しい座席を登録
+      const inserts = currentSeatIds.map(seatId => ({
+        stage_id: selectedRes.stage_id,
+        seat_id: seatId,
+        production_id: selectedRes.production_id,
+        reservation_id: selectedRes.id,
+        status: 'CONFIRMED',
+        session_id: sessionIdRef.current
+      }));
+
+      await supabase.from('seat_reservations').insert(inserts);
+
+      // 3. 予約メモの座席表記を更新
+      let newMemo = selectedRes.memo || '';
+      if (newMemo.includes('【座席】:')) {
+        newMemo = newMemo.replace(/【座席】: [^\n]+/, `【座席】: ${currentSeatIds.join(', ')}`);
+      } else {
+        newMemo = `【座席】: ${currentSeatIds.join(', ')}\n${newMemo}`.trim();
+      }
+
+      await supabase
+        .from('reservations')
+        .update({ memo: newMemo })
         .eq('id', selectedRes.id);
 
-      if (error) throw error;
+      alert('座席を変更しましたワン！🐾');
+      setActiveModal(null);
+      fetchMypageData(token);
+    } catch (err) {
+      alert('座席変更に失敗しました: ' + err.message);
+    }
+  };
+
+  // ⚠️ 500円引キャンセル実行
+  const handleConfirmCancel = async () => {
+    if (!selectedRes) return;
+    setIsCancelling(true);
+
+    try {
+      if (selectedRes.payment_status === 'PAID') {
+        // クレジットカード決済済み ➔ 500円差し引き返金API呼び出し
+        const { data, error } = await supabase.functions.invoke(
+          'refund-stripe-payment',
+          {
+            body: {
+              reservationId: selectedRes.id,
+              mypageToken: token
+            }
+          }
+        );
+
+        if (error || data?.error) {
+          throw new Error(error?.message || data?.error || '返金処理に失敗しました');
+        }
+
+        alert(`キャンセル・返金手続きが完了しましたワン。\n決済額からキャンセル手数料500円を差し引いた【¥${data.refundAmount?.toLocaleString()}】をご利用のクレジットカードへ返金いたします。`);
+      } else if (selectedRes.payment_method === 'BANK_TRANSFER' && selectedRes.payment_status === 'PENDING') {
+        // 銀行振込で振込完了報告後の場合、口座入力モーダルを開く
+        setActiveModal('refundBank');
+        setIsCancelling(false);
+        return;
+      } else {
+        // 当日現金精算または未決済 ➔ 通常キャンセル
+        await supabase
+          .from('seat_reservations')
+          .delete()
+          .eq('reservation_id', selectedRes.id);
+
+        await supabase
+          .from('reservations')
+          .delete()
+          .eq('id', selectedRes.id);
+
+        alert('ご予約をキャンセルしましたワン。');
+      }
+
       setActiveModal(null);
       fetchMypageData(token);
     } catch (e) {
-      alert('キャンセルに失敗しました: ' + e.message);
+      alert('キャンセル処理に失敗しました: ' + e.message);
     } finally {
       setIsCancelling(false);
     }
   };
 
-  const handleSubmitSurvey = async () => {
-    if (!surveyText.trim()) return;
+  // 🏦 銀行返金口座送信
+  const handleBankRefundSubmit = async () => {
+    if (!bankInfo.trim()) {
+      alert('返金先口座情報をご入力ください。');
+      return;
+    }
     try {
-      await supabase.from('feedbacks').insert([{
-        production_id: selectedRes?.production_id,
-        rating: rating,
-        comment: surveyText.trim(),
-        is_anonymous: true
-      }]);
-      setSurveySent(true);
-      setTimeout(() => {
-        setSurveySent(false);
-        setActiveModal(null);
-        setSurveyText('');
-      }, 2000);
+      await supabase
+        .from('seat_reservations')
+        .delete()
+        .eq('reservation_id', selectedRes.id);
+
+      await supabase
+        .from('reservations')
+        .update({
+          payment_status: 'REFUND_PENDING',
+          refund_bank_info: bankInfo.trim(),
+          memo: `${selectedRes.memo || ''}\n【銀行返金申請】振込額から¥500引いて返金`.trim()
+        })
+        .eq('id', selectedRes.id);
+
+      alert('キャンセルと返金申請を受け付けましたワン！\n劇団側でお振込確認後、手数料500円を差し引いた金額をご指定の口座へお戻しいたします。');
+      setActiveModal(null);
+      fetchMypageData(token);
     } catch (e) {
-      alert('送信に失敗しました');
+      alert('送信に失敗しました: ' + e.message);
     }
   };
 
@@ -378,7 +607,6 @@ export default function Myreservationspag() {
     return `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(prod.title)}&dates=${dateFormatted}T${startTime}/${dateFormatted}T${startTime}&location=${encodeURIComponent(prod.venue_name || '劇場')}`;
   };
 
-  // 💬 LINE問い合わせURL生成（予約者情報プリセット）
   const getLineInquiryUrl = () => {
     const firstRes = reservations[0];
     const prod = firstRes ? productions[firstRes.production_id] : null;
@@ -472,6 +700,22 @@ export default function Myreservationspag() {
         transform: translateY(3px);
       }
 
+      .seat-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        font-size: 11px;
+        font-weight: 800;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        user-select: none;
+        border: 1.5px solid;
+        transition: all 0.12s ease;
+      }
+      .seat-btn:active { transform: scale(0.95); }
+
       .notif-option-card {
         border: 2px solid ${COLORS.border};
         border-radius: 16px;
@@ -552,7 +796,7 @@ export default function Myreservationspag() {
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
             <MascotSprite src={MASCOT.ticketWait} size={90} />
           </div>
-          <h2 className="pouchi-font" style={{ fontSize: '18px', fontWeight: 900, margin: '0 0 8px 0', color: COLORS.pouchiDark }}>予約トークンが見つからないワン</h2>
+          <h2 className="pouchi-font" style={{ fontSize: '18px', fontWeight: 900, margin: '0 0 8px 0', color: COLORS.pouchiDark }}>予約が見つからないワン</h2>
           <p style={{ fontSize: '13px', color: COLORS.muted, lineHeight: '1.6' }}>
             予約完了メールにある「マイページ確認URL」からアクセスしてね！
           </p>
@@ -789,16 +1033,23 @@ export default function Myreservationspag() {
                 const isA = prod.title?.includes('あなたとコンビ');
                 const badgeColor = isA ? COLORS.yellowDeep : COLORS.blue;
                 const badgeText = isA ? 'A公演' : 'B公演';
+                const isPaid = res.payment_status === 'PAID';
+                const hasSeat = res.memo?.includes('【座席】:');
 
                 return (
                   <div key={res.id} className="ticket-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <StickerBadge bg={badgeColor} rotate={-3}>{badgeText}</StickerBadge>
-                        <span style={{ fontSize: '11px', fontWeight: 800, color: COLORS.success, backgroundColor: '#dcfce7', padding: '4px 10px', borderRadius: '999px', display: 'inline-flex', alignItems: 'center', gap: '4px', border: '2px solid #bbf7d0' }}>
-                          <MascotSprite src={MASCOT.pochitto} size={16} borderRadius="4px" />
-                          ご予約確定
-                        </span>
+                        {isPaid ? (
+                          <span style={{ fontSize: '11px', fontWeight: 800, color: '#15803d', backgroundColor: '#dcfce7', padding: '4px 10px', borderRadius: '999px', display: 'inline-flex', alignItems: 'center', gap: '4px', border: '2px solid #bbf7d0' }}>
+                            <CheckCircle2 size={13} /> クレジット決済済
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '11px', fontWeight: 800, color: COLORS.yellowDeep, backgroundColor: '#fef3c7', padding: '4px 10px', borderRadius: '999px', display: 'inline-flex', alignItems: 'center', gap: '4px', border: `2px solid ${COLORS.yellowSoft}` }}>
+                            <Clock size={13} /> {res.payment_method === 'BANK_TRANSFER' ? '振込案内中' : '当日劇場精算'}
+                          </span>
+                        )}
                       </div>
                       <span style={{ fontSize: '11px', color: COLORS.muted, fontFamily: 'monospace' }}>
                         #{res.id.slice(0, 6)}
@@ -835,9 +1086,61 @@ export default function Myreservationspag() {
                         <Ticket size={15} color={COLORS.yellowDeep} />
                         <span>{tk.name} × <strong>{res.count}枚</strong></span>
                         <span style={{ marginLeft: 'auto', fontWeight: 900, color: COLORS.yellowDeep, fontSize: '14px' }}>
-                          ¥{subtotal.toLocaleString()} <span style={{ fontSize: '10px', color: COLORS.muted }}>(当日精算)</span>
+                          ¥{subtotal.toLocaleString()} <span style={{ fontSize: '10px', color: COLORS.muted }}>({isPaid ? '決済済' : '当日精算'})</span>
                         </span>
                       </div>
+
+                      {res.donation_amount > 0 && (
+                        <div style={{ fontSize: '11px', color: COLORS.yellowDeep, fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <HeartHandshake size={13} /> 応援カンパ: ¥{res.donation_amount.toLocaleString()} 込
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 💳 未払いの場合のみ：今すぐカードで支払うボタン */}
+                    {!isPaid && (
+                      <button
+                        onClick={() => handlePayWithStripe(res)}
+                        disabled={isProcessingPayment}
+                        className="btn-bounce btn-pouchi-primary"
+                        style={{
+                          width: '100%',
+                          padding: '11px',
+                          borderRadius: '14px',
+                          fontWeight: 900,
+                          fontSize: '13px',
+                          marginBottom: '10px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        <CreditCard size={15} /> クレジットカードで今すぐ支払う（Stripe）
+                      </button>
+                    )}
+
+                    {/* 💺 座席変更 ＆ 💖 カンパ追加ボタン */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                      <button
+                        onClick={() => handleOpenSeatChange(res)}
+                        className="btn-bounce"
+                        style={{ padding: '8px', borderRadius: '12px', border: `1.5px solid ${COLORS.yellowDeep}`, backgroundColor: '#fff', color: COLORS.yellowDeep, fontSize: '11px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                      >
+                        <Armchair size={13} /> {hasSeat ? '指定席を変更' : '座席を指定する'}
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setSelectedRes(res);
+                          setActiveModal('donation');
+                        }}
+                        className="btn-bounce"
+                        style={{ padding: '8px', borderRadius: '12px', border: `1.5px solid #fca5a5`, backgroundColor: '#fff5f5', color: COLORS.danger, fontSize: '11px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                      >
+                        <HeartHandshake size={13} /> 応援カンパを送る
+                      </button>
                     </div>
 
                     <div style={{ display: 'flex', gap: '8px' }}>
@@ -846,7 +1149,7 @@ export default function Myreservationspag() {
                         target="_blank"
                         rel="noreferrer"
                         className="btn-bounce"
-                        style={{ flex: 1.2, padding: '10px', textAlign: 'center', textDecoration: 'none', borderRadius: '14px', border: `2px solid ${COLORS.yellowSoft}`, backgroundColor: '#fffdf9', color: COLORS.yellowDeep, fontSize: '12px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                        style={{ flex: 1.2, padding: '9px', textAlign: 'center', textDecoration: 'none', borderRadius: '12px', border: `1.5px solid ${COLORS.yellowSoft}`, backgroundColor: '#fffdf9', color: COLORS.yellowDeep, fontSize: '11px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                       >
                         📅 カレンダー
                       </a>
@@ -858,9 +1161,9 @@ export default function Myreservationspag() {
                           setActiveModal('edit');
                         }}
                         className="btn-bounce"
-                        style={{ flex: 1, padding: '10px', borderRadius: '14px', border: `2px solid ${COLORS.yellowSoft}`, backgroundColor: '#ffffff', color: COLORS.yellowDeep, fontSize: '12px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                        style={{ flex: 1, padding: '9px', borderRadius: '12px', border: `1.5px solid ${COLORS.yellowSoft}`, backgroundColor: '#ffffff', color: COLORS.yellowDeep, fontSize: '11px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                       >
-                        <Edit3 size={13} /> 変更
+                        <Edit3 size={13} /> 備考変更
                       </button>
                       <button
                         onClick={() => {
@@ -868,9 +1171,9 @@ export default function Myreservationspag() {
                           setActiveModal('cancel');
                         }}
                         className="btn-bounce"
-                        style={{ padding: '10px 14px', borderRadius: '14px', border: `2px solid #fecdd3`, backgroundColor: '#fff', color: COLORS.danger, fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}
+                        style={{ padding: '9px 12px', borderRadius: '12px', border: `1.5px solid #fecdd3`, backgroundColor: '#fff', color: COLORS.danger, fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
                       >
-                        取消
+                        取消・返金
                       </button>
                     </div>
                   </div>
@@ -880,7 +1183,7 @@ export default function Myreservationspag() {
           )}
         </div>
 
-        {/* 💬 お問い合わせ窓口カード（LINE公式トーク直接起動） */}
+        {/* 💬 お問い合わせ窓口カード */}
         <div style={{
           backgroundColor: '#ffffff',
           border: `2.5px solid ${COLORS.border}`,
@@ -963,164 +1266,284 @@ export default function Myreservationspag() {
 
       </div>
 
-      {/* ⚙️ 通知モード設定モーダル */}
-      {activeModal === 'notifConfig' && (
-        <div
-          onClick={() => setActiveModal(null)}
-          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: '100%', maxWidth: '420px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '22px', border: `2.5px solid ${COLORS.border}`, boxShadow: '0 12px 30px rgba(0,0,0,0.25)' }}
-          >
+      {/* 💖 カンパ追加モーダル */}
+      {activeModal === 'donation' && selectedRes && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
+          <div style={{ width: '100%', maxWidth: '420px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '22px', border: `2.5px solid ${COLORS.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <MascotSprite src={MASCOT.naruhodo} size={32} />
-                <h3 className="pouchi-font" style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: COLORS.pouchiDark }}>
-                  通知の受け取り設定 🔔
-                </h3>
-              </div>
+              <h3 className="pouchi-font" style={{ margin: 0, fontSize: '17px', fontWeight: 900, color: COLORS.pouchiDark, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <HeartHandshake size={20} color={COLORS.danger} />
+                応援カンパを送る
+              </h3>
               <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={20} /></button>
             </div>
 
-            <div style={{ fontSize: '12px', color: COLORS.muted, marginBottom: '14px', lineHeight: '1.5' }}>
-              前日リマインドやお知らせの通知スタイルをお好みで選べるワン！🐾
+            <p style={{ fontSize: '12px', color: COLORS.muted, lineHeight: '1.5', margin: '0 0 16px 0' }}>
+              劇団・キャストへの応援カンパを後から追加できます。500円から100円単位でお好きな金額を入力してください🐾
+            </p>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '18px' }}>
+              <span style={{ fontSize: '18px', fontWeight: 900 }}>¥</span>
+              <input
+                type="number"
+                min={500}
+                step={100}
+                value={extraDonation}
+                onChange={(e) => setExtraDonation(parseInt(e.target.value, 10) || 500)}
+                style={{ width: '100%', padding: '12px', borderRadius: '12px', border: `2px solid ${COLORS.border}`, fontSize: '16px', fontWeight: 900 }}
+              />
+              <span style={{ fontSize: '14px', fontWeight: 800 }}>円</span>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '18px' }}>
-              <div
-                className={`notif-option-card ${notifMode === 'ALL' ? 'selected' : ''}`}
-                onClick={() => handleSaveNotifMode('ALL')}
-              >
-                <Volume2 size={20} color={COLORS.yellowDeep} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark }}>すべて受け取る（推奨）</div>
-                  <div style={{ fontSize: '11px', color: COLORS.muted }}>画面ポップアップ・音・バッジでお知らせ</div>
-                </div>
-                <input type="radio" name="notifModeOpt" checked={notifMode === 'ALL'} readOnly style={{ accentColor: COLORS.yellowDeep }} />
-              </div>
-
-              <div
-                className={`notif-option-card ${notifMode === 'BADGE_ONLY' ? 'selected' : ''}`}
-                onClick={() => handleSaveNotifMode('BADGE_ONLY')}
-              >
-                <CircleDot size={20} color={COLORS.yellowDeep} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark }}>バッジ・一覧のみ（静かに受け取る）</div>
-                  <div style={{ fontSize: '11px', color: COLORS.muted }}>ポップアップなし・未読バッジと通知トレイのみ</div>
-                </div>
-                <input type="radio" name="notifModeOpt" checked={notifMode === 'BADGE_ONLY'} readOnly style={{ accentColor: COLORS.yellowDeep }} />
-              </div>
-
-              <div
-                className={`notif-option-card ${notifMode === 'OFF' ? 'selected' : ''}`}
-                onClick={() => handleSaveNotifMode('OFF')}
-              >
-                <BellOff size={20} color={COLORS.danger} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark }}>通知を受け取らない</div>
-                  <div style={{ fontSize: '11px', color: COLORS.muted }}>リマインドなどの外部通知を停止</div>
-                </div>
-                <input type="radio" name="notifModeOpt" checked={notifMode === 'OFF'} readOnly style={{ accentColor: COLORS.yellowDeep }} />
-              </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={() => setActiveModal(null)} style={{ flex: 1, padding: '12px', borderRadius: '999px', border: `2px solid ${COLORS.border}`, background: 'none', cursor: 'pointer', fontWeight: 800 }}>もどる</button>
+              <button onClick={handleAddDonationSubmit} disabled={isProcessingPayment} className="btn-bounce btn-pouchi-primary" style={{ flex: 2, padding: '12px', borderRadius: '999px', fontWeight: 900, cursor: 'pointer' }}>
+                {isProcessingPayment ? '決済準備中...' : 'カンパを送るワン！'}
+              </button>
             </div>
-
-            <button
-              onClick={() => setActiveModal(null)}
-              className="btn-bounce btn-pouchi-primary"
-              style={{ width: '100%', padding: '12px', borderRadius: '999px', fontWeight: 900, cursor: 'pointer', fontSize: '13px' }}
-            >
-              とじる
-            </button>
           </div>
         </div>
       )}
 
-      {/* 🔔 お知らせ・通知履歴モーダル */}
-      {activeModal === 'notifList' && (
-        <div
-          onClick={() => setActiveModal(null)}
-          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: '100%', maxWidth: '440px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '22px', border: `2.5px solid ${COLORS.border}`, boxShadow: '0 12px 30px rgba(0,0,0,0.25)', maxHeight: '85vh', overflowY: 'auto' }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <MascotSprite src={MASCOT.naruhodo} size={32} />
-                <h3 className="pouchi-font" style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: COLORS.pouchiDark }}>
-                  劇団からのお知らせ・通知 🔔
-                </h3>
-              </div>
-              <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={20} /></button>
-            </div>
+      {/* 💺 座席変更モーダル */}
+      {activeModal === 'seatChange' && selectedRes && (() => {
+        const prod = productions[selectedRes.production_id] || {};
+        const seatMap = seatMaps[prod.id] || DEFAULT_65_SEATS_MAP;
+        const maxCount = selectedRes.count || 1;
 
-            {notifications.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '30px 10px', color: COLORS.muted }}>
-                <MascotSprite src={MASCOT.ticketWait} size={64} style={{ margin: '0 auto 10px auto' }} />
-                <div style={{ fontSize: '13px', fontWeight: 700 }}>新しいお知らせはありませんワン！</div>
-                <div style={{ fontSize: '11px', marginTop: '4px' }}>前日リマインドやメッセージが届くとここに表示されます。</div>
+        return (
+          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
+            <div style={{ width: '100%', maxWidth: '500px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '20px', border: `2.5px solid ${COLORS.border}`, maxHeight: '90vh', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Armchair size={18} color={COLORS.yellowDeep} />
+                  <h3 className="pouchi-font" style={{ fontSize: '15px', fontWeight: 900, margin: 0 }}>
+                    指定座席の変更
+                  </h3>
+                </div>
+                <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={20} /></button>
               </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {notifications.map(notif => (
-                  <div
-                    key={notif.id}
-                    style={{
-                      backgroundColor: COLORS.surfaceAlt,
-                      border: `1.5px solid ${COLORS.yellowSoft}`,
-                      borderRadius: '16px',
-                      padding: '12px 14px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark }}>
-                        {notif.title}
+
+              <div style={{ fontSize: '12px', color: COLORS.muted, marginBottom: '12px' }}>
+                ご希望の空いているお席を<strong>【{maxCount}席】</strong>お選びください。
+              </div>
+
+              <div style={{ width: '80%', margin: '0 auto 14px auto', padding: '6px 0', backgroundColor: COLORS.yellowDeep, color: '#ffffff', textAlign: 'center', fontWeight: 900, borderRadius: '8px', fontSize: '12px', letterSpacing: '2px' }}>
+                舞台 (STAGE)
+              </div>
+
+              <div style={{ overflowX: 'auto', paddingBottom: '10px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center', minWidth: '360px' }}>
+                  {Object.keys(seatMap).map(row => (
+                    <div key={row} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span style={{ width: '14px', fontWeight: 900, fontSize: '11px', color: COLORS.yellowDeep, textAlign: 'center' }}>{row}</span>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {seatMap[row].map(seat => {
+                          const isSelected = currentSeatIds.includes(seat.id);
+                          const occ = occupiedSeats[seat.id];
+                          const isKeep = seat.status === 'equipment' || seat.status === 'reserved_staff';
+
+                          let bg = '#ffffff';
+                          let border = COLORS.border;
+                          let color = COLORS.text;
+                          let label = seat.num;
+                          let disabled = false;
+
+                          if (isSelected) {
+                            bg = COLORS.yellowDeep;
+                            border = '#d9820a';
+                            color = '#ffffff';
+                          } else if (occ) {
+                            bg = '#fee2e2';
+                            border = COLORS.danger;
+                            color = COLORS.danger;
+                            label = '済';
+                            disabled = true;
+                          } else if (isKeep) {
+                            bg = '#f1f5f9';
+                            border = '#e2e8f0';
+                            color = '#94a3b8';
+                            disabled = true;
+                            if (seat.status === 'reserved_staff') label = '留';
+                            if (seat.status === 'equipment') label = '卓';
+                          }
+
+                          return (
+                            <button
+                              key={seat.id}
+                              type="button"
+                              disabled={disabled}
+                              onClick={() => handleSelectSeatInModal(seat)}
+                              className="seat-btn"
+                              style={{ backgroundColor: bg, borderColor: border, color: color, cursor: disabled ? 'not-allowed' : 'pointer', fontWeight: isSelected ? 900 : 700 }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
                       </div>
-                      <span style={{ fontSize: '10px', color: COLORS.muted }}>
-                        {new Date(notif.created_at).toLocaleDateString()}
-                      </span>
+                      <span style={{ width: '14px', fontWeight: 900, fontSize: '11px', color: COLORS.yellowDeep, textAlign: 'center' }}>{row}</span>
                     </div>
-                    <div style={{ fontSize: '12px', color: COLORS.text, lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
-                      {notif.body}
-                    </div>
-                    {notif.link_url && (
-                      <a
-                        href={notif.link_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', color: COLORS.yellowDeep, fontWeight: 800, marginTop: '6px', textDecoration: 'none' }}
-                      >
-                        詳細を見る <ExternalLink size={11} />
-                      </a>
-                    )}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            )}
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
+                <button onClick={() => setActiveModal(null)} style={{ flex: 1, padding: '10px', borderRadius: '999px', border: `2px solid ${COLORS.border}`, background: 'none', cursor: 'pointer', fontWeight: 800 }}>もどる</button>
+                <button onClick={handleSaveSeatChange} className="btn-bounce btn-pouchi-primary" style={{ flex: 2, padding: '10px', borderRadius: '999px', fontWeight: 900, cursor: 'pointer' }}>
+                  座席変更を保存ワン！
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ⚠️ 500円引キャンセル確認モーダル */}
+      {activeModal === 'cancel' && selectedRes && (() => {
+        const isPaid = selectedRes.payment_status === 'PAID';
+        const tk = ticketTypes[selectedRes.ticket_type_id] || { price: 0 };
+        const totalAmount = (tk.price * (selectedRes.count || 1)) + (selectedRes.donation_amount || 0);
+        const refundAmount = Math.max(0, totalAmount - 500);
+
+        return (
+          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
+            <div style={{ width: '100%', maxWidth: '400px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '22px', border: `2.5px solid ${COLORS.border}`, textAlign: 'center' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
+                <MascotSprite src={MASCOT.checking} size={72} />
+              </div>
+              <h3 className="pouchi-font" style={{ margin: '0 0 8px 0', fontSize: '17px', fontWeight: 900, color: COLORS.danger }}>ご予約のキャンセル・返金</h3>
+
+              {isPaid ? (
+                <div style={{ backgroundColor: '#fef2f2', border: '1.5px solid #fecdd3', borderRadius: '16px', padding: '12px', marginBottom: '16px', fontSize: '12px', color: '#991b1b', lineHeight: '1.5', textAlign: 'left' }}>
+                  <strong>【クレジットカード返金のご案内】</strong><br />
+                  決済総額: <strong>¥{totalAmount.toLocaleString()}</strong><br />
+                  キャンセル手数料: <strong>- ¥500</strong><br />
+                  返金予定額: <strong style={{ fontSize: '14px', color: COLORS.danger }}>¥{refundAmount.toLocaleString()}</strong><br />
+                  <span style={{ fontSize: '11px', color: COLORS.muted }}>※ご利用のクレジットカードへ即時返金手続きを行います。</span>
+                </div>
+              ) : (
+                <p style={{ fontSize: '12px', color: COLORS.muted, lineHeight: '1.5', margin: '0 0 16px 0' }}>
+                  予約をキャンセルしてよろしいですかワン？<br />（未決済のため手数料は発生いたしません）
+                </p>
+              )}
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => setActiveModal(null)} disabled={isCancelling} style={{ flex: 1, padding: '12px', borderRadius: '999px', border: `2px solid ${COLORS.border}`, background: 'none', cursor: 'pointer', fontWeight: 800 }}>やめる</button>
+                <button onClick={handleConfirmCancel} disabled={isCancelling} style={{ flex: 1, padding: '12px', borderRadius: '999px', border: 'none', backgroundColor: COLORS.danger, color: '#fff', fontWeight: 900, cursor: 'pointer', opacity: isCancelling ? 0.7 : 1 }}>
+                  {isCancelling ? '返金処理中...' : 'キャンセル確定'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 🏦 銀行返金先口座入力モーダル */}
+      {activeModal === 'refundBank' && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
+          <div style={{ width: '100%', maxWidth: '420px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '22px', border: `2.5px solid ${COLORS.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <h3 className="pouchi-font" style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: COLORS.pouchiDark }}>
+                返金先口座のご入力 🏦
+              </h3>
+              <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={20} /></button>
+            </div>
+
+            <p style={{ fontSize: '12px', color: COLORS.muted, lineHeight: '1.5', margin: '0 0 12px 0' }}>
+              お振込いただいた金額から手数料500円を差し引いてお戻しいたします。お振込先口座をご記入くださいワン🐾
+            </p>
+
+            <textarea
+              rows={4}
+              placeholder="例: 〇〇銀行 〇〇支店 普通 1234567 ヤマダタロウ"
+              value={bankInfo}
+              onChange={(e) => setBankInfo(e.target.value)}
+              style={{ width: '100%', padding: '10px', borderRadius: '12px', border: `2px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '13px', marginBottom: '14px' }}
+            />
 
             <button
-              onClick={() => setActiveModal(null)}
+              onClick={handleBankRefundSubmit}
               className="btn-bounce btn-pouchi-primary"
-              style={{ width: '100%', padding: '12px', borderRadius: '999px', fontWeight: 900, cursor: 'pointer', fontSize: '13px', marginTop: '16px' }}
+              style={{ width: '100%', padding: '12px', borderRadius: '999px', fontWeight: 900, cursor: 'pointer' }}
             >
-              とじる
+              返金申請を送信ワン！
             </button>
           </div>
         </div>
       )}
 
-      {/* 📲 ホーム画面追加手順ガイドモーダル */}
+      {/* 🛠️ 予約備考変更モーダル */}
+      {activeModal === 'edit' && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
+          <div style={{ width: '100%', maxWidth: '420px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '22px', border: `2.5px solid ${COLORS.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 className="pouchi-font" style={{ margin: 0, fontSize: '17px', fontWeight: 900, color: COLORS.pouchiDark, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MascotSprite src={MASCOT.naruhodo} size={30} />
+                備考・ご要望の変更
+              </h3>
+              <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={20} /></button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 800, color: COLORS.yellowDeep, display: 'block', marginBottom: '4px' }}>備考・ご要望</label>
+                <textarea
+                  rows={3}
+                  value={editMemo}
+                  onChange={(e) => setEditMemo(e.target.value)}
+                  style={{ width: '100%', padding: '10px', borderRadius: '12px', border: `2px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '13px' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                <button onClick={() => setActiveModal(null)} style={{ flex: 1, padding: '12px', borderRadius: '999px', border: `2px solid ${COLORS.border}`, background: 'none', cursor: 'pointer', fontWeight: 800 }}>もどる</button>
+                <button
+                  onClick={async () => {
+                    await supabase.from('reservations').update({ memo: editMemo }).eq('id', selectedRes.id);
+                    alert('備考を変更しましたワン！');
+                    setActiveModal(null);
+                    fetchMypageData(token);
+                  }}
+                  className="btn-bounce btn-pouchi-primary"
+                  style={{ flex: 2, padding: '12px', borderRadius: '999px', fontWeight: 900, cursor: 'pointer' }}
+                >
+                  変更を保存ワン！
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🎬 道順動画モーダル */}
+      {activeModal === 'video' && (
+        <div onClick={() => setActiveModal(null)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '500px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '20px', border: `2.5px solid ${COLORS.border}`, boxShadow: '0 12px 30px rgba(0,0,0,0.3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MascotSprite src={MASCOT.naruhodo} size={30} />
+                <div>
+                  <h3 className="pouchi-font" style={{ margin: 0, fontSize: '15px', fontWeight: 900, color: COLORS.pouchiDark }}>
+                    {selectedVideo.venue}への道のり動画 🚶‍♂️
+                  </h3>
+                  <div style={{ fontSize: '11px', color: COLORS.muted }}>迷わずスムーズにご来場いただけますワン！</div>
+                </div>
+              </div>
+              <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted, padding: '4px' }}><X size={20} /></button>
+            </div>
+            <div className="video-container" style={{ marginBottom: '14px' }}>
+              <iframe src={selectedVideo.url} title="劇場アクセス動画" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen />
+            </div>
+            <button onClick={() => setActiveModal(null)} className="btn-bounce btn-pouchi-primary" style={{ width: '100%', padding: '12px', borderRadius: '999px', fontWeight: 900, cursor: 'pointer', fontSize: '13px' }}>とじる</button>
+          </div>
+        </div>
+      )}
+
+      {/* 📲 PWAガイドモーダル */}
       {activeModal === 'pwaGuide' && (
-        <div
-          onClick={() => setActiveModal(null)}
-          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: '100%', maxWidth: '440px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '22px', border: `2.5px solid ${COLORS.border}`, boxShadow: '0 12px 30px rgba(0,0,0,0.25)', maxHeight: '90vh', overflowY: 'auto' }}
-          >
+        <div onClick={() => setActiveModal(null)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '440px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '22px', border: `2.5px solid ${COLORS.border}`, maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <MascotSprite src={MASCOT.naruhodo} size={34} />
@@ -1143,130 +1566,114 @@ export default function Myreservationspag() {
             </div>
 
             <div style={{ marginBottom: '14px', border: `1.5px solid ${COLORS.border}`, borderRadius: '16px', padding: '12px' }}>
-              <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                🍎 iPhone (Safari) の場合
-              </div>
+              <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark, marginBottom: '6px' }}>🍎 iPhone (Safari)</div>
               <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: COLORS.text, lineHeight: '1.7' }}>
-                <li>画面下の <strong>「共有アイコン（四角から矢印 ⎘）」</strong> をタップ</li>
-                <li>メニューを下にスクロールして <strong>「ホーム画面に追加 ＋」</strong> をタップ</li>
-                <li>右上の <strong>「追加」</strong> をタップして完了！</li>
+                <li>画面下の <strong>「共有（⎘）」</strong> をタップ</li>
+                <li><strong>「ホーム画面に追加 ＋」</strong> をタップして完了！</li>
               </ol>
             </div>
 
             <div style={{ marginBottom: '16px', border: `1.5px solid ${COLORS.border}`, borderRadius: '16px', padding: '12px' }}>
-              <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                🤖 Android (Chrome) の場合
-              </div>
+              <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark, marginBottom: '6px' }}>🤖 Android (Chrome)</div>
               <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: COLORS.text, lineHeight: '1.7' }}>
-                <li>画面右上の <strong>「メニュー（縦の3点リーダー ⋮）」</strong> をタップ</li>
+                <li>画面右上の <strong>「メニュー（⋮）」</strong> をタップ</li>
                 <li><strong>「アプリをインストール」</strong> または <strong>「ホーム画面に追加」</strong> をタップ</li>
-                <li>画面の指示に従って <strong>「インストール」</strong> して完了！</li>
               </ol>
             </div>
 
-            <button
-              onClick={() => setActiveModal(null)}
-              className="btn-bounce btn-pouchi-primary"
-              style={{ width: '100%', padding: '12px', borderRadius: '999px', fontWeight: 900, cursor: 'pointer', fontSize: '13px' }}
-            >
+            <button onClick={() => setActiveModal(null)} className="btn-bounce btn-pouchi-primary" style={{ width: '100%', padding: '12px', borderRadius: '999px', fontWeight: 900, cursor: 'pointer', fontSize: '13px' }}>
               わかったワン！🐾
             </button>
           </div>
         </div>
       )}
 
-      {/* 🎬 劇場への道順動画 ポップアップ再生モーダル */}
-      {activeModal === 'video' && (
-        <div
-          onClick={() => setActiveModal(null)}
-          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: '100%', maxWidth: '500px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '20px', border: `2.5px solid ${COLORS.border}`, boxShadow: '0 12px 30px rgba(0,0,0,0.3)' }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <MascotSprite src={MASCOT.naruhodo} size={30} />
-                <div>
-                  <h3 className="pouchi-font" style={{ margin: 0, fontSize: '15px', fontWeight: 900, color: COLORS.pouchiDark }}>
-                    {selectedVideo.venue}への道のり動画 🚶‍♂️
-                  </h3>
-                  <div style={{ fontSize: '11px', color: COLORS.muted }}>迷わずスムーズにご来場いただけますワン！</div>
-                </div>
-              </div>
-              <button
-                onClick={() => setActiveModal(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted, padding: '4px' }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="video-container" style={{ marginBottom: '14px' }}>
-              <iframe
-                src={selectedVideo.url}
-                title="劇場アクセス動画"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-              />
-            </div>
-
-            <button
-              onClick={() => setActiveModal(null)}
-              className="btn-bounce btn-pouchi-primary"
-              style={{ width: '100%', padding: '12px', borderRadius: '999px', fontWeight: 900, cursor: 'pointer', fontSize: '13px' }}
-            >
-              とじる
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 🛠️ 予約変更モーダル */}
-      {activeModal === 'edit' && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
-          <div style={{ width: '100%', maxWidth: '420px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '22px', border: `2.5px solid ${COLORS.border}` }}>
+      {/* 🔔 通知モード設定モーダル */}
+      {activeModal === 'notifConfig' && (
+        <div onClick={() => setActiveModal(null)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '420px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '22px', border: `2.5px solid ${COLORS.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 className="pouchi-font" style={{ margin: 0, fontSize: '17px', fontWeight: 900, color: COLORS.pouchiDark, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <MascotSprite src={MASCOT.naruhodo} size={30} />
-                予約内容の変更
-              </h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MascotSprite src={MASCOT.naruhodo} size={32} />
+                <h3 className="pouchi-font" style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: COLORS.pouchiDark }}>
+                  通知の受け取り設定 🔔
+                </h3>
+              </div>
               <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={20} /></button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 800, color: COLORS.yellowDeep, display: 'block', marginBottom: '4px' }}>枚数</label>
-                <select value={editCount} onChange={(e) => setEditCount(parseInt(e.target.value, 10))} style={{ width: '100%', padding: '10px', borderRadius: '12px', border: `2px solid ${COLORS.border}`, fontSize: '14px' }}>
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(cnt => (
-                    <option key={cnt} value={cnt}>{cnt}枚</option>
-                  ))}
-                </select>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '18px' }}>
+              <div className={`notif-option-card ${notifMode === 'ALL' ? 'selected' : ''}`} onClick={() => handleSaveNotifMode('ALL')}>
+                <Volume2 size={20} color={COLORS.yellowDeep} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 900 }}>すべて受け取る（推奨）</div>
+                  <div style={{ fontSize: '11px', color: COLORS.muted }}>ポップアップ・音・バッジでお知らせ</div>
+                </div>
               </div>
-
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 800, color: COLORS.yellowDeep, display: 'block', marginBottom: '4px' }}>備考・ご要望</label>
-                <textarea rows={2} value={editMemo} onChange={(e) => setEditMemo(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '12px', border: `2px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '13px' }} />
+              <div className={`notif-option-card ${notifMode === 'BADGE_ONLY' ? 'selected' : ''}`} onClick={() => handleSaveNotifMode('BADGE_ONLY')}>
+                <CircleDot size={20} color={COLORS.yellowDeep} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 900 }}>バッジ・一覧のみ（静かに受け取る）</div>
+                  <div style={{ fontSize: '11px', color: COLORS.muted }}>未読バッジと通知トレイのみ</div>
+                </div>
               </div>
-
-              <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
-                <button onClick={() => setActiveModal(null)} style={{ flex: 1, padding: '12px', borderRadius: '999px', border: `2px solid ${COLORS.border}`, background: 'none', cursor: 'pointer', fontWeight: 800 }}>もどる</button>
-                <button onClick={handleUpdateReservation} className="btn-bounce btn-pouchi-primary" style={{ flex: 2, padding: '12px', borderRadius: '999px', fontWeight: 900, cursor: 'pointer' }}>変更を保存ワン！</button>
+              <div className={`notif-option-card ${notifMode === 'OFF' ? 'selected' : ''}`} onClick={() => handleSaveNotifMode('OFF')}>
+                <BellOff size={20} color={COLORS.danger} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 900 }}>通知を受け取らない</div>
+                  <div style={{ fontSize: '11px', color: COLORS.muted }}>外部通知を停止</div>
+                </div>
               </div>
             </div>
+
+            <button onClick={() => setActiveModal(null)} className="btn-bounce btn-pouchi-primary" style={{ width: '100%', padding: '12px', borderRadius: '999px', fontWeight: 900, cursor: 'pointer', fontSize: '13px' }}>とじる</button>
           </div>
         </div>
       )}
 
-      {/* 💬 匿名アンケートモーダル */}
+      {/* 🔔 通知履歴モーダル */}
+      {activeModal === 'notifList' && (
+        <div onClick={() => setActiveModal(null)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '440px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '22px', border: `2.5px solid ${COLORS.border}`, maxHeight: '85vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MascotSprite src={MASCOT.naruhodo} size={32} />
+                <h3 className="pouchi-font" style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: COLORS.pouchiDark }}>
+                  劇団からのお知らせ 🔔
+                </h3>
+              </div>
+              <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={20} /></button>
+            </div>
+
+            {notifications.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '30px 10px', color: COLORS.muted }}>
+                <MascotSprite src={MASCOT.ticketWait} size={64} style={{ margin: '0 auto 10px auto' }} />
+                <div style={{ fontSize: '13px', fontWeight: 700 }}>新しいお知らせはありませんワン！</div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {notifications.map(notif => (
+                  <div key={notif.id} style={{ backgroundColor: COLORS.surfaceAlt, border: `1.5px solid ${COLORS.yellowSoft}`, borderRadius: '16px', padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark }}>{notif.title}</div>
+                      <span style={{ fontSize: '10px', color: COLORS.muted }}>{new Date(notif.created_at).toLocaleDateString()}</span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: COLORS.text, lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{notif.body}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button onClick={() => setActiveModal(null)} className="btn-bounce btn-pouchi-primary" style={{ width: '100%', padding: '12px', borderRadius: '999px', fontWeight: 900, cursor: 'pointer', fontSize: '13px', marginTop: '16px' }}>とじる</button>
+          </div>
+        </div>
+      )}
+
+      {/* 💬 アンケートモーダル */}
       {activeModal === 'survey' && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
           <div style={{ width: '100%', maxWidth: '420px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '22px', border: `2.5px solid ${COLORS.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 className="pouchi-font" style={{ margin: 0, fontSize: '17px', fontWeight: 900, color: COLORS.pouchiDark }}>
-                観劇アンケート・感想 💌
-              </h3>
+              <h3 className="pouchi-font" style={{ margin: 0, fontSize: '17px', fontWeight: 900, color: COLORS.pouchiDark }}>観劇アンケート 💌</h3>
               <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={20} /></button>
             </div>
 
@@ -1276,68 +1683,36 @@ export default function Myreservationspag() {
                   <MascotSprite src={MASCOT.waai} size={72} />
                 </div>
                 <div className="pouchi-font" style={{ fontWeight: 900, fontSize: '16px' }}>ご感想ありがとワン！</div>
-                <div style={{ fontSize: '12px', color: COLORS.muted, marginTop: '4px' }}>劇団・キャストへ匿名でお届けしたよ🐾</div>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '12px', color: COLORS.muted, marginBottom: '6px', fontWeight: 700 }}>公演の満足度</div>
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
-                    {[1, 2, 3, 4, 5].map(star => (
-                      <button
-                        key={star}
-                        onClick={() => setRating(star)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                      >
-                        <Star size={28} color={COLORS.yellowDeep} fill={rating >= star ? COLORS.yellowDeep : 'none'} />
-                      </button>
-                    ))}
-                  </div>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                  {[1, 2, 3, 4, 5].map(star => (
+                    <button key={star} onClick={() => setRating(star)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                      <Star size={28} color={COLORS.yellowDeep} fill={rating >= star ? COLORS.yellowDeep : 'none'} />
+                    </button>
+                  ))}
                 </div>
-
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 800, color: COLORS.yellowDeep, display: 'block', marginBottom: '4px' }}>
-                    ご感想・応援メッセージ（匿名）
-                  </label>
-                  <textarea
-                    rows={3}
-                    placeholder="面白かったところやキャストへの熱いメッセージをぜひ教えてね！🐾"
-                    value={surveyText}
-                    onChange={(e) => setSurveyText(e.target.value)}
-                    style={{ width: '100%', padding: '10px', borderRadius: '12px', border: `2px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '13px' }}
-                  />
-                </div>
-
+                <textarea
+                  rows={3}
+                  placeholder="面白かったところやキャストへのメッセージを教えてね！🐾"
+                  value={surveyText}
+                  onChange={(e) => setSurveyText(e.target.value)}
+                  style={{ width: '100%', padding: '10px', borderRadius: '12px', border: `2px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '13px' }}
+                />
                 <button
-                  onClick={handleSubmitSurvey}
+                  onClick={async () => {
+                    await supabase.from('feedbacks').insert([{ production_id: selectedRes?.production_id, rating, comment: surveyText.trim(), is_anonymous: true }]);
+                    setSurveySent(true);
+                    setTimeout(() => { setSurveySent(false); setActiveModal(null); setSurveyText(''); }, 2000);
+                  }}
                   className="btn-bounce btn-pouchi-primary"
-                  style={{ width: '100%', padding: '14px', borderRadius: '18px', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '14px' }}
+                  style={{ width: '100%', padding: '14px', borderRadius: '18px', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
                 >
                   <Send size={15} /> 匿名で劇団に届けるワン！
                 </button>
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* ⚠️ キャンセル確認モーダル */}
-      {activeModal === 'cancel' && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}>
-          <div style={{ width: '100%', maxWidth: '380px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '22px', border: `2.5px solid ${COLORS.border}`, textAlign: 'center' }}>
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
-              <MascotSprite src={MASCOT.checking} size={72} />
-            </div>
-            <h3 className="pouchi-font" style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: 900, color: COLORS.danger }}>ご予約のキャンセル</h3>
-            <p style={{ fontSize: '12px', color: COLORS.muted, lineHeight: '1.5', margin: '0 0 16px 0' }}>
-              本当にこの予約をキャンセルしてよろしいですかワン？
-            </p>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={() => setActiveModal(null)} disabled={isCancelling} style={{ flex: 1, padding: '12px', borderRadius: '999px', border: `2px solid ${COLORS.border}`, background: 'none', cursor: 'pointer', fontWeight: 800 }}>もどる</button>
-              <button onClick={handleCancelReservation} disabled={isCancelling} style={{ flex: 1, padding: '12px', borderRadius: '999px', border: 'none', backgroundColor: COLORS.danger, color: '#fff', fontWeight: 900, cursor: 'pointer', opacity: isCancelling ? 0.7 : 1 }}>
-                {isCancelling ? 'キャンセル中...' : 'キャンセル確定'}
-              </button>
-            </div>
           </div>
         </div>
       )}
