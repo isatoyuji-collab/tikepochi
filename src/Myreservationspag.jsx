@@ -5,7 +5,7 @@ import {
   Ticket, Calendar, MapPin, Bell, ExternalLink,
   Smartphone, Star, CheckCircle2, AlertCircle, X,
   Send, Edit3, Video, PlayCircle, HelpCircle, Lock, Unlock, Sparkles, Check,
-  Volume2, BellOff, CircleDot
+  Volume2, BellOff, CircleDot, MessageSquare
 } from 'lucide-react';
 
 const COLORS = {
@@ -110,7 +110,7 @@ export default function Myreservationspag() {
   const [surveyText, setSurveyText] = useState('');
   const [surveySent, setSurveySent] = useState(false);
 
-  // 🔔 通知モード: 'ALL' (すべて) | 'BADGE_ONLY' (バッジ・一覧のみ) | 'OFF' (オフ)
+  // 🔔 通知モード: 'ALL' | 'BADGE_ONLY' | 'OFF'
   const [notifMode, setNotifMode] = useState('ALL');
   const [isLineLinked, setIsLineLinked] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -218,7 +218,6 @@ export default function Myreservationspag() {
     }
   };
 
-  // 🔔 通知モード更新処理
   const handleSaveNotifMode = async (mode) => {
     setNotifMode(mode);
 
@@ -371,6 +370,18 @@ export default function Myreservationspag() {
     const dateFormatted = dStr.replace(/-/g, '');
     const startTime = (stage.start_time || '18:00').replace(':', '') + '00';
     return `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(prod.title)}&dates=${dateFormatted}T${startTime}/${dateFormatted}T${startTime}&location=${encodeURIComponent(prod.venue_name || '劇場')}`;
+  };
+
+  // 💬 LINE問い合わせURL生成（予約者情報プリセット）
+  const getLineInquiryUrl = () => {
+    const firstRes = reservations[0];
+    const prod = firstRes ? productions[firstRes.production_id] : null;
+    const stage = firstRes ? stages[firstRes.stage_id] : null;
+    
+    const stageDateStr = stage ? `${stage.performance_date || stage.stage_date || ''} ${stage.start_time?.slice(0, 5) || ''}開演` : '';
+    const text = `【チケポチ問い合わせ】\n予約番号: #${firstRes?.id?.slice(0, 6) || 'なし'}\nお名前: ${firstRes?.customer_name || 'お客様'} 様\n公演: ${prod?.title || '秋の大笑会'}\n日時: ${stageDateStr}\n---\n【お問い合わせ内容】\n`;
+    
+    return `https://line.me/R/oaMessage/@officeknight/?${encodeURIComponent(text)}`;
   };
 
   const today = new Date().toISOString().slice(0, 10);
@@ -552,7 +563,7 @@ export default function Myreservationspag() {
 
       <div style={{ maxWidth: '540px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
 
-        {/* 🐶 チケポチ ヘッダー（通知トレイ＆通知設定ボタン） */}
+        {/* 🐶 チケポチ ヘッダー */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', backgroundColor: '#ffffff', padding: '12px 16px', borderRadius: '24px', border: `2.5px solid ${COLORS.border}`, boxShadow: '0 4px 0 rgba(245,158,11,0.1), 0 4px 10px rgba(0,0,0,0.04)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <MascotSprite src={MASCOT_ICONAPP} size={52} borderRadius="16px" style={{ boxShadow: '0 3px 0 rgba(217,119,6,0.3)' }} />
@@ -567,7 +578,6 @@ export default function Myreservationspag() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            {/* 🔔 通知トレイボタン（未読バッジ付き） */}
             <button
               onClick={handleOpenNotifModal}
               className="btn-bounce"
@@ -610,7 +620,6 @@ export default function Myreservationspag() {
               )}
             </button>
 
-            {/* ⚙️ 通知設定ボタン（モード表示付き） */}
             <button
               onClick={() => setActiveModal('notifConfig')}
               className="btn-bounce"
@@ -865,6 +874,50 @@ export default function Myreservationspag() {
           )}
         </div>
 
+        {/* 💬 お問い合わせ窓口カード（LINE公式トーク直接起動） */}
+        <div style={{
+          backgroundColor: '#ffffff',
+          border: `2.5px solid ${COLORS.border}`,
+          borderRadius: '24px',
+          padding: '18px',
+          marginBottom: '24px',
+          boxShadow: '0 4px 0 rgba(245,158,11,0.1)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+            <MascotSprite src={MASCOT.naruhodo} size={30} />
+            <div className="pouchi-font" style={{ fontSize: '15px', fontWeight: 900, color: COLORS.pouchiDark }}>
+              ご質問・お問い合わせ窓口 💬
+            </div>
+          </div>
+
+          <div style={{ fontSize: '12px', color: COLORS.muted, lineHeight: '1.5', marginBottom: '14px' }}>
+            当日の遅刻・道順の確認や座席に関するご相談など、劇団公式LINEよりお気軽にお問い合わせくださいワン！🐾
+          </div>
+
+          <a
+            href={getLineInquiryUrl()}
+            target="_blank"
+            rel="noreferrer"
+            className="btn-bounce"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              backgroundColor: '#06c755',
+              color: '#ffffff',
+              padding: '12px',
+              borderRadius: '999px',
+              fontWeight: 900,
+              fontSize: '13px',
+              textDecoration: 'none',
+              boxShadow: '0 3px 0 #049543'
+            }}
+          >
+            <MessageSquare size={16} /> LINEでお問い合わせする
+          </a>
+        </div>
+
         {/* 📜 過去の観劇履歴 ＆ 匿名アンケート */}
         {pastReservations.length > 0 && (
           <div>
@@ -929,8 +982,6 @@ export default function Myreservationspag() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '18px' }}>
-              
-              {/* 1. すべて受け取る */}
               <div
                 className={`notif-option-card ${notifMode === 'ALL' ? 'selected' : ''}`}
                 onClick={() => handleSaveNotifMode('ALL')}
@@ -943,7 +994,6 @@ export default function Myreservationspag() {
                 <input type="radio" name="notifModeOpt" checked={notifMode === 'ALL'} readOnly style={{ accentColor: COLORS.yellowDeep }} />
               </div>
 
-              {/* 2. バッジ・一覧のみ */}
               <div
                 className={`notif-option-card ${notifMode === 'BADGE_ONLY' ? 'selected' : ''}`}
                 onClick={() => handleSaveNotifMode('BADGE_ONLY')}
@@ -956,7 +1006,6 @@ export default function Myreservationspag() {
                 <input type="radio" name="notifModeOpt" checked={notifMode === 'BADGE_ONLY'} readOnly style={{ accentColor: COLORS.yellowDeep }} />
               </div>
 
-              {/* 3. 通知オフ */}
               <div
                 className={`notif-option-card ${notifMode === 'OFF' ? 'selected' : ''}`}
                 onClick={() => handleSaveNotifMode('OFF')}
@@ -968,7 +1017,6 @@ export default function Myreservationspag() {
                 </div>
                 <input type="radio" name="notifModeOpt" checked={notifMode === 'OFF'} readOnly style={{ accentColor: COLORS.yellowDeep }} />
               </div>
-
             </div>
 
             <button
