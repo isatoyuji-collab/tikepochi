@@ -4,7 +4,8 @@ import { supabase } from './supabaseClient';
 import {
   Calendar, MapPin, Ticket, Mail, Phone, Edit3, Send,
   Users, CheckSquare, Square, X,
-  CreditCard, Building2, Banknote, Share2, Sparkles, Video
+  CreditCard, Building2, Banknote, Share2, Sparkles, Video,
+  Gift, Trash2, ExternalLink, Wallet
 } from 'lucide-react';
 
 const COLORS = {
@@ -24,6 +25,9 @@ const COLORS = {
   success: '#1f9a56',
   danger: '#e85a45',
 };
+
+// チケットバック単価（1枚あたり）
+const TICKET_BACK_UNIT_YEN = 500;
 
 const MASCOT = {
   iconApp: '/images/mascot/icon_app_yellow.png',
@@ -81,7 +85,7 @@ const PageChrome = () => (
     }
     .btn-pouchi-primary:active { box-shadow: 0 1px 0 #d9820a; transform: translateY(3px); }
     .btn-pouchi-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-    
+
     .btn-channel {
       flex: 1;
       padding: 10px 8px;
@@ -179,12 +183,16 @@ export default function StaffReservationsPage() {
   const [reservations, setReservations] = useState([]);
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [activeTab, setActiveTab] = useState('mine');
   const [stageFilter, setStageFilter] = useState('all');
 
   const [editTarget, setEditTarget] = useState(null);
   const [editCount, setEditCount] = useState(1);
   const [editStageId, setEditStageId] = useState('');
+
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const [selectedIds, setSelectedIds] = useState([]);
   const [messageTarget, setMessageTarget] = useState(null);
@@ -207,11 +215,13 @@ export default function StaffReservationsPage() {
 
   const loadData = async (staff) => {
     setLoading(true);
+    setLoadError('');
     try {
-      const { data: staffRows } = await supabase
+      const { data: staffRows, error: staffErr } = await supabase
         .from('cast_staff')
         .select('*')
         .eq('name', staff.trim());
+      if (staffErr) throw staffErr;
 
       const staffRow = staffRows && staffRows.length > 0 ? staffRows[0] : null;
       setCanViewAll(staffRow?.ticket_visibility === 'all_stages');
@@ -220,7 +230,8 @@ export default function StaffReservationsPage() {
       if (staffRow?.organization_id) {
         prodQuery = prodQuery.eq('organization_id', staffRow.organization_id);
       }
-      const { data: prodList } = await prodQuery;
+      const { data: prodList, error: prodErr } = await prodQuery;
+      if (prodErr) throw prodErr;
 
       const validProds = prodList || [];
       const sortedProds = validProds.sort((a, b) => {
@@ -241,15 +252,6 @@ export default function StaffReservationsPage() {
           supabase.from('stages').select('*').in('production_id', prodIds).order('start_time', { ascending: true }),
           supabase.from('ticket_types').select('*').in('production_id', prodIds),
           supabase.from('reservations').select('*').in('production_id', prodIds).order('created_at', { ascending: false }),
-        ]);
-        stageData = stageRes.data || [];
-        ticketData = ticketRes.data || [];
-        resData = resRes.data || [];
-      } else {
-        const [stageRes, ticketRes, resRes] = await Promise.all([
-          supabase.from('stages').select('*').order('start_time', { ascending: true }),
-          supabase.from('ticket_types').select('*'),
-          supabase.from('reservations').select('*').order('created_at', { ascending: false }),
         ]);
         stageData = stageRes.data || [];
         ticketData = ticketRes.data || [];
@@ -277,6 +279,7 @@ export default function StaffReservationsPage() {
       setReservations(resData || []);
     } catch (e) {
       console.error('StaffReservationsPage load error:', e);
+      setLoadError(e.message || 'データの読み込みに失敗しました。');
     } finally {
       setLoading(false);
     }
@@ -290,6 +293,16 @@ export default function StaffReservationsPage() {
       return assigned === cleanTarget;
     });
   }, [reservations, staffName]);
+
+  // 公演別にグループ化（A公演セクション／B公演セクション）
+  const myReservationsByProduction = useMemo(() => {
+    const groups = [];
+    productions.forEach(p => {
+      const rows = myReservations.filter(r => r.production_id === p.id);
+      if (rows.length > 0) groups.push({ production: p, rows });
+    });
+    return groups;
+  }, [myReservations, productions]);
 
   const allFiltered = useMemo(() => {
     if (stageFilter === 'all') return reservations;
@@ -306,11 +319,19 @@ export default function StaffReservationsPage() {
     return flat;
   }, [productions, stagesMap]);
 
+  // ダッシュボード指標：担当枚数 ＆ チケットバック額（担当人数は担当枚数とほぼ同義のため廃止）
   const dashboardStats = useMemo(() => {
     const totalCount = myReservations.reduce((sum, r) => sum + (r.count || 0), 0);
-    const totalPeople = myReservations.length;
-    return { totalCount, totalPeople };
+    const ticketBackYen = totalCount * TICKET_BACK_UNIT_YEN;
+    return { totalCount, ticketBackYen };
   }, [myReservations]);
+
+  // 自分の扱いURL（代理予約用）。短縮ID方式はAdminStaffSettings.jsxのgetShortStaffUrlと同じロジック
+  const myBookingUrl = useMemo(() => {
+    if (!productions[0] || !staffName) return '';
+    const shortId = productions[0].id.slice(0, 8);
+    return `${window.location.origin}/r/${shortId}?staff=${encodeURIComponent(staffName)}`;
+  }, [productions, staffName]);
 
   const getProdAndStage = (r) => {
     const prod = productions.find(p => p.id === r.production_id) || {};
@@ -337,6 +358,25 @@ export default function StaffReservationsPage() {
       loadData(staffName);
     } catch (e) {
       alert('変更に失敗しました: ' + e.message);
+    }
+  };
+
+  // キャンセル（担当者権限で削除可能）
+  const handleConfirmCancel = async () => {
+    if (!cancelTarget) return;
+    setIsCancelling(true);
+    try {
+      const { error } = await supabase
+        .from('reservations')
+        .delete()
+        .eq('id', cancelTarget.id);
+      if (error) throw error;
+      setCancelTarget(null);
+      loadData(staffName);
+    } catch (e) {
+      alert('キャンセルに失敗しました: ' + e.message);
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -413,7 +453,6 @@ export default function StaffReservationsPage() {
       return;
     }
 
-    // 1. 🟢 LINEで送る場合：LINE共有URLを起動
     if (selectedChannel === 'line') {
       const shareUrl = `https://line.me/R/msg/text/?${encodeURIComponent(messageBody)}`;
       window.open(shareUrl, '_blank');
@@ -425,7 +464,6 @@ export default function StaffReservationsPage() {
       return;
     }
 
-    // 2. 💌 マイページ or ✉️ メールの場合：Supabaseへ記録
     setIsSending(true);
     try {
       const targets = messageTarget === 'bulk'
@@ -465,6 +503,19 @@ export default function StaffReservationsPage() {
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="pouchi-page-bg" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 16px', boxSizing: 'border-box', textAlign: 'center' }}>
+        <PageChrome />
+        <MascotSprite src={MASCOT.checking} size={84} />
+        <h2 className="pouchi-font" style={{ fontSize: '17px', fontWeight: 900, margin: '14px 0 8px 0', color: COLORS.pouchiDark }}>
+          データが読み込めなかったワン
+        </h2>
+        <p style={{ fontSize: '13px', color: COLORS.muted, maxWidth: '340px', lineHeight: '1.6' }}>{loadError}</p>
+      </div>
+    );
+  }
+
   if (!staffName) {
     return (
       <div className="pouchi-page-bg" style={{ minHeight: '100vh', padding: '32px 16px', boxSizing: 'border-box' }}>
@@ -495,6 +546,19 @@ export default function StaffReservationsPage() {
             <div style={{ fontSize: '11px', color: COLORS.muted, fontWeight: 700 }}>チケット、ポチッとしよ！🐾</div>
           </div>
         </div>
+
+        {/* 代理予約導線 */}
+        {myBookingUrl && (
+          <a
+            href={myBookingUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="btn-bounce btn-pouchi-primary"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '12px', borderRadius: '999px', fontWeight: 900, fontSize: '13px', textDecoration: 'none', marginBottom: '14px' }}
+          >
+            <ExternalLink size={15} /> お客様の代わりに予約する（自分の扱いURLを開く）
+          </a>
+        )}
 
         {/* タブ切り替え */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
@@ -529,7 +593,7 @@ export default function StaffReservationsPage() {
         {/* ============ 自分の予約タブ ============ */}
         {activeTab === 'mine' && (
           <>
-            {/* ダッシュボード */}
+            {/* ダッシュボード：担当枚数 ＆ チケットバック額 */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '18px' }}>
               <div style={{ backgroundColor: '#fff', border: `2.5px solid ${COLORS.border}`, borderRadius: '20px', padding: '16px', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 4px 0 rgba(245,158,11,0.1)' }}>
                 <MascotSprite src={MASCOT.pochitto} size={44} />
@@ -539,15 +603,15 @@ export default function StaffReservationsPage() {
                 </div>
               </div>
               <div style={{ backgroundColor: '#fff', border: `2.5px solid ${COLORS.border}`, borderRadius: '20px', padding: '16px', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 4px 0 rgba(245,158,11,0.1)' }}>
-                <Users size={38} color={COLORS.blue} />
+                <Wallet size={38} color={COLORS.blue} />
                 <div>
-                  <div style={{ fontSize: '11px', color: COLORS.muted, fontWeight: 700 }}>担当人数</div>
-                  <div className="pouchi-font" style={{ fontSize: '24px', fontWeight: 900, color: COLORS.blue }}>{dashboardStats.totalPeople}<span style={{ fontSize: '12px' }}>人</span></div>
+                  <div style={{ fontSize: '11px', color: COLORS.muted, fontWeight: 700 }}>チケットバック額</div>
+                  <div className="pouchi-font" style={{ fontSize: '22px', fontWeight: 900, color: COLORS.blue }}>¥{dashboardStats.ticketBackYen.toLocaleString()}</div>
                 </div>
               </div>
             </div>
 
-            {myReservations.length === 0 ? (
+            {myReservationsByProduction.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '30px 20px', backgroundColor: '#fff', borderRadius: '20px', border: `2.5px solid ${COLORS.border}` }}>
                 <MascotSprite src={MASCOT.ticketWait} size={72} style={{ margin: '0 auto 8px auto', display: 'block' }} />
                 <div className="pouchi-font" style={{ fontWeight: 800, fontSize: '13px', color: COLORS.muted }}>まだ担当の予約はありませんワン</div>
@@ -568,77 +632,105 @@ export default function StaffReservationsPage() {
                   </div>
                 )}
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {myReservations.map(r => {
-                    const { prod, stage, tk } = getProdAndStage(r);
-                    const isA = prod.title?.includes('あなたとコンビ');
-                    const isSelected = selectedIds.includes(r.id);
-
+                {/* 公演別グループ表示 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+                  {myReservationsByProduction.map(({ production, rows }) => {
+                    const isA = production.title?.includes('あなたとコンビ');
                     return (
-                      <div key={r.id} style={{ backgroundColor: '#fff', border: `2px solid ${isSelected ? COLORS.yellowDeep : COLORS.border}`, borderRadius: '20px', padding: '16px', position: 'relative' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <button onClick={() => toggleSelect(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: isSelected ? COLORS.yellowDeep : COLORS.muted }}>
-                              {isSelected ? <CheckSquare size={20} /> : <Square size={20} />}
-                            </button>
-                            <StickerBadge bg={isA ? COLORS.yellowDeep : COLORS.blue} rotate={-3}>{isA ? 'A公演' : 'B公演'}</StickerBadge>
-                          </div>
-                          <button
-                            onClick={() => openMessageModal(r)}
-                            className="btn-bounce"
-                            style={{ padding: '6px 12px', borderRadius: '999px', border: `2px solid ${COLORS.yellowDeep}`, backgroundColor: COLORS.surfaceAlt, color: COLORS.yellowDeep, fontSize: '11px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                          >
-                            <Send size={12} /> お礼・連絡
-                          </button>
+                      <div key={production.id}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                          <StickerBadge bg={isA ? COLORS.yellowDeep : COLORS.blue} rotate={-3}>{isA ? 'A公演' : 'B公演'}</StickerBadge>
+                          <span className="pouchi-font" style={{ fontSize: '13px', fontWeight: 800, color: COLORS.pouchiDark }}>{production.title}</span>
+                          <span style={{ fontSize: '11px', color: COLORS.muted }}>（{rows.length}件）</span>
                         </div>
 
-                        <div className="pouchi-font" style={{ fontSize: '15px', fontWeight: 900, color: COLORS.pouchiDark, marginBottom: '8px' }}>
-                          {r.customer_name} 様
-                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          {rows.map(r => {
+                            const { stage, tk } = getProdAndStage(r);
+                            const isSelected = selectedIds.includes(r.id);
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: COLORS.text, marginBottom: '10px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Calendar size={14} color={COLORS.yellowDeep} />
-                            {stage.performance_date || stage.stage_date} {stage.start_time?.slice(0, 5)}開演
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Ticket size={14} color={COLORS.yellowDeep} />
-                            {tk.name} × {r.count}枚
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: COLORS.muted }}>
-                            <Mail size={14} /> {r.customer_email}
-                          </div>
-                          {r.customer_phone && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: COLORS.muted }}>
-                              <Phone size={14} /> {r.customer_phone}
-                            </div>
-                          )}
-                          {(() => {
-                            const { Icon: PayIcon, methodLabel, statusLabel, statusColor, statusBg } = getPaymentInfo(r);
                             return (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                <PayIcon size={14} color={COLORS.muted} />
-                                <span>{methodLabel}</span>
-                                <span style={{ fontSize: '11px', fontWeight: 800, color: statusColor, backgroundColor: statusBg, padding: '2px 8px', borderRadius: '999px' }}>
-                                  {statusLabel}
-                                </span>
+                              <div key={r.id} style={{ backgroundColor: '#fff', border: `2px solid ${isSelected ? COLORS.yellowDeep : COLORS.border}`, borderRadius: '20px', padding: '16px', position: 'relative' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <button onClick={() => toggleSelect(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: isSelected ? COLORS.yellowDeep : COLORS.muted }}>
+                                      {isSelected ? <CheckSquare size={20} /> : <Square size={20} />}
+                                    </button>
+                                    {r.gift_received && (
+                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: 800, color: '#b45309', backgroundColor: '#fef3c7', padding: '3px 8px', borderRadius: '999px' }}>
+                                        <Gift size={12} /> 差し入れあり
+                                      </span>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={() => openMessageModal(r)}
+                                    className="btn-bounce"
+                                    style={{ padding: '6px 12px', borderRadius: '999px', border: `2px solid ${COLORS.yellowDeep}`, backgroundColor: COLORS.surfaceAlt, color: COLORS.yellowDeep, fontSize: '11px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                  >
+                                    <Send size={12} /> お礼・連絡
+                                  </button>
+                                </div>
+
+                                <div className="pouchi-font" style={{ fontSize: '15px', fontWeight: 900, color: COLORS.pouchiDark, marginBottom: '8px' }}>
+                                  {r.customer_name} 様
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: COLORS.text, marginBottom: '10px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Calendar size={14} color={COLORS.yellowDeep} />
+                                    {stage.performance_date || stage.stage_date} {stage.start_time?.slice(0, 5)}開演
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Ticket size={14} color={COLORS.yellowDeep} />
+                                    {tk.name} × {r.count}枚
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: COLORS.muted }}>
+                                    <Mail size={14} /> {r.customer_email}
+                                  </div>
+                                  {r.customer_phone && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: COLORS.muted }}>
+                                      <Phone size={14} /> {r.customer_phone}
+                                    </div>
+                                  )}
+                                  {(() => {
+                                    const { Icon: PayIcon, methodLabel, statusLabel, statusColor, statusBg } = getPaymentInfo(r);
+                                    return (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                        <PayIcon size={14} color={COLORS.muted} />
+                                        <span>{methodLabel}</span>
+                                        <span style={{ fontSize: '11px', fontWeight: 800, color: statusColor, backgroundColor: statusBg, padding: '2px 8px', borderRadius: '999px' }}>
+                                          {statusLabel}
+                                        </span>
+                                      </div>
+                                    );
+                                  })()}
+                                  {parseVisibleMemo(r.memo) && (
+                                    <div style={{ fontSize: '12px', color: COLORS.muted, backgroundColor: COLORS.surfaceAlt, padding: '6px 10px', borderRadius: '10px', marginTop: '2px' }}>
+                                      備考：{parseVisibleMemo(r.memo)}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                  <button
+                                    onClick={() => openEditModal(r)}
+                                    className="btn-bounce"
+                                    style={{ flex: 1, padding: '8px 14px', borderRadius: '999px', border: `2px solid ${COLORS.border}`, backgroundColor: '#fff', color: COLORS.text, fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                                  >
+                                    <Edit3 size={13} /> 枚数・回を変更
+                                  </button>
+                                  <button
+                                    onClick={() => setCancelTarget(r)}
+                                    className="btn-bounce"
+                                    style={{ padding: '8px 14px', borderRadius: '999px', border: `2px solid #fecdd3`, backgroundColor: '#fff', color: COLORS.danger, fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                  >
+                                    <Trash2 size={13} /> キャンセル
+                                  </button>
+                                </div>
                               </div>
                             );
-                          })()}
-                          {parseVisibleMemo(r.memo) && (
-                            <div style={{ fontSize: '12px', color: COLORS.muted, backgroundColor: COLORS.surfaceAlt, padding: '6px 10px', borderRadius: '10px', marginTop: '2px' }}>
-                              備考：{parseVisibleMemo(r.memo)}
-                            </div>
-                          )}
+                          })}
                         </div>
-
-                        <button
-                          onClick={() => openEditModal(r)}
-                          className="btn-bounce"
-                          style={{ padding: '8px 14px', borderRadius: '999px', border: `2px solid ${COLORS.border}`, backgroundColor: '#fff', color: COLORS.text, fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                        >
-                          <Edit3 size={13} /> 枚数・回を変更
-                        </button>
                       </div>
                     );
                   })}
@@ -750,6 +842,25 @@ export default function StaffReservationsPage() {
         );
       })()}
 
+      {/* ⚠️ キャンセル確認モーダル */}
+      {cancelTarget && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
+          <div style={{ width: '100%', maxWidth: '380px', backgroundColor: '#fff', borderRadius: '24px', padding: '22px', border: `2.5px solid ${COLORS.border}`, textAlign: 'center' }}>
+            <MascotSprite src={MASCOT.checking} size={72} style={{ margin: '0 auto 8px auto', display: 'block' }} />
+            <h3 className="pouchi-font" style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: 900, color: COLORS.danger }}>ご予約のキャンセル</h3>
+            <p style={{ fontSize: '12px', color: COLORS.muted, lineHeight: '1.5', margin: '0 0 16px 0' }}>
+              {cancelTarget.customer_name} 様の予約をキャンセルします。よろしいですか？
+            </p>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={() => setCancelTarget(null)} disabled={isCancelling} style={{ flex: 1, padding: '12px', borderRadius: '999px', border: `2px solid ${COLORS.border}`, background: 'none', cursor: 'pointer', fontWeight: 800 }}>もどる</button>
+              <button onClick={handleConfirmCancel} disabled={isCancelling} style={{ flex: 1, padding: '12px', borderRadius: '999px', border: 'none', backgroundColor: COLORS.danger, color: '#fff', fontWeight: 900, cursor: 'pointer', opacity: isCancelling ? 0.7 : 1 }}>
+                {isCancelling ? 'キャンセル中...' : 'キャンセル確定'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 💌 お礼・リマインド送信モーダル（マルチチャネル＆自動差し込み） */}
       {messageTarget && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
@@ -771,76 +882,41 @@ export default function StaffReservationsPage() {
               </div>
             ) : (
               <>
-                {/* 1. 送信方法の選択 */}
                 <div style={{ marginBottom: '14px' }}>
                   <label style={{ fontSize: '12px', fontWeight: 800, color: COLORS.yellowDeep, display: 'block', marginBottom: '6px' }}>
                     1. 送信方法を選択
                   </label>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedChannel('line')}
-                      className={`btn-channel ${selectedChannel === 'line' ? 'active' : ''}`}
-                    >
+                    <button type="button" onClick={() => setSelectedChannel('line')} className={`btn-channel ${selectedChannel === 'line' ? 'active' : ''}`}>
                       <span style={{ fontSize: '18px' }}>🟢</span>
                       <span>LINEで送る</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedChannel('mypage')}
-                      className={`btn-channel ${selectedChannel === 'mypage' ? 'active' : ''}`}
-                    >
+                    <button type="button" onClick={() => setSelectedChannel('mypage')} className={`btn-channel ${selectedChannel === 'mypage' ? 'active' : ''}`}>
                       <span style={{ fontSize: '18px' }}>💌</span>
                       <span>マイページに届ける</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedChannel('email')}
-                      className={`btn-channel ${selectedChannel === 'email' ? 'active' : ''}`}
-                    >
+                    <button type="button" onClick={() => setSelectedChannel('email')} className={`btn-channel ${selectedChannel === 'email' ? 'active' : ''}`}>
                       <span style={{ fontSize: '18px' }}>✉️</span>
                       <span>メールで送信</span>
                     </button>
                   </div>
                 </div>
 
-                {/* 2. テンプレート切り替え */}
                 <div style={{ marginBottom: '12px' }}>
                   <label style={{ fontSize: '12px', fontWeight: 800, color: COLORS.yellowDeep, display: 'block', marginBottom: '6px' }}>
                     2. テンプレートを選ぶ（自動差し込み）
                   </label>
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      onClick={() => handleTemplateChange('thanks')}
-                      className={`tmpl-tab ${templateType === 'thanks' ? 'active' : ''}`}
-                    >
-                      💌 予約お礼
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleTemplateChange('remind')}
-                      className={`tmpl-tab ${templateType === 'remind' ? 'active' : ''}`}
-                    >
-                      ⏰ 前日リマインド（動画付）
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleTemplateChange('custom')}
-                      className={`tmpl-tab ${templateType === 'custom' ? 'active' : ''}`}
-                    >
-                      ✏️ 自由作成
-                    </button>
+                    <button type="button" onClick={() => handleTemplateChange('thanks')} className={`tmpl-tab ${templateType === 'thanks' ? 'active' : ''}`}>💌 予約お礼</button>
+                    <button type="button" onClick={() => handleTemplateChange('remind')} className={`tmpl-tab ${templateType === 'remind' ? 'active' : ''}`}>⏰ 前日リマインド（動画付）</button>
+                    <button type="button" onClick={() => handleTemplateChange('custom')} className={`tmpl-tab ${templateType === 'custom' ? 'active' : ''}`}>✏️ 自由作成</button>
                   </div>
                 </div>
 
-                {/* 3. メッセージ編集 */}
                 <div style={{ marginBottom: '14px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                    <label style={{ fontSize: '12px', fontWeight: 800, color: COLORS.yellowDeep }}>
-                      3. メッセージ内容（自由に編集できます）
-                    </label>
-                  </div>
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: COLORS.yellowDeep, display: 'block', marginBottom: '4px' }}>
+                    3. メッセージ内容（自由に編集できます）
+                  </label>
                   <textarea
                     rows={8}
                     value={messageBody}
