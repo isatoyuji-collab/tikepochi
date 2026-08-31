@@ -22,19 +22,30 @@ import { LogOut, Building2 } from 'lucide-react';
 const ADMIN_BYPASS_KEY = "knight2026admin";
 
 export default function App() {
-  const portalMatch = window.location.pathname.match(/^\/p\/([a-zA-Z0-9-]+)$/);
-  if (portalMatch) return <CustomerPortal orgId={portalMatch[1]} />;
+  const pathname = window.location.pathname;
 
-  const reservationMatch = window.location.pathname.match(/^\/r\/([a-zA-Z0-9-]+)$/);
-  if (reservationMatch) return <CustomerReservationForm productionId={reservationMatch[1]} />;
+  // 1. 担当キャスト・スタッフ向け個別ページ（最優先で判定）
+  // アクセス例: https://tikepochi-eta.vercel.app/staff?staff=たーりー
+  if (pathname === '/staff' || pathname === '/staff/') {
+    return <StaffReservationsPage />;
+  }
 
-  if (window.location.pathname === '/mypage') return <Myreservationspag />;
+  // 2. お客様マイページ
+  if (pathname === '/mypage' || pathname === '/mypage/') {
+    return <Myreservationspag />;
+  }
 
-  // 担当キャスト・スタッフ向け個別ページ
-  // アクセス例: https://tikepochi-eta.vercel.app/staff?staff=山田太郎
-  // ※ ?staff= の値は AdminStaffSettings.jsx で発行する personalUrl の
-  //   末尾クエリと一致させる必要があります（要確認）
-  if (window.location.pathname === '/staff') return <StaffReservationsPage />;
+  // 3. 劇団ポータル
+  const portalMatch = pathname.match(/^\/p\/([a-zA-Z0-9-]+)$/);
+  if (portalMatch) {
+    return <CustomerPortal orgId={portalMatch[1]} />;
+  }
+
+  // 4. 一般予約フォーム
+  const reservationMatch = pathname.match(/^\/r\/([a-zA-Z0-9-]+)$/);
+  if (reservationMatch) {
+    return <CustomerReservationForm productionId={reservationMatch[1]} />;
+  }
 
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
