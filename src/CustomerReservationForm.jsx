@@ -260,6 +260,7 @@ export default function CustomerReservationForm({ productionId }) {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [mypageToken, setMypageToken] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [urlStaffParam, setUrlStaffParam] = useState('');
 
   useEffect(() => {
     async function loadData() {
@@ -267,6 +268,7 @@ export default function CustomerReservationForm({ productionId }) {
       try {
         const urlParams = new URLSearchParams(window.location.search);
         const staffParam = urlParams.get('staff') || '';
+        setUrlStaffParam(staffParam);
 
         let thisProd = null;
         if (productionId.length === 36) {
@@ -701,6 +703,20 @@ export default function CustomerReservationForm({ productionId }) {
             vol.3 & vol.3.5 『秋の大笑会-ダイエンカイ-』
           </h1>
         </div>
+
+        {/* 🐾 扱い担当者バナー：個人URL経由で開いた場合のみ表示 */}
+        {urlStaffParam && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+            backgroundColor: COLORS.surfaceAlt, border: `2px solid ${COLORS.yellowDeep}`,
+            borderRadius: '999px', padding: '8px 16px', marginBottom: '16px',
+          }}>
+            <MascotSprite src={MASCOT.pochitto} size={24} />
+            <span className="pouchi-font" style={{ fontSize: '13px', fontWeight: 800, color: COLORS.pouchiDark }}>
+              <strong style={{ color: COLORS.yellowDeep }}>{urlStaffParam}</strong> さん扱いのご予約フォームです
+            </span>
+          </div>
+        )}
 
         <ProgressPaws steps={steps} stepIndex={stepIndex} />
 
