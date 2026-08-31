@@ -1,9 +1,10 @@
+// src/Myreservationspag.jsx (TIKEPOCHI側 - お客様マイページ)
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import {
   Ticket, Calendar, MapPin, Bell, ExternalLink,
   Smartphone, Star, CheckCircle2, AlertCircle, X,
-  Send, Edit3
+  Send, Edit3, Video, PlayCircle
 } from 'lucide-react';
 
 // -----------------------------------------------------------------
@@ -29,8 +30,7 @@ const COLORS = {
 };
 
 // -----------------------------------------------------------------
-// マスコット画像（切り出し済み・個別ファイル）
-// public/images/mascot/ に配置
+// マスコット画像
 // -----------------------------------------------------------------
 const MASCOT = {
   iconApp: '/images/mascot/icon_app_yellow.png',
@@ -58,7 +58,6 @@ const MascotSprite = ({ src, size = 48, borderRadius = '14px', style = {} }) => 
   />
 );
 
-// ステッカー風バッジ（少し傾いた丸いラベル）
 const StickerBadge = ({ children, bg, color = '#fff', rotate = -3 }) => (
   <span
     style={{
@@ -80,6 +79,31 @@ const StickerBadge = ({ children, bg, color = '#fff', rotate = -3 }) => (
   </span>
 );
 
+// YouTube等のURLを埋め込み用URLに正規化するヘルパー
+function getEmbedVideoUrl(rawUrl) {
+  if (!rawUrl) return '';
+  let url = rawUrl.trim();
+
+  // 短縮URL (https://youtu.be/VIDEO_ID)
+  const shortMatch = url.match(/youtu\.be\/([a-zA-Z0-9_-]+)/);
+  if (shortMatch && shortMatch[1]) {
+    return `https://www.youtube.com/embed/${shortMatch[1]}?autoplay=1&rel=0`;
+  }
+
+  // 通常URL (https://www.youtube.com/watch?v=VIDEO_ID)
+  const watchMatch = url.match(/[?&]v=([a-zA-Z0-9_-]+)/);
+  if (watchMatch && watchMatch[1]) {
+    return `https://www.youtube.com/embed/${watchMatch[1]}?autoplay=1&rel=0`;
+  }
+
+  // すでに embed または その他のURL
+  if (url.includes('/embed/')) {
+    return url.includes('?') ? `${url}&autoplay=1` : `${url}?autoplay=1`;
+  }
+
+  return url;
+}
+
 export default function Myreservationspag() {
   const [token, setToken] = useState('');
   const [reservations, setReservations] = useState([]);
@@ -90,6 +114,7 @@ export default function Myreservationspag() {
 
   const [activeModal, setActiveModal] = useState(null);
   const [selectedRes, setSelectedRes] = useState(null);
+  const [selectedVideo, setSelectedVideo] = useState({ url: '', title: '', venue: '' });
   const [editCount, setEditCount] = useState(1);
   const [editMemo, setEditMemo] = useState('');
 
@@ -182,6 +207,16 @@ export default function Myreservationspag() {
     window.location.href = liffUrl;
   };
 
+  const handleOpenVideo = (prod) => {
+    if (!prod?.venue_video_url) return;
+    setSelectedVideo({
+      url: getEmbedVideoUrl(prod.venue_video_url),
+      title: prod.title || '',
+      venue: prod.venue_name || '劇場'
+    });
+    setActiveModal('video');
+  };
+
   const handleUpdateReservation = async () => {
     if (!selectedRes) return;
     try {
@@ -263,7 +298,6 @@ export default function Myreservationspag() {
     }
   });
 
-  // 肉球柄のうっすらした背景テクスチャ + 隅に潜むチケポチ、共通で使う
   const PageChrome = () => (
     <style>{`
       @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Zen+Kaku+Gothic+New:wght@500;700;900&display=swap');
@@ -327,6 +361,42 @@ export default function Myreservationspag() {
       .btn-pouchi-primary:active {
         box-shadow: 0 1px 0 #d9820a;
         transform: translateY(3px);
+      }
+
+      .btn-video {
+        background-color: #fef2f2;
+        border: 1.5px solid #fca5a5;
+        color: #dc2626;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 800;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        transition: all 0.15s ease;
+      }
+      .btn-video:hover {
+        background-color: #fee2e2;
+      }
+
+      .video-container {
+        position: relative;
+        width: 100%;
+        padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+        height: 0;
+        border-radius: 16px;
+        overflow: hidden;
+        background-color: #000;
+      }
+      .video-container iframe {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
       }
 
       @keyframes pouchi-pop {
@@ -409,7 +479,7 @@ export default function Myreservationspag() {
           </button>
         </div>
 
-        {/* 🍁 秋の大笑会2026 特典コンテンツサイトへの専用バナー */}
+        {/* 🍁 特典コンテンツサイトへの専用バナー */}
         <div
           onClick={() => window.open(`https://office-knight-partner-site.vercel.app?token=${token}`, '_blank')}
           className="btn-bounce"
@@ -536,10 +606,23 @@ export default function Myreservationspag() {
                         <strong>{stage.performance_date || stage.stage_date} {stage.start_time?.slice(0, 5)}開演</strong>
                         {stage.team_name && <span style={{ fontSize: '11px', color: COLORS.yellowDeep, fontWeight: 700 }}>({stage.team_name})</span>}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: COLORS.muted }}>
-                        <MapPin size={15} color={COLORS.yellowDeep} />
-                        <span>{prod.venue_name || '布施PEベース'}</span>
+
+                      {/* 会場名 ＆ 🎬 道のり動画ボタン */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: COLORS.muted }}>
+                          <MapPin size={15} color={COLORS.yellowDeep} />
+                          <span>{prod.venue_name || '布施PEベース'}</span>
+                        </div>
+                        {prod.venue_video_url && (
+                          <button
+                            onClick={() => handleOpenVideo(prod)}
+                            className="btn-video btn-bounce"
+                          >
+                            <PlayCircle size={13} /> 🎬 道順動画
+                          </button>
+                        )}
                       </div>
+
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: COLORS.pouchiDark, borderTop: `1.5px dashed ${COLORS.yellowSoft}`, paddingTop: '6px', marginTop: '2px' }}>
                         <Ticket size={15} color={COLORS.yellowDeep} />
                         <span>{tk.name} × <strong>{res.count}枚</strong></span>
@@ -627,6 +710,54 @@ export default function Myreservationspag() {
         )}
 
       </div>
+
+      {/* 🎬 劇場への道順動画 ポップアップ再生モーダル */}
+      {activeModal === 'video' && (
+        <div
+          onClick={() => setActiveModal(null)}
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: '500px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '20px', border: `2.5px solid ${COLORS.border}`, boxShadow: '0 12px 30px rgba(0,0,0,0.3)' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MascotSprite src={MASCOT.naruhodo} size={30} />
+                <div>
+                  <h3 className="pouchi-font" style={{ margin: 0, fontSize: '15px', fontWeight: 900, color: COLORS.pouchiDark }}>
+                    {selectedVideo.venue}への道のり動画 🚶‍♂️
+                  </h3>
+                  <div style={{ fontSize: '11px', color: COLORS.muted }}>迷わずスムーズにご来場いただけますワン！</div>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveModal(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted, padding: '4px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="video-container" style={{ marginBottom: '14px' }}>
+              <iframe
+                src={selectedVideo.url}
+                title="劇場アクセス動画"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+            </div>
+
+            <button
+              onClick={() => setActiveModal(null)}
+              className="btn-bounce btn-pouchi-primary"
+              style={{ width: '100%', padding: '12px', borderRadius: '999px', fontWeight: 900, cursor: 'pointer', fontSize: '13px' }}
+            >
+              とじる
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 🛠️ 予約変更モーダル */}
       {activeModal === 'edit' && (
