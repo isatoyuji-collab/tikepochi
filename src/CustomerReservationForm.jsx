@@ -230,6 +230,7 @@ export default function CustomerReservationForm({ productionId }) {
   const [ticketTypesMap, setTicketTypesMap] = useState({});
   const [allStaff, setAllStaff] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   // 決済設定の状態
   const [paymentSettings, setPaymentSettings] = useState(null);
@@ -277,14 +278,15 @@ export default function CustomerReservationForm({ productionId }) {
           if (error) throw error;
           thisProd = data;
         } else {
-          const { data, error } = await supabase
+          // productionId は短縮URL用の先頭8文字。
+          // id列はuuid型のためLIKE演算子が使えず、以前はここでエラーになり
+          // 「公演カードが1枚も出ない白い画面」の原因になっていた。
+          // 一旦全件取得してJS側で前方一致させる方式に修正。
+          const { data: allProds, error } = await supabase
             .from('productions')
-            .select('*')
-            .like('id', `${productionId}%`)
-            .limit(1)
-            .maybeSingle();
+            .select('*');
           if (error) throw error;
-          thisProd = data;
+          thisProd = (allProds || []).find(p => p.id.startsWith(productionId)) || null;
         }
 
         if (!thisProd) throw new Error('公演情報が見つかりませんでした');
@@ -367,6 +369,7 @@ export default function CustomerReservationForm({ productionId }) {
         }
       } catch (err) {
         console.error('Reservation form load error:', err);
+        setLoadError(err.message || '公演情報の読み込みに失敗しました。URLをご確認ください。');
       } finally {
         setLoading(false);
       }
@@ -625,6 +628,21 @@ export default function CustomerReservationForm({ productionId }) {
         <PageChrome />
         <MascotSprite src={MASCOT.ticketWait} size={84} />
         <div className="pouchi-font" style={{ fontWeight: 800, fontSize: '14px' }}>予約フォームを読み込み中...</div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="pouchi-page-bg" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '32px 16px', boxSizing: 'border-box', textAlign: 'center' }}>
+        <PageChrome />
+        <MascotSprite src={MASCOT.checking} size={84} />
+        <h2 className="pouchi-font" style={{ fontSize: '17px', fontWeight: 900, margin: '14px 0 8px 0', color: COLORS.pouchiDark }}>
+          公演情報が見つからないワン
+        </h2>
+        <p style={{ fontSize: '13px', color: COLORS.muted, maxWidth: '340px', lineHeight: '1.6' }}>
+          {loadError}
+        </p>
       </div>
     );
   }
