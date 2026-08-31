@@ -4,12 +4,9 @@ import { supabase } from './supabaseClient';
 import {
   Ticket, Calendar, MapPin, Bell, ExternalLink,
   Smartphone, Star, CheckCircle2, AlertCircle, X,
-  Send, Edit3, Video, PlayCircle
+  Send, Edit3, Video, PlayCircle, HelpCircle, Share, PlusSquare, MoreVertical
 } from 'lucide-react';
 
-// -----------------------------------------------------------------
-// チケポチ ブランドカラー
-// -----------------------------------------------------------------
 const COLORS = {
   bg: '#fff8e6',
   surface: '#ffffff',
@@ -29,9 +26,6 @@ const COLORS = {
   danger: '#e11d48',
 };
 
-// -----------------------------------------------------------------
-// マスコット画像
-// -----------------------------------------------------------------
 const MASCOT = {
   iconApp: '/images/mascot/icon_app_yellow.png',
   iconEvent: '/images/mascot/icon_event_black_gold.png',
@@ -79,28 +73,20 @@ const StickerBadge = ({ children, bg, color = '#fff', rotate = -3 }) => (
   </span>
 );
 
-// YouTube等のURLを埋め込み用URLに正規化するヘルパー
 function getEmbedVideoUrl(rawUrl) {
   if (!rawUrl) return '';
   let url = rawUrl.trim();
-
-  // 短縮URL (https://youtu.be/VIDEO_ID)
   const shortMatch = url.match(/youtu\.be\/([a-zA-Z0-9_-]+)/);
   if (shortMatch && shortMatch[1]) {
     return `https://www.youtube.com/embed/${shortMatch[1]}?autoplay=1&rel=0`;
   }
-
-  // 通常URL (https://www.youtube.com/watch?v=VIDEO_ID)
   const watchMatch = url.match(/[?&]v=([a-zA-Z0-9_-]+)/);
   if (watchMatch && watchMatch[1]) {
     return `https://www.youtube.com/embed/${watchMatch[1]}?autoplay=1&rel=0`;
   }
-
-  // すでに embed または その他のURL
   if (url.includes('/embed/')) {
     return url.includes('?') ? `${url}&autoplay=1` : `${url}?autoplay=1`;
   }
-
   return url;
 }
 
@@ -112,7 +98,7 @@ export default function Myreservationspag() {
   const [productions, setProductions] = useState({});
   const [loading, setLoading] = useState(true);
 
-  const [activeModal, setActiveModal] = useState(null);
+  const [activeModal, setActiveModal] = useState(null); // 'edit' | 'survey' | 'cancel' | 'video' | 'pwaGuide'
   const [selectedRes, setSelectedRes] = useState(null);
   const [selectedVideo, setSelectedVideo] = useState({ url: '', title: '', venue: '' });
   const [editCount, setEditCount] = useState(1);
@@ -302,7 +288,7 @@ export default function Myreservationspag() {
     <style>{`
       @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Zen+Kaku+Gothic+New:wght@500;700;900&display=swap');
 
-      body { background-color: ${COLORS.bg}; }
+      body { background-color: ${COLORS.bg}; margin: 0; padding: 0; }
 
       .pouchi-page-bg {
         background-color: ${COLORS.bg};
@@ -312,16 +298,22 @@ export default function Myreservationspag() {
         background-size: 42px 42px;
       }
 
-      .pouchi-corner-peek {
+      /* 🐶 右下のチケポチ（埋もれずしっかり可愛く表示） */
+      .pouchi-floating-mascot {
         position: fixed;
-        bottom: -14px;
-        right: -10px;
-        width: 90px;
+        bottom: 12px;
+        right: 12px;
+        width: 100px;
         height: auto;
-        opacity: 0.9;
+        z-index: 10;
         pointer-events: none;
-        z-index: 0;
-        filter: drop-shadow(0 4px 8px rgba(0,0,0,0.12));
+        filter: drop-shadow(0 6px 12px rgba(58, 42, 24, 0.15));
+        animation: float-pouchi 3s ease-in-out infinite alternate;
+      }
+
+      @keyframes float-pouchi {
+        0% { transform: translateY(0px) rotate(0deg); }
+        100% { transform: translateY(-6px) rotate(2deg); }
       }
 
       .pouchi-font {
@@ -348,9 +340,7 @@ export default function Myreservationspag() {
         background: linear-gradient(90deg, #ffb300, #ffd54f, #ffb300);
       }
 
-      .btn-bounce:active {
-        transform: scale(0.96);
-      }
+      .btn-bounce:active { transform: scale(0.96); }
 
       .btn-pouchi-primary {
         background: linear-gradient(180deg, #ffc94d, #ffb300);
@@ -367,24 +357,22 @@ export default function Myreservationspag() {
         background-color: #fef2f2;
         border: 1.5px solid #fca5a5;
         color: #dc2626;
-        padding: 3px 8px;
+        padding: 4px 10px;
         border-radius: 999px;
         font-size: 11px;
         font-weight: 800;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
-        gap: 3px;
+        gap: 4px;
         transition: all 0.15s ease;
       }
-      .btn-video:hover {
-        background-color: #fee2e2;
-      }
+      .btn-video:hover { background-color: #fee2e2; }
 
       .video-container {
         position: relative;
         width: 100%;
-        padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+        padding-bottom: 56.25%;
         height: 0;
         border-radius: 16px;
         overflow: hidden;
@@ -438,9 +426,11 @@ export default function Myreservationspag() {
   }
 
   return (
-    <div className="pouchi-page-bg" style={{ minHeight: '100vh', color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '16px 14px 60px 14px', boxSizing: 'border-box', position: 'relative' }}>
+    <div className="pouchi-page-bg" style={{ minHeight: '100vh', color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '16px 14px 80px 14px', boxSizing: 'border-box', position: 'relative' }}>
       <PageChrome />
-      <img src={MASCOT.bigdog} alt="" className="pouchi-corner-peek" />
+      
+      {/* 🐶 画面右下にしっかり浮かぶチケポチ */}
+      <img src={MASCOT.bigdog} alt="チケポチ" className="pouchi-floating-mascot" />
 
       <div style={{ maxWidth: '540px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
 
@@ -518,18 +508,44 @@ export default function Myreservationspag() {
           </div>
         </div>
 
-        {/* 📲 ホーム画面追加（PWA）＆ LINE連携 */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '18px' }}>
-          <div style={{ backgroundColor: '#ffffff', border: `2px dashed ${COLORS.yellowDeep}`, borderRadius: '18px', padding: '12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 800, color: COLORS.yellowDeep }}>
-              <Smartphone size={15} /> ホーム画面追加
+        {/* 📲 ホーム画面追加 ＆ LINE連携カード */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.85fr', gap: '10px', marginBottom: '18px' }}>
+          
+          {/* 💡 ホーム画面追加カード（タップで分かりやすい手順モーダルを開く） */}
+          <div
+            onClick={() => setActiveModal('pwaGuide')}
+            className="btn-bounce"
+            style={{
+              backgroundColor: '#fffdf9',
+              border: `2px solid ${COLORS.yellowDeep}`,
+              borderRadius: '20px',
+              padding: '12px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+              boxShadow: '0 3px 0 rgba(245,158,11,0.15)'
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 900, color: COLORS.yellowDeep }}>
+                  <Smartphone size={16} /> ホーム画面に追加
+                </div>
+                <span style={{ fontSize: '10px', backgroundColor: '#fef3c7', color: '#b45309', padding: '2px 6px', borderRadius: '999px', fontWeight: 800 }}>推奨</span>
+              </div>
+              <div style={{ fontSize: '11px', color: COLORS.pouchiDark, lineHeight: '1.4', fontWeight: 700 }}>
+                通知を受け取る＆当日チケットを1秒で表示！🐾
+              </div>
             </div>
-            <div style={{ fontSize: '10px', color: COLORS.muted, margin: '6px 0', lineHeight: '1.4' }}>
-              アプリみたいにホームに置いてすぐチケット表示🐾
+
+            <div style={{ marginTop: '8px', fontSize: '11px', color: COLORS.yellowDeep, fontWeight: 900, display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <HelpCircle size={13} /> 追加方法を見る ›
             </div>
           </div>
 
-          <div style={{ backgroundColor: '#ffffff', border: `2px solid ${isLineLinked ? '#86efac' : COLORS.blueSoft}`, borderRadius: '18px', padding: '12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative' }}>
+          {/* LINE ID連携カード */}
+          <div style={{ backgroundColor: '#ffffff', border: `2px solid ${isLineLinked ? '#86efac' : COLORS.blueSoft}`, borderRadius: '20px', padding: '12px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 800, color: '#15803d' }}>
               <div style={{ width: '16px', height: '16px', borderRadius: '4px', backgroundColor: '#06c755', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: 900 }}>L</div>
               LINE ID連携
@@ -538,10 +554,10 @@ export default function Myreservationspag() {
             {isLineLinked ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '6px 0' }}>
                 <MascotSprite src={MASCOT.waai} size={28} />
-                <span style={{ fontSize: '10px', color: COLORS.success, fontWeight: 700 }}>連携完了！自動ログイン</span>
+                <span style={{ fontSize: '10px', color: COLORS.success, fontWeight: 700 }}>連携中</span>
               </div>
             ) : (
-              <div style={{ fontSize: '10px', color: COLORS.muted, margin: '6px 0' }}>連携して特典に即アクセス</div>
+              <div style={{ fontSize: '10px', color: COLORS.muted, margin: '6px 0' }}>特典に即アクセス</div>
             )}
 
             {!isLineLinked && (
@@ -607,7 +623,6 @@ export default function Myreservationspag() {
                         {stage.team_name && <span style={{ fontSize: '11px', color: COLORS.yellowDeep, fontWeight: 700 }}>({stage.team_name})</span>}
                       </div>
 
-                      {/* 会場名 ＆ 🎬 道のり動画ボタン */}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: COLORS.muted }}>
                           <MapPin size={15} color={COLORS.yellowDeep} />
@@ -710,6 +725,72 @@ export default function Myreservationspag() {
         )}
 
       </div>
+
+      {/* 📲 ホーム画面追加手順ガイドモーダル */}
+      {activeModal === 'pwaGuide' && (
+        <div
+          onClick={() => setActiveModal(null)}
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: '440px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '22px', border: `2.5px solid ${COLORS.border}`, boxShadow: '0 12px 30px rgba(0,0,0,0.25)', maxHeight: '90vh', overflowY: 'auto' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MascotSprite src={MASCOT.naruhodo} size={34} />
+                <h3 className="pouchi-font" style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: COLORS.pouchiDark }}>
+                  ホーム画面への追加方法 📱
+                </h3>
+              </div>
+              <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={20} /></button>
+            </div>
+
+            <div style={{ backgroundColor: COLORS.surfaceAlt, borderRadius: '16px', padding: '12px 14px', marginBottom: '16px', border: `1.5px solid ${COLORS.yellowSoft}` }}>
+              <div style={{ fontSize: '12px', fontWeight: 900, color: COLORS.yellowDeep, marginBottom: '4px' }}>
+                🌟 ホーム画面に追加するメリット
+              </div>
+              <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: COLORS.pouchiDark, lineHeight: '1.6' }}>
+                <li>開演前日の<strong>リマインド通知</strong>がスマホに直接届く！</li>
+                <li>役者からの<strong>メッセージやお礼</strong>を見逃さない！</li>
+                <li>観劇当日、アプリのように<strong>1タップでチケット表示</strong>！</li>
+              </ul>
+            </div>
+
+            {/* iOS の手順 */}
+            <div style={{ marginBottom: '14px', border: `1.5px solid ${COLORS.border}`, borderRadius: '16px', padding: '12px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                🍎 iPhone (Safari) の場合
+              </div>
+              <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: COLORS.text, lineHeight: '1.7' }}>
+                <li>画面下の <strong>「共有アイコン（四角から矢印 ⎘）」</strong> をタップ</li>
+                <li>メニューを下にスクロールして <strong>「ホーム画面に追加 ＋」</strong> をタップ</li>
+                <li>右上の <strong>「追加」</strong> をタップして完了！</li>
+              </ol>
+            </div>
+
+            {/* Android の手順 */}
+            <div style={{ marginBottom: '16px', border: `1.5px solid ${COLORS.border}`, borderRadius: '16px', padding: '12px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                🤖 Android (Chrome) の場合
+              </div>
+              <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: COLORS.text, lineHeight: '1.7' }}>
+                <li>画面右上の <strong>「メニュー（縦の3点リーダー ⋮）」</strong> をタップ</li>
+                <li><strong>「アプリをインストール」</strong> または <strong>「ホーム画面に追加」</strong> をタップ</li>
+                <li>画面の指示に従って <strong>「インストール」</strong> して完了！</li>
+              </ol>
+            </div>
+
+            <button
+              onClick={() => setActiveModal(null)}
+              className="btn-bounce btn-pouchi-primary"
+              style={{ width: '100%', padding: '12px', borderRadius: '999px', fontWeight: 900, cursor: 'pointer', fontSize: '13px' }}
+            >
+              わかったワン！🐾
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 🎬 劇場への道順動画 ポップアップ再生モーダル */}
       {activeModal === 'video' && (
