@@ -129,11 +129,10 @@ const PageChrome = () => (
       box-shadow: 0 2px 0 rgba(245,158,11,0.2);
     }
 
-    /* 座席グリッド用スタイル */
     .seat-btn {
-      width: 42px;
-      height: 42px;
-      border-radius: 10px;
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
       font-size: 11px;
       font-weight: 800;
       display: flex;
@@ -141,38 +140,32 @@ const PageChrome = () => (
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      border: 2px solid ${COLORS.border};
-      transition: all 0.15s ease;
-      position: relative;
+      border: 1.5px solid;
+      transition: all 0.12s ease;
+      user-select: none;
     }
+    .seat-btn:active { transform: scale(0.95); }
+
     .seat-btn.selected {
-      background-color: ${COLORS.yellowDeep};
-      color: #fff;
-      border-color: #d9820a;
+      background-color: ${COLORS.yellowDeep} !important;
+      color: #fff !important;
+      border-color: #d9820a !important;
       box-shadow: 0 3px 0 #b45309;
       transform: translateY(-2px);
     }
-    .seat-btn.available {
-      background-color: #ffffff;
-      color: ${COLORS.pouchiDark};
-    }
-    .seat-btn.available:hover {
-      border-color: ${COLORS.yellowDeep};
-      background-color: ${COLORS.surfaceAlt};
-    }
     .seat-btn.occupied {
-      background-color: #e2e8f0;
-      color: #94a3b8;
-      border-color: #cbd5e1;
-      cursor: not-allowed;
+      background-color: #fee2e2 !important;
+      color: ${COLORS.danger} !important;
+      border-color: ${COLORS.danger} !important;
+      cursor: not-allowed !important;
       opacity: 0.6;
     }
     .seat-btn.disabled-type {
-      background-color: #f8fafc;
-      color: #cbd5e1;
-      border-color: #e2e8f0;
-      cursor: not-allowed;
-      opacity: 0.4;
+      background-color: #f1f5f9 !important;
+      color: #cbd5e1 !important;
+      border-color: #e2e8f0 !important;
+      cursor: not-allowed !important;
+      opacity: 0.35;
     }
 
     @keyframes pouchi-pop {
@@ -249,13 +242,25 @@ function CardWrap({ children }) {
   );
 }
 
+// 布施PEベース 65席構成（フォールバック用）
+const DEFAULT_65_SEATS_MAP = {
+  'A': Array.from({ length: 8 }, (_, i) => ({ id: `A-${i+1}`, row: 'A', num: i + 1, status: 'front_row' })),
+  'B': Array.from({ length: 8 }, (_, i) => ({ id: `B-${i+1}`, row: 'B', num: i + 1, status: i === 2 ? 'equipment' : 'reserved' })),
+  'C': Array.from({ length: 8 }, (_, i) => ({ id: `C-${i+1}`, row: 'C', num: i + 1, status: i === 2 ? 'equipment' : 'available' })),
+  'D': Array.from({ length: 9 }, (_, i) => ({ id: `D-${i+1}`, row: 'D', num: i + 1, status: i === 2 ? 'equipment' : 'available' })),
+  'E': Array.from({ length: 9 }, (_, i) => ({ id: `E-${i+1}`, row: 'E', num: i + 1, status: i === 2 ? 'equipment' : 'available' })),
+  'F': Array.from({ length: 9 }, (_, i) => ({ id: `F-${i+1}`, row: 'F', num: i + 1, status: i === 2 ? 'equipment' : 'available' })),
+  'G': Array.from({ length: 8 }, (_, i) => ({ id: `G-${i+1}`, row: 'G', num: i + 1, status: i < 2 ? 'reserved_staff' : 'available' })),
+  'H': Array.from({ length: 6 }, (_, i) => ({ id: `H-${i+1}`, row: 'H', num: i + 1, status: 'available' })),
+};
+
 const CONFETTI_EMOJI = ['🎉', '🐾', '✨', '🎊', '⭐'];
 
 export default function CustomerReservationForm({ productionId }) {
   const [productions, setProductions] = useState([]);
   const [stagesMap, setStagesMap] = useState({});
   const [ticketTypesMap, setTicketTypesMap] = useState({});
-  const [seatLayoutsMap, setSeatLayoutsMap] = useState({}); // prod.id -> seat_layouts[]
+  const [seatMapsMap, setSeatMapsMap] = useState({}); // prod.id -> seat_maps.seat_data
   const [allStaff, setAllStaff] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -278,9 +283,9 @@ export default function CustomerReservationForm({ productionId }) {
   const [selectedStaffNames, setSelectedStaffNames] = useState(['', '']);
   const [selectedOptions, setSelectedOptions] = useState([[], []]);
 
-  // 💺 座席選択ステート：各公演で選択された [seatLayoutId] の配列
+  // 💺 選択された座席ID（例: ["A-1", "A-2"]）
   const [selectedSeatIds, setSelectedSeatIds] = useState([[], []]);
-  const [occupiedSeats, setOccupiedSeats] = useState({}); // stage_id -> { seatLayoutId: { status, lockedUntil, sessionId } }
+  const [occupiedSeats, setOccupiedSeats] = useState({}); // stage_id -> { seatId: { status, lockedUntil, sessionId } }
   const [lockExpiresAt, setLockExpiresAt] = useState(null);
   const [timeLeftStr, setTimeLeftStr] = useState('');
 
@@ -306,7 +311,7 @@ export default function CustomerReservationForm({ productionId }) {
     sessionIdRef.current = sid;
   }, []);
 
-  // 10分タイマーのカウントダウン
+  // 10分カウントダウンタイマー
   useEffect(() => {
     if (!lockExpiresAt) {
       setTimeLeftStr('');
@@ -318,7 +323,7 @@ export default function CustomerReservationForm({ productionId }) {
       if (diff <= 0) {
         clearInterval(timer);
         setTimeLeftStr('00:00 (失効)');
-        alert('座席の仮押さえ時間（10分）が切れました。再度座席を選択してください。');
+        alert('座席のキープ時間（10分）が切れました。再度座席をお選びください。');
         setSelectedSeatIds([[], []]);
         setLockExpiresAt(null);
       } else {
@@ -330,7 +335,7 @@ export default function CustomerReservationForm({ productionId }) {
     return () => clearInterval(timer);
   }, [lockExpiresAt]);
 
-  // 初期データ取得
+  // 初期データ読み込み
   useEffect(() => {
     async function loadData() {
       setLoading(true);
@@ -382,13 +387,13 @@ export default function CustomerReservationForm({ productionId }) {
           { data: ticketData },
           { data: staffData },
           { data: pSettings },
-          { data: seatData }
+          { data: seatMapData }
         ] = await Promise.all([
           supabase.from('stages').select('*').in('production_id', prodIds).order('start_time', { ascending: true }),
           supabase.from('ticket_types').select('*').in('production_id', prodIds).order('price', { ascending: true }),
           supabase.from('cast_staff').select('*').in('production_id', prodIds),
           supabase.from('payment_settings').select('*').eq('production_id', thisProd.id).maybeSingle(),
-          supabase.from('seat_layouts').select('*').in('production_id', prodIds).order('row_index', { ascending: true })
+          supabase.from('seat_maps').select('*').in('production_id', prodIds)
         ]);
 
         if (pSettings) {
@@ -400,7 +405,7 @@ export default function CustomerReservationForm({ productionId }) {
 
         const sMap = {};
         const tMap = {};
-        const lMap = {};
+        const smMap = {};
 
         prodList.forEach((p) => {
           const pStages = (stageData || [])
@@ -413,12 +418,14 @@ export default function CustomerReservationForm({ productionId }) {
 
           sMap[p.id] = pStages;
           tMap[p.id] = (ticketData || []).filter(t => t.production_id === p.id);
-          lMap[p.id] = (seatData || []).filter(s => s.production_id === p.id);
+
+          const foundSeatMap = (seatMapData || []).find(sm => sm.production_id === p.id);
+          smMap[p.id] = foundSeatMap?.seat_data || DEFAULT_65_SEATS_MAP;
         });
 
         setStagesMap(sMap);
         setTicketTypesMap(tMap);
-        setSeatLayoutsMap(lMap);
+        setSeatMapsMap(smMap);
 
         const uniqueStaff = [];
         const seenNames = new Set();
@@ -444,7 +451,7 @@ export default function CustomerReservationForm({ productionId }) {
     if (productionId) loadData();
   }, [productionId]);
 
-  // 指定席オプションが選択されているかを判定するヘルパー
+  // 指定席オプションが選択されているかを判定
   const getSeatRequirement = (idx) => {
     const prod = productions[idx];
     if (!prod) return { required: false, type: null };
@@ -458,12 +465,12 @@ export default function CustomerReservationForm({ productionId }) {
     const isFront = allChosen.some(t => t.name?.includes('最前列'));
     const isReserved = isFront || allChosen.some(t => t.name?.includes('指定席'));
 
-    if (isFront) return { required: true, type: 'front' };
-    if (isReserved) return { required: true, type: 'standard' };
+    if (isFront) return { required: true, type: 'front_row' };
+    if (isReserved) return { required: true, type: 'reserved' };
     return { required: false, type: null };
   };
 
-  // 🛠️ 動的ステップ生成（指定席選択が必要な公演のみ seat_0 / seat_1 を挿入）
+  // 動的ステップ生成
   const steps = useMemo(() => {
     if (!reservationMode) return ['select'];
     const s = ['select'];
@@ -485,7 +492,7 @@ export default function CustomerReservationForm({ productionId }) {
 
   const currentStepKey = steps[stepIndex] || 'select';
 
-  // リアルタイム座席排他制御の購読
+  // リアルタイム排他制御
   const activeStageId = useMemo(() => {
     if (currentStepKey === 'seat_0') return selectedStageIds[0];
     if (currentStepKey === 'seat_1') return selectedStageIds[1];
@@ -495,7 +502,6 @@ export default function CustomerReservationForm({ productionId }) {
   useEffect(() => {
     if (!activeStageId) return;
 
-    // 現在の予約・仮押さえ状態を初期ロード
     const fetchStageSeats = async () => {
       const { data, error } = await supabase
         .from('seat_reservations')
@@ -506,7 +512,7 @@ export default function CustomerReservationForm({ productionId }) {
         const now = new Date().toISOString();
         data.forEach(sr => {
           if (sr.status === 'CONFIRMED' || (sr.status === 'LOCKED' && sr.locked_until > now)) {
-            map[sr.seat_layout_id] = sr;
+            map[sr.seat_id] = sr;
           }
         });
         setOccupiedSeats(prev => ({ ...prev, [activeStageId]: map }));
@@ -514,7 +520,6 @@ export default function CustomerReservationForm({ productionId }) {
     };
     fetchStageSeats();
 
-    // ⚡ Supabase Realtime購読
     const channel = supabase
       .channel(`realtime:seat_reservations:${activeStageId}`)
       .on(
@@ -531,24 +536,30 @@ export default function CustomerReservationForm({ productionId }) {
     };
   }, [activeStageId]);
 
-  // 💺 座席タップ時の10分間仮押さえ（ロック）処理
-  const handleSelectSeat = async (prodIdx, seatLayout) => {
+  // 💺 座席タップ時の10分間仮押さえ処理
+  const handleSelectSeat = async (prodIdx, seat) => {
     const stageId = selectedStageIds[prodIdx];
+    const prod = productions[prodIdx];
     const req = getSeatRequirement(prodIdx);
     const count = reservationMode === 'both' ? ticketCounts[0] : ticketCounts[prodIdx];
 
-    // 席種制限チェック
-    if (req.type === 'front' && seatLayout.seat_type !== 'front') {
-      alert('最前列指定席をお選びのため、最前列以外の座席は選択できません。');
+    // 機材卓・関係者留めは選択不可
+    if (seat.status === 'equipment' || seat.status === 'reserved_staff') {
       return;
     }
-    if (req.type === 'standard' && seatLayout.seat_type === 'front') {
-      alert('一般指定席をお選びのため、最前列の座席は選択できません。最前列をご希望の場合は最前列オプションをお選びください。');
+
+    // 席種制限チェック
+    if (req.type === 'front_row' && seat.status !== 'front_row') {
+      alert('最前列指定席をお選びのため、最前列（A列）以外の座席は選択できません。');
+      return;
+    }
+    if (req.type === 'reserved' && seat.status === 'front_row') {
+      alert('一般指定席をお選びのため、最前列（A列）は選択できません。最前列をご希望の場合は最前列オプションをお選びください。');
       return;
     }
 
     const currentSeats = selectedSeatIds[prodIdx] || [];
-    const isAlreadySelected = currentSeats.includes(seatLayout.id);
+    const isAlreadySelected = currentSeats.includes(seat.id);
 
     if (isAlreadySelected) {
       // 選択解除
@@ -556,42 +567,40 @@ export default function CustomerReservationForm({ productionId }) {
         .from('seat_reservations')
         .delete()
         .eq('stage_id', stageId)
-        .eq('seat_layout_id', seatLayout.id)
+        .eq('seat_id', seat.id)
         .eq('session_id', sessionIdRef.current);
 
       setSelectedSeatIds(prev => {
         const n = [...prev];
-        n[prodIdx] = n[prodIdx].filter(id => id !== seatLayout.id);
+        n[prodIdx] = n[prodIdx].filter(id => id !== seat.id);
         return n;
       });
       return;
     }
 
-    // 枚数制限チェック
     if (currentSeats.length >= count) {
       alert(`ご選択の枚数は【${count}枚】です。他の席に変更する場合は、先に選択済みの席をタップして解除してください。`);
       return;
     }
 
-    // 他の人がロック/購入済みでないか確認
     const stageOccupied = occupiedSeats[stageId] || {};
-    const occupied = stageOccupied[seatLayout.id];
+    const occupied = stageOccupied[seat.id];
     if (occupied && occupied.session_id !== sessionIdRef.current) {
       alert('この座席は他のお客様が選択中または予約済みです。');
       return;
     }
 
-    // 10分間の仮押さえを保存
     const lockedUntil = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     const { error } = await supabase
       .from('seat_reservations')
       .upsert({
         stage_id: stageId,
-        seat_layout_id: seatLayout.id,
+        seat_id: seat.id,
+        production_id: prod?.id,
         session_id: sessionIdRef.current,
         status: 'LOCKED',
         locked_until: lockedUntil
-      }, { onConflict: 'stage_id,seat_layout_id' });
+      }, { onConflict: 'stage_id,seat_id' });
 
     if (error) {
       alert('座席の確保に失敗しました。他のお客様が先に選んだ可能性があります。');
@@ -600,7 +609,7 @@ export default function CustomerReservationForm({ productionId }) {
 
     setSelectedSeatIds(prev => {
       const n = [...prev];
-      n[prodIdx] = [...(n[prodIdx] || []), seatLayout.id];
+      n[prodIdx] = [...(n[prodIdx] || []), seat.id];
       return n;
     });
 
@@ -775,11 +784,7 @@ export default function CustomerReservationForm({ productionId }) {
           .map(optId => allOpts.find(t => t.id === optId)?.name)
           .filter(Boolean);
 
-        // 座席番号の取得
-        const prodSeats = seatLayoutsMap[prod.id] || [];
-        const chosenSeatNumbers = (selectedSeatIds[idx] || [])
-          .map(sid => prodSeats.find(s => s.id === sid)?.seat_number)
-          .filter(Boolean);
+        const chosenSeatNumbers = selectedSeatIds[idx] || [];
 
         let fullMemo = customerMemo.trim();
         if (chosenSeatNumbers.length > 0) {
@@ -832,7 +837,7 @@ export default function CustomerReservationForm({ productionId }) {
           await supabase
             .from('seat_reservations')
             .update({ status: 'CONFIRMED', reservation_id: resId })
-            .in('seat_layout_id', seatIds)
+            .in('seat_id', seatIds)
             .eq('stage_id', selectedStageIds[idx])
             .eq('session_id', sessionIdRef.current);
         }
@@ -962,7 +967,6 @@ export default function CustomerReservationForm({ productionId }) {
           </h1>
         </div>
 
-        {/* 🐾 扱い担当者バナー */}
         {urlStaffParam && (
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
@@ -1229,7 +1233,7 @@ export default function CustomerReservationForm({ productionId }) {
           );
         })()}
 
-        {/* 💺 STEP 2.5: 座席選択ステップ（映画館スタイル・リアルタイムロック） */}
+        {/* 💺 STEP 2.5: 座席選択ステップ（AdminSeatSettings準拠） */}
         {currentStepKey.startsWith('seat_') && (() => {
           const idx = parseInt(currentStepKey.split('_')[1], 10);
           const prod = productions[idx];
@@ -1238,18 +1242,9 @@ export default function CustomerReservationForm({ productionId }) {
           const stageId = selectedStageIds[idx];
           const count = reservationMode === 'both' ? ticketCounts[0] : ticketCounts[idx];
           const req = getSeatRequirement(idx);
-          const layouts = seatLayoutsMap[prod.id] || [];
+          const seatMap = seatMapsMap[prod.id] || DEFAULT_65_SEATS_MAP;
           const stageOccupied = occupiedSeats[stageId] || {};
           const selectedSeats = selectedSeatIds[idx] || [];
-
-          // 行ごとにグループ化
-          const rowsMap = {};
-          layouts.forEach(l => {
-            const r = l.row_index || 1;
-            if (!rowsMap[r]) rowsMap[r] = [];
-            rowsMap[r].push(l);
-          });
-          const rowKeys = Object.keys(rowsMap).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
 
           return (
             <>
@@ -1268,42 +1263,65 @@ export default function CustomerReservationForm({ productionId }) {
                   )}
                 </div>
 
-                <div style={{ fontSize: '12px', color: COLORS.muted, marginBottom: '12px' }}>
+                <div style={{ fontSize: '12px', color: COLORS.muted, marginBottom: '14px' }}>
                   ご希望の座席を<strong>【{count}席】</strong>タップしてください。選択後10分間キープされます。
-                  {req.type === 'front' && <span style={{ color: COLORS.yellowDeep, fontWeight: 700 }}><br />※最前列指定席のため、最前列（A列）のみ選択可能です。</span>}
-                  {req.type === 'standard' && <span style={{ color: COLORS.yellowDeep, fontWeight: 700 }}><br />※一般指定席のため、2列目以降からお選びいただけます。</span>}
+                  {req.type === 'front_row' && <span style={{ color: COLORS.yellowDeep, fontWeight: 700 }}><br />※最前列指定席のため、最前列（A列）のみ選択可能です。</span>}
+                  {req.type === 'reserved' && <span style={{ color: COLORS.yellowDeep, fontWeight: 700 }}><br />※一般指定席のため、2列目以降からお選びいただけます。</span>}
                 </div>
 
-                {/* スクリーン/舞台表示 */}
-                <div style={{ textAlign: 'center', margin: '0 auto 18px auto', width: '80%', padding: '6px 0', backgroundColor: '#334155', color: '#fff', fontSize: '11px', fontWeight: 800, borderRadius: '6px', letterSpacing: '2px' }}>
-                  ── 舞台・ステージ側 ──
+                {/* 舞台 (STAGE) */}
+                <div style={{ width: '80%', margin: '0 auto 16px auto', padding: '8px 0', backgroundColor: COLORS.yellowDeep, color: '#ffffff', textAlign: 'center', fontWeight: 900, borderRadius: '8px', fontSize: '12px', letterSpacing: '2px', boxShadow: '0 2px 0 #d9820a' }}>
+                  舞台 (STAGE)
                 </div>
 
-                {/* 座席表 */}
-                {layouts.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '30px 10px', color: COLORS.muted, fontSize: '13px' }}>
-                    座席配置マスターがまだ登録されていません。管理画面の「座席設定」をご確認ください。
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center', overflowX: 'auto', paddingBottom: '10px' }}>
-                    {rowKeys.map(rKey => {
-                      const rowSeats = (rowsMap[rKey] || []).sort((a, b) => (a.col_index || 1) - (b.col_index || 1));
-                      return (
-                        <div key={rKey} style={{ display: 'flex', gap: '6px' }}>
-                          {rowSeats.map(seat => {
+                {/* 客席グリッド */}
+                <div style={{ overflowX: 'auto', paddingBottom: '10px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', alignItems: 'center', minWidth: '380px' }}>
+                    {Object.keys(seatMap).map(row => (
+                      <div key={row} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ width: '16px', fontWeight: 900, fontSize: '12px', color: COLORS.yellowDeep, textAlign: 'center' }}>
+                          {row}
+                        </span>
+
+                        <div style={{ display: 'flex', gap: '5px' }}>
+                          {seatMap[row].map(seat => {
                             const isSelected = selectedSeats.includes(seat.id);
                             const occ = stageOccupied[seat.id];
                             const isOccupiedByOther = occ && occ.session_id !== sessionIdRef.current;
-                            
-                            // 席種チェック
-                            const isTypeDisabled = 
-                              (req.type === 'front' && seat.seat_type !== 'front') ||
-                              (req.type === 'standard' && seat.seat_type === 'front');
 
-                            let btnClass = 'available';
-                            if (isSelected) btnClass = 'selected';
-                            else if (isOccupiedByOther) btnClass = 'occupied';
-                            else if (isTypeDisabled) btnClass = 'disabled-type';
+                            // 選択不可（機材卓、関係者留め）
+                            const isKeepOrEquip = seat.status === 'equipment' || seat.status === 'reserved_staff';
+
+                            // 席種制限
+                            const isTypeDisabled = 
+                              isKeepOrEquip ||
+                              (req.type === 'front_row' && seat.status !== 'front_row') ||
+                              (req.type === 'reserved' && seat.status === 'front_row');
+
+                            let bg = '#ffffff';
+                            let border = COLORS.border;
+                            let color = COLORS.text;
+                            let label = seat.num;
+
+                            if (seat.status === 'front_row') {
+                              bg = '#fef3c7';
+                              border = COLORS.yellowDeep;
+                              color = '#b45309';
+                            } else if (seat.status === 'reserved') {
+                              bg = '#e0e7ff';
+                              border = COLORS.blue;
+                              color = COLORS.blueDeep;
+                            } else if (seat.status === 'reserved_staff') {
+                              bg = '#fee2e2';
+                              border = COLORS.danger;
+                              color = COLORS.danger;
+                              label = '留';
+                            } else if (seat.status === 'equipment') {
+                              bg = '#f3f4f6';
+                              border = '#9ca3af';
+                              color = '#4b5563';
+                              label = '卓';
+                            }
 
                             return (
                               <button
@@ -1311,32 +1329,41 @@ export default function CustomerReservationForm({ productionId }) {
                                 type="button"
                                 disabled={isOccupiedByOther || isTypeDisabled}
                                 onClick={() => handleSelectSeat(idx, seat)}
-                                className={`seat-btn ${btnClass}`}
+                                className={`seat-btn ${isSelected ? 'selected' : isOccupiedByOther ? 'occupied' : isTypeDisabled ? 'disabled-type' : ''}`}
+                                style={{
+                                  backgroundColor: bg,
+                                  borderColor: border,
+                                  color: color,
+                                }}
                               >
-                                <span>{seat.seat_number}</span>
-                                {seat.seat_type === 'front' && (
-                                  <span style={{ fontSize: '8px', transform: 'scale(0.85)' }}>最前</span>
-                                )}
+                                {isOccupiedByOther ? '済' : label}
                               </button>
                             );
                           })}
                         </div>
-                      );
-                    })}
+
+                        <span style={{ width: '16px', fontWeight: 900, fontSize: '12px', color: COLORS.yellowDeep, textAlign: 'center' }}>
+                          {row}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                )}
+                </div>
 
                 {/* 凡例 */}
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', marginTop: '14px', fontSize: '11px', color: COLORS.muted }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <div style={{ width: '12px', height: '12px', borderRadius: '3px', border: `1.5px solid ${COLORS.border}`, backgroundColor: '#fff' }} /> 空席
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <div style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: COLORS.yellowDeep }} /> 選択中
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <div style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#e2e8f0' }} /> 選択不可/売切
-                  </div>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '14px', fontSize: '11px', color: COLORS.muted, flexWrap: 'wrap' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#fef3c7', border: `1px solid ${COLORS.yellowDeep}` }} /> 👑 最前列
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#e0e7ff', border: `1px solid ${COLORS.blue}` }} /> 🎟️ 指定席
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: COLORS.yellowDeep }} /> 選択中
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: '#fee2e2', border: `1px solid ${COLORS.danger}` }} /> 予約済/不可
+                  </span>
                 </div>
               </CardWrap>
               <NavButtons onBack={goBack} onNext={() => handleSeatNext(idx)} />
@@ -1469,11 +1496,7 @@ export default function CustomerReservationForm({ productionId }) {
                   const chosenOpts = (selectedOptions[idx] || []).map(optId => allOpts.find(t => t.id === optId)).filter(Boolean);
                   const stageDateStr = stage ? (stage.performance_date || stage.stage_date || '') : '';
                   const count = reservationMode === 'both' ? ticketCounts[0] : ticketCounts[idx];
-
-                  const prodSeats = seatLayoutsMap[prod.id] || [];
-                  const chosenSeatNumbers = (selectedSeatIds[idx] || [])
-                    .map(sid => prodSeats.find(s => s.id === sid)?.seat_number)
-                    .filter(Boolean);
+                  const chosenSeatNumbers = selectedSeatIds[idx] || [];
 
                   return (
                     <CardWrap key={prod.id}>
