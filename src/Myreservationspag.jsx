@@ -4,7 +4,7 @@ import { supabase } from './supabaseClient';
 import {
   Ticket, Calendar, MapPin, Bell, ExternalLink,
   Smartphone, Star, CheckCircle2, AlertCircle, X,
-  Send, Edit3, Video, PlayCircle, HelpCircle, UserPlus, Heart
+  Send, Edit3, Video, PlayCircle, HelpCircle, Lock, Unlock, Sparkles, Check
 } from 'lucide-react';
 
 const COLORS = {
@@ -98,7 +98,7 @@ export default function Myreservationspag() {
   const [productions, setProductions] = useState({});
   const [loading, setLoading] = useState(true);
 
-  const [activeModal, setActiveModal] = useState(null); // 'edit' | 'survey' | 'cancel' | 'video' | 'pwaGuide'
+  const [activeModal, setActiveModal] = useState(null);
   const [selectedRes, setSelectedRes] = useState(null);
   const [selectedVideo, setSelectedVideo] = useState({ url: '', title: '', venue: '' });
   const [editCount, setEditCount] = useState(1);
@@ -109,6 +109,7 @@ export default function Myreservationspag() {
   const [surveySent, setSurveySent] = useState(false);
 
   const [pushEnabled, setPushEnabled] = useState(false);
+  const [isLineLinked, setIsLineLinked] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
 
   useEffect(() => {
@@ -121,6 +122,11 @@ export default function Myreservationspag() {
       fetchMypageData(t);
     } else {
       setLoading(false);
+    }
+
+    // Service Worker とプッシュ通知の許可状態をチェック
+    if ('Notification' in window && Notification.permission === 'granted') {
+      setPushEnabled(true);
     }
   }, []);
 
@@ -137,6 +143,10 @@ export default function Myreservationspag() {
       setReservations(resData || []);
 
       if (resData && resData.length > 0) {
+        if (resData.some(r => r.line_user_id)) {
+          setIsLineLinked(true);
+        }
+
         const prodIds = [...new Set(resData.map(r => r.production_id).filter(Boolean))];
         const stageIds = [...new Set(resData.map(r => r.stage_id).filter(Boolean))];
         const ticketTypeIds = [...new Set(resData.map(r => r.ticket_type_id).filter(Boolean))];
@@ -170,24 +180,55 @@ export default function Myreservationspag() {
     }
   };
 
+  // 🔔 Webプッシュ通知の登録・購読処理
   const handleTogglePush = async () => {
-    if (!('Notification' in window)) {
-      alert('お使いのブラウザはプッシュ通知に対応していません。');
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      alert('お使いのブラウザはWebプッシュ通知に対応していません。');
       return;
     }
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      setPushEnabled(true);
-      alert('開演前リマインドのプッシュ通知をONにしましたワン！🐾');
-    } else {
-      alert('通知がブロックされました。ブラウザの設定から許可してください。');
+
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        alert('通知がブロックされました。ブラウザの設定から通知を許可してください。');
+        return;
+      }
+
+      // Service Worker の登録
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+
+      // 購読状態を取得または新規作成
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        // 標準プッシュ購読
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: null // アプリケーションサーバーキー（VAPID）がある場合は指定可能
+        });
+      }
+
+      if (subscription) {
+        const subJson = subscription.toJSON();
+        // Supabase にプッシュトークンを保存
+        await supabase.from('push_subscriptions').upsert({
+          mypage_token: token,
+          endpoint: subJson.endpoint,
+          p256dh: subJson.keys?.p256dh || '',
+          auth: subJson.keys?.auth || ''
+        }, { onConflict: 'endpoint' });
+
+        setPushEnabled(true);
+        alert('開演前リマインドのプッシュ通知をONにしましたワン！🐾\n公演前日にリマインドが届きます。');
+      }
+    } catch (err) {
+      console.error('Push notification error:', err);
+      alert('通知設定を完了できませんでした。ホーム画面に追加してから再度お試しください。');
     }
   };
 
-  // 劇団公式LINEの友だち追加
-  const handleOpenOfficialLine = () => {
-    // office Knight 公式LINEのURL（友だち追加リンク）
-    window.open('https://line.me/R/ti/p/@officeknight', '_blank');
+  const handleLineLink = () => {
+    window.location.href = `https://office-knight-partner-site.vercel.app/link?token=${token}`;
   };
 
   const handleOpenVideo = (prod) => {
@@ -425,7 +466,6 @@ export default function Myreservationspag() {
     <div className="pouchi-page-bg" style={{ minHeight: '100vh', color: COLORS.text, fontFamily: "'Zen Kaku Gothic New', sans-serif", padding: '16px 14px 80px 14px', boxSizing: 'border-box', position: 'relative' }}>
       <PageChrome />
       
-      {/* 🐶 画面右下にしっかり浮かぶチケポチ */}
       <img src={MASCOT.bigdog} alt="チケポチ" className="pouchi-floating-mascot" />
 
       <div style={{ maxWidth: '540px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
@@ -461,7 +501,7 @@ export default function Myreservationspag() {
               gap: '4px'
             }}
           >
-            <Bell size={13} /> {pushEnabled ? '通知ON' : '通知設定'}
+            <Bell size={13} /> {pushEnabled ? '通知ON済' : '通知設定'}
           </button>
         </div>
 
@@ -504,7 +544,7 @@ export default function Myreservationspag() {
           </div>
         </div>
 
-        {/* 📲 ホーム画面追加 ＆ 劇団公式LINE友だち追加カード */}
+        {/* 📲 ホーム画面追加 ＆ LINE特典アンロックカード */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '18px' }}>
           
           {/* 💡 ホーム画面追加カード */}
@@ -540,35 +580,44 @@ export default function Myreservationspag() {
             </div>
           </div>
 
-          {/* 🟢 劇団公式LINE 友だち追加カード */}
-          <div
-            onClick={handleOpenOfficialLine}
-            className="btn-bounce"
-            style={{
-              backgroundColor: '#ffffff',
-              border: `2px solid #06c755`,
-              borderRadius: '20px',
-              padding: '12px 14px',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
-              cursor: 'pointer',
-              boxShadow: '0 3px 0 rgba(6,199,85,0.15)'
-            }}
-          >
+          {/* 🟢 LINE特典アンロックカード */}
+          <div style={{
+            backgroundColor: '#ffffff',
+            border: `2px solid ${isLineLinked ? '#86efac' : '#06c755'}`,
+            borderRadius: '20px',
+            padding: '12px 14px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            boxShadow: '0 3px 0 rgba(6,199,85,0.15)'
+          }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 900, color: '#15803d', marginBottom: '4px' }}>
                 <div style={{ width: '16px', height: '16px', borderRadius: '4px', backgroundColor: '#06c755', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: 900 }}>L</div>
-                公式LINE友だち追加
+                特典の鍵を開ける
               </div>
-              <div style={{ fontSize: '10px', color: COLORS.muted, lineHeight: '1.35', fontWeight: 600 }}>
-                次回公演案内や最新情報をいち早くお届け！✨
-              </div>
+
+              {isLineLinked ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '4px 0' }}>
+                  <MascotSprite src={MASCOT.waai} size={26} />
+                  <span style={{ fontSize: '11px', color: COLORS.success, fontWeight: 800 }}>アンロック済み！🎉</span>
+                </div>
+              ) : (
+                <div style={{ fontSize: '10px', color: COLORS.muted, lineHeight: '1.35', fontWeight: 600 }}>
+                  LINE連携で限定動画・稽古場日誌が見放題！
+                </div>
+              )}
             </div>
 
-            <div style={{ marginTop: '6px', width: '100%', padding: '5px 0', borderRadius: '999px', backgroundColor: '#06c755', color: '#fff', fontSize: '11px', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', boxShadow: '0 2px 0 #049543' }}>
-              <UserPlus size={12} /> 友だち追加
-            </div>
+            {!isLineLinked && (
+              <button
+                onClick={handleLineLink}
+                className="btn-bounce"
+                style={{ width: '100%', marginTop: '6px', padding: '6px 0', borderRadius: '999px', border: 'none', backgroundColor: '#06c755', color: '#fff', fontSize: '11px', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', boxShadow: '0 2px 0 #049543' }}
+              >
+                <Unlock size={12} /> LINEで鍵を開ける
+              </button>
+            )}
           </div>
 
         </div>
@@ -758,7 +807,6 @@ export default function Myreservationspag() {
               </ul>
             </div>
 
-            {/* iOS の手順 */}
             <div style={{ marginBottom: '14px', border: `1.5px solid ${COLORS.border}`, borderRadius: '16px', padding: '12px' }}>
               <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 🍎 iPhone (Safari) の場合
@@ -770,7 +818,6 @@ export default function Myreservationspag() {
               </ol>
             </div>
 
-            {/* Android の手順 */}
             <div style={{ marginBottom: '16px', border: `1.5px solid ${COLORS.border}`, borderRadius: '16px', padding: '12px' }}>
               <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 🤖 Android (Chrome) の場合
