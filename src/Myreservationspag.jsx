@@ -4,7 +4,7 @@ import { supabase } from './supabaseClient';
 import {
   Ticket, Calendar, MapPin, Bell, ExternalLink,
   Smartphone, Star, CheckCircle2, AlertCircle, X,
-  Send, Edit3, Video, PlayCircle, HelpCircle, Lock, Unlock, Sparkles, Check
+  Send, Edit3, Video, PlayCircle, HelpCircle, Lock, Unlock, Sparkles, Check, MessageSquare
 } from 'lucide-react';
 
 const COLORS = {
@@ -93,12 +93,13 @@ function getEmbedVideoUrl(rawUrl) {
 export default function Myreservationspag() {
   const [token, setToken] = useState('');
   const [reservations, setReservations] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [stages, setStages] = useState({});
   const [ticketTypes, setTicketTypes] = useState({});
   const [productions, setProductions] = useState({});
   const [loading, setLoading] = useState(true);
 
-  const [activeModal, setActiveModal] = useState(null);
+  const [activeModal, setActiveModal] = useState(null); // 'edit' | 'survey' | 'cancel' | 'video' | 'pwaGuide' | 'notifList'
   const [selectedRes, setSelectedRes] = useState(null);
   const [selectedVideo, setSelectedVideo] = useState({ url: '', title: '', venue: '' });
   const [editCount, setEditCount] = useState(1);
@@ -112,6 +113,9 @@ export default function Myreservationspag() {
   const [isLineLinked, setIsLineLinked] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
 
+  // 未読通知数
+  const unreadNotifCount = notifications.filter(n => !n.is_read).length;
+
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const t = urlParams.get('token') || localStorage.getItem('tp_mypage_token') || '';
@@ -120,15 +124,36 @@ export default function Myreservationspag() {
     if (t) {
       localStorage.setItem('tp_mypage_token', t);
       fetchMypageData(t);
+      fetchNotifications(t);
     } else {
       setLoading(false);
     }
 
-    // Service Worker とプッシュ通知の許可状態をチェック
     if ('Notification' in window && Notification.permission === 'granted') {
       setPushEnabled(true);
     }
+
+    // アイコンのバッジをクリア
+    if ('clearAppBadge' in navigator) {
+      navigator.clearAppBadge().catch(() => {});
+    }
   }, []);
+
+  const fetchNotifications = async (mypageToken) => {
+    try {
+      const { data, error } = await supabase
+        .from('customer_notifications')
+        .select('*')
+        .eq('mypage_token', mypageToken)
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        setNotifications(data);
+      }
+    } catch (e) {
+      console.error('Fetch notif error:', e);
+    }
+  };
 
   const fetchMypageData = async (mypageToken) => {
     setLoading(true);
@@ -180,7 +205,6 @@ export default function Myreservationspag() {
     }
   };
 
-  // 🔔 Webプッシュ通知の登録・購読処理
   const handleTogglePush = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       alert('お使いのブラウザはWebプッシュ通知に対応していません。');
@@ -194,23 +218,19 @@ export default function Myreservationspag() {
         return;
       }
 
-      // Service Worker の登録
       const registration = await navigator.serviceWorker.register('/sw.js');
       await navigator.serviceWorker.ready;
 
-      // 購読状態を取得または新規作成
       let subscription = await registration.pushManager.getSubscription();
       if (!subscription) {
-        // 標準プッシュ購読
         subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: null // アプリケーションサーバーキー（VAPID）がある場合は指定可能
+          applicationServerKey: null
         });
       }
 
       if (subscription) {
         const subJson = subscription.toJSON();
-        // Supabase にプッシュトークンを保存
         await supabase.from('push_subscriptions').upsert({
           mypage_token: token,
           endpoint: subJson.endpoint,
@@ -224,6 +244,22 @@ export default function Myreservationspag() {
     } catch (err) {
       console.error('Push notification error:', err);
       alert('通知設定を完了できませんでした。ホーム画面に追加してから再度お試しください。');
+    }
+  };
+
+  const handleOpenNotifModal = async () => {
+    setActiveModal('notifList');
+    // 開いたタイミングですべて既読にする
+    if (unreadNotifCount > 0) {
+      await supabase
+        .from('customer_notifications')
+        .update({ is_read: true })
+        .eq('mypage_token', token);
+
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      if ('clearAppBadge' in navigator) {
+        navigator.clearAppBadge().catch(() => {});
+      }
     }
   };
 
@@ -470,7 +506,7 @@ export default function Myreservationspag() {
 
       <div style={{ maxWidth: '540px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
 
-        {/* 🐶 チケポチ ヘッダー */}
+        {/* 🐶 チケポチ ヘッダー（通知トレイ＆プッシュ設定ボタン） */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', backgroundColor: '#ffffff', padding: '12px 16px', borderRadius: '24px', border: `2.5px solid ${COLORS.border}`, boxShadow: '0 4px 0 rgba(245,158,11,0.1), 0 4px 10px rgba(0,0,0,0.04)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <MascotSprite src={MASCOT_ICONAPP} size={52} borderRadius="16px" style={{ boxShadow: '0 3px 0 rgba(217,119,6,0.3)' }} />
@@ -484,25 +520,71 @@ export default function Myreservationspag() {
             </div>
           </div>
 
-          <button
-            onClick={handleTogglePush}
-            className="btn-bounce"
-            style={{
-              padding: '7px 14px',
-              borderRadius: '999px',
-              border: `2px solid ${pushEnabled ? COLORS.success : COLORS.yellowDeep}`,
-              backgroundColor: pushEnabled ? '#f0fdf4' : COLORS.surfaceAlt,
-              color: pushEnabled ? COLORS.success : COLORS.yellowDeep,
-              fontSize: '11px',
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-          >
-            <Bell size={13} /> {pushEnabled ? '通知ON済' : '通知設定'}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {/* 🔔 通知トレイボタン（未読バッジ付き） */}
+            <button
+              onClick={handleOpenNotifModal}
+              className="btn-bounce"
+              style={{
+                position: 'relative',
+                padding: '8px 10px',
+                borderRadius: '999px',
+                border: `2px solid ${unreadNotifCount > 0 ? COLORS.danger : COLORS.yellowDeep}`,
+                backgroundColor: unreadNotifCount > 0 ? '#fef2f2' : COLORS.surfaceAlt,
+                color: unreadNotifCount > 0 ? COLORS.danger : COLORS.yellowDeep,
+                fontSize: '11px',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+              title="お知らせを確認"
+            >
+              <Bell size={14} />
+              {unreadNotifCount > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: '-4px',
+                  right: '-4px',
+                  backgroundColor: COLORS.danger,
+                  color: '#fff',
+                  fontSize: '9px',
+                  fontWeight: 900,
+                  width: '16px',
+                  height: '16px',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                }}>
+                  {unreadNotifCount}
+                </span>
+              )}
+            </button>
+
+            {/* プッシュ通知ON/OFF設定 */}
+            <button
+              onClick={handleTogglePush}
+              className="btn-bounce"
+              style={{
+                padding: '7px 12px',
+                borderRadius: '999px',
+                border: `2px solid ${pushEnabled ? COLORS.success : COLORS.yellowDeep}`,
+                backgroundColor: pushEnabled ? '#f0fdf4' : COLORS.surfaceAlt,
+                color: pushEnabled ? COLORS.success : COLORS.yellowDeep,
+                fontSize: '11px',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '3px'
+              }}
+            >
+              {pushEnabled ? '✓ 通知ON' : '通知設定'}
+            </button>
+          </div>
         </div>
 
         {/* 🍁 特典コンテンツサイトへの専用バナー */}
@@ -547,7 +629,6 @@ export default function Myreservationspag() {
         {/* 📲 ホーム画面追加 ＆ LINE特典アンロックカード */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '18px' }}>
           
-          {/* 💡 ホーム画面追加カード */}
           <div
             onClick={() => setActiveModal('pwaGuide')}
             className="btn-bounce"
@@ -580,7 +661,6 @@ export default function Myreservationspag() {
             </div>
           </div>
 
-          {/* 🟢 LINE特典アンロックカード */}
           <div style={{
             backgroundColor: '#ffffff',
             border: `2px solid ${isLineLinked ? '#86efac' : '#06c755'}`,
@@ -776,6 +856,81 @@ export default function Myreservationspag() {
 
       </div>
 
+      {/* 🔔 お知らせ・通知履歴モーダル */}
+      {activeModal === 'notifList' && (
+        <div
+          onClick={() => setActiveModal(null)}
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px', boxSizing: 'border-box' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: '440px', backgroundColor: '#ffffff', borderRadius: '28px', padding: '22px', border: `2.5px solid ${COLORS.border}`, boxShadow: '0 12px 30px rgba(0,0,0,0.25)', maxHeight: '85vh', overflowY: 'auto' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MascotSprite src={MASCOT.naruhodo} size={32} />
+                <h3 className="pouchi-font" style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: COLORS.pouchiDark }}>
+                  劇団からのお知らせ・通知 🔔
+                </h3>
+              </div>
+              <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={20} /></button>
+            </div>
+
+            {notifications.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '30px 10px', color: COLORS.muted }}>
+                <MascotSprite src={MASCOT.ticketWait} size={64} style={{ margin: '0 auto 10px auto' }} />
+                <div style={{ fontSize: '13px', fontWeight: 700 }}>新しいお知らせはありませんワン！</div>
+                <div style={{ fontSize: '11px', marginTop: '4px' }}>前日リマインドやメッセージが届くとここに表示されます。</div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {notifications.map(notif => (
+                  <div
+                    key={notif.id}
+                    style={{
+                      backgroundColor: COLORS.surfaceAlt,
+                      border: `1.5px solid ${COLORS.yellowSoft}`,
+                      borderRadius: '16px',
+                      padding: '12px 14px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark }}>
+                        {notif.title}
+                      </div>
+                      <span style={{ fontSize: '10px', color: COLORS.muted }}>
+                        {new Date(notif.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: COLORS.text, lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
+                      {notif.body}
+                    </div>
+                    {notif.link_url && (
+                      <a
+                        href={notif.link_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', color: COLORS.yellowDeep, fontWeight: 800, marginTop: '6px', textDecoration: 'none' }}
+                      >
+                        詳細を見る <ExternalLink size={11} />
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={() => setActiveModal(null)}
+              className="btn-bounce btn-pouchi-primary"
+              style={{ width: '100%', padding: '12px', borderRadius: '999px', fontWeight: 900, cursor: 'pointer', fontSize: '13px', marginTop: '16px' }}
+            >
+              とじる
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 📲 ホーム画面追加手順ガイドモーダル */}
       {activeModal === 'pwaGuide' && (
         <div
@@ -807,6 +962,7 @@ export default function Myreservationspag() {
               </ul>
             </div>
 
+            {/* iOS の手順 */}
             <div style={{ marginBottom: '14px', border: `1.5px solid ${COLORS.border}`, borderRadius: '16px', padding: '12px' }}>
               <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 🍎 iPhone (Safari) の場合
@@ -818,6 +974,7 @@ export default function Myreservationspag() {
               </ol>
             </div>
 
+            {/* Android の手順 */}
             <div style={{ marginBottom: '16px', border: `1.5px solid ${COLORS.border}`, borderRadius: '16px', padding: '12px' }}>
               <div style={{ fontSize: '13px', fontWeight: 900, color: COLORS.pouchiDark, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 🤖 Android (Chrome) の場合

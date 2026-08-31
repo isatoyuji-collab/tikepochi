@@ -7,7 +7,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-// プッシュ通知の受信
+// プッシュ通知受信時のバッジ点灯
 self.addEventListener('push', (event) => {
   let data = {
     title: 'チケポチ！からのお知らせ🐾',
@@ -36,17 +36,37 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title, options)
+    (async () => {
+      // 🔴 アプリアイコンにバッジを点灯
+      if ('setAppBadge' in navigator) {
+        try {
+          await navigator.setAppBadge(1);
+        } catch (err) {
+          console.error('Badge error:', err);
+        }
+      }
+      return self.registration.showNotification(data.title, options);
+    })()
   );
 });
 
-// 通知タップ時の挙動（マイページや指定URLを開く）
+// 通知タップ時のバッジ消去 ＆ 画面オープン
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const targetUrl = event.notification.data?.url || '/';
 
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+    (async () => {
+      // ⚪ バッジをクリア
+      if ('clearAppBadge' in navigator) {
+        try {
+          await navigator.clearAppBadge();
+        } catch (err) {
+          console.error('Clear badge error:', err);
+        }
+      }
+
+      const windowClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
       for (let client of windowClients) {
         if (client.url.includes(targetUrl) && 'focus' in client) {
           return client.focus();
@@ -55,6 +75,6 @@ self.addEventListener('notificationclick', (event) => {
       if (clients.openWindow) {
         return clients.openWindow(targetUrl);
       }
-    })
+    })()
   );
 });
