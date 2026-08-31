@@ -275,7 +275,7 @@ export default function CustomerReservationForm({ productionId }) {
   const [errorMessage, setErrorMessage] = useState('');
   const [urlStaffParam, setUrlStaffParam] = useState('');
 
-  // 💡 修正: 予約フォームの初期化ごとに新しいユニークなセッションIDを発行
+  // 予約ごとに固有のセッションIDを発行
   const sessionIdRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
@@ -1616,6 +1616,26 @@ export default function CustomerReservationForm({ productionId }) {
                     合計お支払い額（{selectedPaymentMethod === 'STRIPE_CARD' ? 'カード即時精算' : selectedPaymentMethod === 'BANK_TRANSFER' ? '銀行振込' : '当日精算'}）
                   </span>
                   <span style={{ fontSize: '20px', fontWeight: 900, color: COLORS.yellowDeep }}>¥{total.toLocaleString()}</span>
+                </div>
+
+                {/* ⚠️ キャンセルポリシー・返金に関するご案内 */}
+                <div style={{
+                  backgroundColor: '#fffdf9',
+                  border: '1.5px solid rgba(245, 158, 11, 0.4)',
+                  borderRadius: '16px',
+                  padding: '12px 14px',
+                  fontSize: '11px',
+                  color: COLORS.pouchiDark,
+                  lineHeight: '1.6'
+                }}>
+                  <div style={{ fontWeight: 800, color: COLORS.yellowDeep, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <ShieldCheck size={14} /> ご予約のキャンセル・返金について
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: '16px' }}>
+                    <li><strong>事前決済（クレジットカード・銀行振込）</strong>：キャンセルの場合、システム・返金手数料 <strong>500円</strong> を差し引いた金額をご返金いたします。</li>
+                    <li><strong>無断キャンセル・開演後</strong>：ご返金いたしかねますので、あらかじめご了承ください。</li>
+                    <li>ご予約の変更・キャンセルは予約完了後の「マイページ」よりお手続きいただけます。</li>
+                  </ul>
                 </div>
 
                 {errorMessage && (
