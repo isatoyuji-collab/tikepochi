@@ -26,7 +26,6 @@ const COLORS = {
   danger: '#e85a45',
 };
 
-// チケットバック単価（1枚あたり）
 const TICKET_BACK_UNIT_YEN = 500;
 
 const MASCOT = {
@@ -185,7 +184,7 @@ export default function StaffReservationsPage() {
   const [loadError, setLoadError] = useState('');
   const [activeTab, setActiveTab] = useState('mine');
   const [stageFilter, setStageFilter] = useState('all');
-  const [allSortOrder, setAllSortOrder] = useState('newest'); // 'newest' | 'stage_asc' | 'name_asc'
+  const [allSortOrder, setAllSortOrder] = useState('newest');
 
   const [editTarget, setEditTarget] = useState(null);
   const [editCount, setEditCount] = useState(1);
@@ -378,6 +377,7 @@ export default function StaffReservationsPage() {
           stageDateTime,
           staffName,
           appealPoints,
+          bookingUrl: myPlainBookingUrl, // 予約URLを渡す
         },
       });
 
@@ -697,7 +697,6 @@ export default function StaffReservationsPage() {
         {/* ============ 自分の予約タブ ============ */}
         {activeTab === 'mine' && (
           <>
-            {/* ダッシュボード：担当枚数 ＆ チケットバック額 */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '18px' }}>
               <div style={{ backgroundColor: '#fff', border: `2.5px solid ${COLORS.border}`, borderRadius: '20px', padding: '16px', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 4px 0 rgba(245,158,11,0.1)' }}>
                 <MascotSprite src={MASCOT.pochitto} size={44} />
@@ -722,7 +721,6 @@ export default function StaffReservationsPage() {
               </div>
             ) : (
               <>
-                {/* 一括送信バー */}
                 {selectedIds.length > 0 && (
                   <div style={{ position: 'sticky', top: '10px', zIndex: 10, backgroundColor: COLORS.pouchiDark, color: '#fff', borderRadius: '999px', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
                     <span style={{ fontSize: '12px', fontWeight: 800 }}>{selectedIds.length}件選択中</span>
@@ -736,7 +734,6 @@ export default function StaffReservationsPage() {
                   </div>
                 )}
 
-                {/* 公演別グループ表示 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
                   {myReservationsByProduction.map(({ production, rows }) => {
                     const isA = production.title?.includes('あなたとコンビ');
@@ -875,7 +872,6 @@ export default function StaffReservationsPage() {
               ))}
             </div>
 
-            {/* 並び替え */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '14px' }}>
               <ArrowDownUp size={13} color={COLORS.muted} />
               <select
@@ -1032,7 +1028,7 @@ export default function StaffReservationsPage() {
                         🟢 LINE用メッセージ
                       </div>
                       <textarea
-                        rows={6}
+                        rows={7}
                         value={promoPatterns[0]}
                         onChange={(e) => handleUpdatePromoPattern(0, e.target.value)}
                         style={{ width: '100%', padding: '8px 10px', borderRadius: '10px', border: `1.5px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '13px', lineHeight: '1.6', resize: 'vertical', backgroundColor: '#fff', marginBottom: '8px' }}
@@ -1055,7 +1051,7 @@ export default function StaffReservationsPage() {
                         𝕏 X（Twitter）投稿用
                       </div>
                       <textarea
-                        rows={4}
+                        rows={5}
                         value={promoPatterns[1]}
                         onChange={(e) => handleUpdatePromoPattern(1, e.target.value)}
                         style={{ width: '100%', padding: '8px 10px', borderRadius: '10px', border: `1.5px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '13px', lineHeight: '1.6', resize: 'vertical', backgroundColor: '#fff', marginBottom: '8px' }}
