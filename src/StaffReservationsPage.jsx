@@ -173,7 +173,6 @@ function getPaymentInfo(r) {
   return { Icon: m.icon, methodLabel: m.label, statusLabel: s.label, statusColor: s.color, statusBg: s.bg };
 }
 
-// 全体タブ用の伏せ字ヘルパー（メール・電話・担当者名をマスクして表示）
 function maskEmail(email) {
   if (!email) return '';
   const [local, domain] = email.split('@');
@@ -200,7 +199,6 @@ function maskStaffName(name) {
 
 export default function StaffReservationsPage() {
   const [staffName, setStaffName] = useState('');
-  const [canViewAll, setCanViewAll] = useState(false);
 
   const [productions, setProductions] = useState([]);
   const [stagesMap, setStagesMap] = useState({});
@@ -223,8 +221,8 @@ export default function StaffReservationsPage() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [messageTarget, setMessageTarget] = useState(null);
   const [messageBody, setMessageBody] = useState('');
-  const [selectedChannel, setSelectedChannel] = useState('line'); // 'line' | 'mypage' | 'email'
-  const [templateType, setTemplateType] = useState('thanks'); // 'thanks' | 'remind' | 'custom'
+  const [selectedChannel, setSelectedChannel] = useState('line');
+  const [templateType, setTemplateType] = useState('thanks');
   const [isSending, setIsSending] = useState(false);
   const [sendDone, setSendDone] = useState(false);
 
@@ -250,7 +248,6 @@ export default function StaffReservationsPage() {
       if (staffErr) throw staffErr;
 
       const staffRow = staffRows && staffRows.length > 0 ? staffRows[0] : null;
-      setCanViewAll(staffRow?.ticket_visibility === 'all_stages');
 
       let prodQuery = supabase.from('productions').select('*').order('created_at', { ascending: true });
       if (staffRow?.organization_id) {
@@ -320,7 +317,6 @@ export default function StaffReservationsPage() {
     });
   }, [reservations, staffName]);
 
-  // 公演別にグループ化（A公演セクション／B公演セクション）
   const myReservationsByProduction = useMemo(() => {
     const groups = [];
     productions.forEach(p => {
@@ -344,7 +340,6 @@ export default function StaffReservationsPage() {
     } else if (allSortOrder === 'name_asc') {
       rows.sort((a, b) => (a.customer_name || '').localeCompare(b.customer_name || '', 'ja'));
     }
-    // 'newest' はSupabaseクエリのcreated_at降順のまま
 
     return rows;
   }, [reservations, stageFilter, allSortOrder, stagesMap]);
@@ -359,28 +354,23 @@ export default function StaffReservationsPage() {
     return flat;
   }, [productions, stagesMap]);
 
-  // ダッシュボード指標：担当枚数 ＆ チケットバック額（担当人数は担当枚数とほぼ同義のため廃止）
   const dashboardStats = useMemo(() => {
     const totalCount = myReservations.reduce((sum, r) => sum + (r.count || 0), 0);
     const ticketBackYen = totalCount * TICKET_BACK_UNIT_YEN;
     return { totalCount, ticketBackYen };
   }, [myReservations]);
 
-  // 自分の扱いURL（代理予約用）。短縮ID方式はAdminStaffSettings.jsxのgetShortStaffUrlと同じロジック
-  // proxy=1 を付けることで、予約フォーム側が「担当者が代理入力している」モードに切り替わる
-  // （連絡先を任意入力にする／本人確認チェックを出す／決済方法を現地精算に固定する）
   const myBookingUrl = useMemo(() => {
     if (!productions[0] || !staffName) return '';
     const shortId = productions[0].id.slice(0, 8);
     return `${window.location.origin}/r/${shortId}?staff=${encodeURIComponent(staffName)}&proxy=1`;
   }, [productions, staffName]);
 
-  // お客様に共有する「扱いURL」（プレーン版・proxyパラメータなし）
-  // AdminStaffSettings.jsxのgetShortStaffUrlと同一ロジック
+  // 日本語のままのすっきりしたURL（エンコードなし）
   const myPlainBookingUrl = useMemo(() => {
     if (!productions[0] || !staffName) return '';
     const shortId = productions[0].id.slice(0, 8);
-    return `${window.location.origin}/r/${shortId}?staff=${encodeURIComponent(staffName)}`;
+    return `${window.location.origin}/r/${shortId}?staff=${staffName}`;
   }, [productions, staffName]);
 
   const [copiedPlainUrl, setCopiedPlainUrl] = useState(false);
@@ -396,7 +386,7 @@ export default function StaffReservationsPage() {
   const [appealPoints, setAppealPoints] = useState('');
   const [isGeneratingPromo, setIsGeneratingPromo] = useState(false);
   const [promoError, setPromoError] = useState('');
-  const [promoPatterns, setPromoPatterns] = useState([]); // 生成された文章（編集可能な配列）
+  const [promoPatterns, setPromoPatterns] = useState([]);
 
   const handleGeneratePromo = async () => {
     setIsGeneratingPromo(true);
@@ -420,9 +410,8 @@ export default function StaffReservationsPage() {
         throw new Error(error?.message || data?.error || '文章の生成に失敗しました');
       }
 
-      // 「①」「②」「③」区切りでパース
       const raw = data.text;
-      const parts = raw.split(/①|②|③/).map(s => s.trim()).filter(Boolean);
+      const parts = raw.split(/①|②/).map(s => s.trim()).filter(Boolean);
       setPromoPatterns(parts.length > 0 ? parts : [raw.trim()]);
     } catch (e) {
       setPromoError(e.message || '生成に失敗しました。時間をおいて再度お試しください。');
@@ -475,7 +464,6 @@ export default function StaffReservationsPage() {
     }
   };
 
-  // キャンセル（担当者権限で削除可能）
   const handleConfirmCancel = async () => {
     if (!cancelTarget) return;
     setIsCancelling(true);
@@ -498,7 +486,6 @@ export default function StaffReservationsPage() {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
-  // 📝 テンプレート生成関数（自動差し込み対応）
   const generateTemplateText = (type, target) => {
     const isBulk = target === 'bulk';
     const firstRes = isBulk ? myReservations.find(r => selectedIds.includes(r.id)) : target;
@@ -560,7 +547,6 @@ export default function StaffReservationsPage() {
     }
   };
 
-  // 🚀 メッセージ送信・共有実行
   const handleSendMessage = async () => {
     if (!messageBody.trim()) {
       alert('メッセージ本文を入力してください');
@@ -674,7 +660,7 @@ export default function StaffReservationsPage() {
           </a>
         )}
 
-        {/* 自分の扱いURL（お客様への共有用・コピーのみ） */}
+        {/* 自分の扱いURL（お客様への共有用・短縮表示） */}
         {myPlainBookingUrl && (
           <div style={{ backgroundColor: '#fff', border: `2px solid ${COLORS.border}`, borderRadius: '16px', padding: '12px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: '200px' }}>
@@ -705,7 +691,7 @@ export default function StaffReservationsPage() {
           <Sparkles size={16} /> AIに宣伝文章を考えてもらう
         </button>
 
-        {/* タブ切り替え */}
+        {/* タブ切り替え（誰でも全体タブを表示可能） */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
           <button
             onClick={() => setActiveTab('mine')}
@@ -719,20 +705,18 @@ export default function StaffReservationsPage() {
           >
             自分の予約
           </button>
-          {canViewAll && (
-            <button
-              onClick={() => setActiveTab('all')}
-              className="btn-bounce"
-              style={{
-                flex: 1, padding: '10px', borderRadius: '999px', fontWeight: 900, fontSize: '13px', cursor: 'pointer',
-                border: `2px solid ${activeTab === 'all' ? COLORS.blue : COLORS.border}`,
-                backgroundColor: activeTab === 'all' ? COLORS.blue : '#fff',
-                color: activeTab === 'all' ? '#fff' : COLORS.muted,
-              }}
-            >
-              全体
-            </button>
-          )}
+          <button
+            onClick={() => setActiveTab('all')}
+            className="btn-bounce"
+            style={{
+              flex: 1, padding: '10px', borderRadius: '999px', fontWeight: 900, fontSize: '13px', cursor: 'pointer',
+              border: `2px solid ${activeTab === 'all' ? COLORS.blue : COLORS.border}`,
+              backgroundColor: activeTab === 'all' ? COLORS.blue : '#fff',
+              color: activeTab === 'all' ? '#fff' : COLORS.muted,
+            }}
+          >
+            全体
+          </button>
         </div>
 
         {/* ============ 自分の予約タブ ============ */}
@@ -886,7 +870,7 @@ export default function StaffReservationsPage() {
         )}
 
         {/* ============ 全体タブ ============ */}
-        {activeTab === 'all' && canViewAll && (
+        {activeTab === 'all' && (
           <>
             <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', marginBottom: '10px' }}>
               <button
@@ -1076,28 +1060,51 @@ export default function StaffReservationsPage() {
             ) : (
               <>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '12px' }}>
-                  {promoPatterns.map((text, idx) => (
-                    <div key={idx} style={{ border: `2px solid ${COLORS.border}`, borderRadius: '16px', padding: '12px', backgroundColor: COLORS.surfaceAlt }}>
-                      <div style={{ fontSize: '11px', fontWeight: 800, color: COLORS.blueDeep, marginBottom: '6px' }}>パターン{idx + 1}</div>
+                  {/* ① LINE用 */}
+                  {promoPatterns[0] !== undefined && (
+                    <div style={{ border: `2px solid ${COLORS.border}`, borderRadius: '16px', padding: '12px', backgroundColor: COLORS.surfaceAlt }}>
+                      <div style={{ fontSize: '12px', fontWeight: 800, color: '#06c755', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        🟢 LINE用メッセージ
+                      </div>
                       <textarea
-                        rows={4}
-                        value={text}
-                        onChange={(e) => handleUpdatePromoPattern(idx, e.target.value)}
+                        rows={6}
+                        value={promoPatterns[0]}
+                        onChange={(e) => handleUpdatePromoPattern(0, e.target.value)}
                         style={{ width: '100%', padding: '8px 10px', borderRadius: '10px', border: `1.5px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '13px', lineHeight: '1.6', resize: 'vertical', backgroundColor: '#fff', marginBottom: '8px' }}
                       />
-                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                        <button onClick={() => handlePostToX(text)} className="btn-bounce" style={{ flex: 1, padding: '8px', borderRadius: '999px', border: 'none', backgroundColor: '#000', color: '#fff', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
-                          𝕏 に投稿
-                        </button>
-                        <button onClick={() => handlePostToLine(text)} className="btn-bounce" style={{ flex: 1, padding: '8px', borderRadius: '999px', border: 'none', backgroundColor: '#06c755', color: '#fff', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button onClick={() => handlePostToLine(promoPatterns[0])} className="btn-bounce" style={{ flex: 1, padding: '9px', borderRadius: '999px', border: 'none', backgroundColor: '#06c755', color: '#fff', fontSize: '12px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                           🟢 LINEで送る
                         </button>
-                        <button onClick={() => handleCopyPromo(text)} className="btn-bounce" style={{ padding: '8px 12px', borderRadius: '999px', border: `2px solid ${COLORS.border}`, backgroundColor: '#fff', color: COLORS.text, fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
-                          <Copy size={13} />
+                        <button onClick={() => handleCopyPromo(promoPatterns[0])} className="btn-bounce" style={{ padding: '8px 14px', borderRadius: '999px', border: `2px solid ${COLORS.border}`, backgroundColor: '#fff', color: COLORS.text, fontSize: '12px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Copy size={13} /> コピー
                         </button>
                       </div>
                     </div>
-                  ))}
+                  )}
+
+                  {/* ② X用 */}
+                  {promoPatterns[1] !== undefined && (
+                    <div style={{ border: `2px solid ${COLORS.border}`, borderRadius: '16px', padding: '12px', backgroundColor: COLORS.surfaceAlt }}>
+                      <div style={{ fontSize: '12px', fontWeight: 800, color: '#000', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        𝕏 X（Twitter）投稿用
+                      </div>
+                      <textarea
+                        rows={4}
+                        value={promoPatterns[1]}
+                        onChange={(e) => handleUpdatePromoPattern(1, e.target.value)}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: '10px', border: `1.5px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '13px', lineHeight: '1.6', resize: 'vertical', backgroundColor: '#fff', marginBottom: '8px' }}
+                      />
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button onClick={() => handlePostToX(promoPatterns[1])} className="btn-bounce" style={{ flex: 1, padding: '9px', borderRadius: '999px', border: 'none', backgroundColor: '#000', color: '#fff', fontSize: '12px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                          𝕏 に投稿
+                        </button>
+                        <button onClick={() => handleCopyPromo(promoPatterns[1])} className="btn-bounce" style={{ padding: '8px 14px', borderRadius: '999px', border: `2px solid ${COLORS.border}`, backgroundColor: '#fff', color: COLORS.text, fontSize: '12px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Copy size={13} /> コピー
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={() => setPromoPatterns([])}
@@ -1112,7 +1119,7 @@ export default function StaffReservationsPage() {
         </div>
       )}
 
-      {/* 💌 お礼・リマインド送信モーダル（マルチチャネル＆自動差し込み） */}
+      {/* 💌 お礼・リマインド送信モーダル */}
       {messageTarget && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
           <div style={{ width: '100%', maxWidth: '460px', backgroundColor: '#fff', borderRadius: '24px', padding: '22px', border: `2.5px solid ${COLORS.border}`, maxHeight: '90vh', overflowY: 'auto' }}>
