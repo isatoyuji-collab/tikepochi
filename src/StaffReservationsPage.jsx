@@ -5,7 +5,7 @@ import {
   Calendar, MapPin, Ticket, Mail, Phone, Edit3, Send,
   Users, CheckSquare, Square, X,
   CreditCard, Building2, Banknote, Share2, Sparkles, Video,
-  Gift, Trash2, ExternalLink, Wallet
+  Gift, Trash2, ExternalLink, Wallet, Copy, Check, ArrowDownUp
 } from 'lucide-react';
 
 const COLORS = {
@@ -173,6 +173,31 @@ function getPaymentInfo(r) {
   return { Icon: m.icon, methodLabel: m.label, statusLabel: s.label, statusColor: s.color, statusBg: s.bg };
 }
 
+// 全体タブ用の伏せ字ヘルパー（メール・電話・担当者名をマスクして表示）
+function maskEmail(email) {
+  if (!email) return '';
+  const [local, domain] = email.split('@');
+  if (!domain) return '****';
+  const maskedLocal = local.length <= 1 ? '*' : local[0] + '*'.repeat(Math.max(local.length - 1, 1));
+  const domainParts = domain.split('.');
+  const maskedDomain = (domainParts[0]?.[0] || '*') + '***';
+  const ext = domainParts.slice(1).join('.') || '';
+  return `${maskedLocal}@${maskedDomain}${ext ? '.' + ext : ''}`;
+}
+
+function maskPhone(phone) {
+  if (!phone) return '';
+  const digits = phone.replace(/[^0-9]/g, '');
+  if (digits.length < 4) return '****';
+  return `***-****-${digits.slice(-4)}`;
+}
+
+function maskStaffName(name) {
+  if (!name) return '未設定';
+  if (name.length <= 1) return '＊';
+  return name[0] + '＊'.repeat(name.length - 1);
+}
+
 export default function StaffReservationsPage() {
   const [staffName, setStaffName] = useState('');
   const [canViewAll, setCanViewAll] = useState(false);
@@ -186,6 +211,7 @@ export default function StaffReservationsPage() {
   const [loadError, setLoadError] = useState('');
   const [activeTab, setActiveTab] = useState('mine');
   const [stageFilter, setStageFilter] = useState('all');
+  const [allSortOrder, setAllSortOrder] = useState('newest'); // 'newest' | 'stage_asc' | 'name_asc'
 
   const [editTarget, setEditTarget] = useState(null);
   const [editCount, setEditCount] = useState(1);
@@ -305,9 +331,23 @@ export default function StaffReservationsPage() {
   }, [myReservations, productions]);
 
   const allFiltered = useMemo(() => {
-    if (stageFilter === 'all') return reservations;
-    return reservations.filter(r => r.stage_id === stageFilter);
-  }, [reservations, stageFilter]);
+    let rows = stageFilter === 'all' ? [...reservations] : reservations.filter(r => r.stage_id === stageFilter);
+
+    if (allSortOrder === 'stage_asc') {
+      rows.sort((a, b) => {
+        const stageA = (stagesMap[a.production_id] || []).find(s => s.id === a.stage_id);
+        const stageB = (stagesMap[b.production_id] || []).find(s => s.id === b.stage_id);
+        const dA = `${stageA?.performance_date || stageA?.stage_date || ''} ${stageA?.start_time || ''}`;
+        const dB = `${stageB?.performance_date || stageB?.stage_date || ''} ${stageB?.start_time || ''}`;
+        return dA.localeCompare(dB);
+      });
+    } else if (allSortOrder === 'name_asc') {
+      rows.sort((a, b) => (a.customer_name || '').localeCompare(b.customer_name || '', 'ja'));
+    }
+    // 'newest' はSupabaseクエリのcreated_at降順のまま
+
+    return rows;
+  }, [reservations, stageFilter, allSortOrder, stagesMap]);
 
   const allStagesFlat = useMemo(() => {
     const flat = [];
@@ -327,11 +367,85 @@ export default function StaffReservationsPage() {
   }, [myReservations]);
 
   // 自分の扱いURL（代理予約用）。短縮ID方式はAdminStaffSettings.jsxのgetShortStaffUrlと同じロジック
+  // proxy=1 を付けることで、予約フォーム側が「担当者が代理入力している」モードに切り替わる
+  // （連絡先を任意入力にする／本人確認チェックを出す／決済方法を現地精算に固定する）
   const myBookingUrl = useMemo(() => {
+    if (!productions[0] || !staffName) return '';
+    const shortId = productions[0].id.slice(0, 8);
+    return `${window.location.origin}/r/${shortId}?staff=${encodeURIComponent(staffName)}&proxy=1`;
+  }, [productions, staffName]);
+
+  // お客様に共有する「扱いURL」（プレーン版・proxyパラメータなし）
+  // AdminStaffSettings.jsxのgetShortStaffUrlと同一ロジック
+  const myPlainBookingUrl = useMemo(() => {
     if (!productions[0] || !staffName) return '';
     const shortId = productions[0].id.slice(0, 8);
     return `${window.location.origin}/r/${shortId}?staff=${encodeURIComponent(staffName)}`;
   }, [productions, staffName]);
+
+  const [copiedPlainUrl, setCopiedPlainUrl] = useState(false);
+  const handleCopyPlainUrl = () => {
+    if (!myPlainBookingUrl) return;
+    navigator.clipboard.writeText(myPlainBookingUrl);
+    setCopiedPlainUrl(true);
+    setTimeout(() => setCopiedPlainUrl(false), 2000);
+  };
+
+  // 🐾 AI宣伝文章生成
+  const [promoModalOpen, setPromoModalOpen] = useState(false);
+  const [appealPoints, setAppealPoints] = useState('');
+  const [isGeneratingPromo, setIsGeneratingPromo] = useState(false);
+  const [promoError, setPromoError] = useState('');
+  const [promoPatterns, setPromoPatterns] = useState([]); // 生成された文章（編集可能な配列）
+
+  const handleGeneratePromo = async () => {
+    setIsGeneratingPromo(true);
+    setPromoError('');
+    try {
+      const prod = productions[0];
+      const stage = prod ? (stagesMap[prod.id] || [])[0] : null;
+      const stageDateTime = stage ? `${stage.performance_date || stage.stage_date} ${stage.start_time?.slice(0, 5)}開演` : '';
+
+      const { data, error } = await supabase.functions.invoke('generate-promo-text', {
+        body: {
+          productionTitle: prod?.title || '',
+          venueName: prod?.venue_name || '',
+          stageDateTime,
+          staffName,
+          appealPoints,
+        },
+      });
+
+      if (error || !data?.text) {
+        throw new Error(error?.message || data?.error || '文章の生成に失敗しました');
+      }
+
+      // 「①」「②」「③」区切りでパース
+      const raw = data.text;
+      const parts = raw.split(/①|②|③/).map(s => s.trim()).filter(Boolean);
+      setPromoPatterns(parts.length > 0 ? parts : [raw.trim()]);
+    } catch (e) {
+      setPromoError(e.message || '生成に失敗しました。時間をおいて再度お試しください。');
+    } finally {
+      setIsGeneratingPromo(false);
+    }
+  };
+
+  const handleUpdatePromoPattern = (idx, value) => {
+    setPromoPatterns(prev => prev.map((p, i) => i === idx ? value : p));
+  };
+
+  const handleCopyPromo = (text) => {
+    navigator.clipboard.writeText(text);
+  };
+
+  const handlePostToX = (text) => {
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  const handlePostToLine = (text) => {
+    window.open(`https://line.me/R/msg/text/?${encodeURIComponent(text)}`, '_blank');
+  };
 
   const getProdAndStage = (r) => {
     const prod = productions.find(p => p.id === r.production_id) || {};
@@ -560,6 +674,37 @@ export default function StaffReservationsPage() {
           </a>
         )}
 
+        {/* 自分の扱いURL（お客様への共有用・コピーのみ） */}
+        {myPlainBookingUrl && (
+          <div style={{ backgroundColor: '#fff', border: `2px solid ${COLORS.border}`, borderRadius: '16px', padding: '12px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: '200px' }}>
+              <div style={{ fontSize: '11px', color: COLORS.yellowDeep, fontWeight: 800, marginBottom: '2px' }}>自分の予約URL（お客様に送る用）</div>
+              <div style={{ fontSize: '12px', color: COLORS.text, wordBreak: 'break-all', fontWeight: 600 }}>{myPlainBookingUrl}</div>
+            </div>
+            <button
+              onClick={handleCopyPlainUrl}
+              className="btn-bounce"
+              style={{ padding: '8px 12px', borderRadius: '999px', border: `2px solid ${COLORS.yellowDeep}`, backgroundColor: COLORS.surfaceAlt, color: COLORS.yellowDeep, fontSize: '11px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}
+            >
+              {copiedPlainUrl ? <Check size={13} /> : <Copy size={13} />}
+              {copiedPlainUrl ? '完了' : 'コピー'}
+            </button>
+          </div>
+        )}
+
+        {/* 🐾 AI宣伝文章お助けボタン */}
+        <button
+          onClick={() => { setPromoModalOpen(true); setPromoError(''); }}
+          className="btn-bounce"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%',
+            padding: '12px', borderRadius: '999px', fontWeight: 900, fontSize: '13px', cursor: 'pointer',
+            marginBottom: '16px', border: `2px solid ${COLORS.blue}`, backgroundColor: COLORS.blueSoft, color: COLORS.blueDeep,
+          }}
+        >
+          <Sparkles size={16} /> AIに宣伝文章を考えてもらう
+        </button>
+
         {/* タブ切り替え */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
           <button
@@ -743,7 +888,7 @@ export default function StaffReservationsPage() {
         {/* ============ 全体タブ ============ */}
         {activeTab === 'all' && canViewAll && (
           <>
-            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', marginBottom: '14px' }}>
+            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', marginBottom: '10px' }}>
               <button
                 onClick={() => setStageFilter('all')}
                 className="stage-filter-btn"
@@ -771,6 +916,20 @@ export default function StaffReservationsPage() {
               ))}
             </div>
 
+            {/* 並び替え */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '14px' }}>
+              <ArrowDownUp size={13} color={COLORS.muted} />
+              <select
+                value={allSortOrder}
+                onChange={(e) => setAllSortOrder(e.target.value)}
+                style={{ fontSize: '12px', fontWeight: 700, color: COLORS.text, border: `1.5px solid ${COLORS.border}`, borderRadius: '999px', padding: '5px 10px', backgroundColor: '#fff' }}
+              >
+                <option value="newest">予約が新しい順</option>
+                <option value="stage_asc">観劇日時が早い順</option>
+                <option value="name_asc">お名前順（あいうえお順）</option>
+              </select>
+            </div>
+
             {allFiltered.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '30px 20px', backgroundColor: '#fff', borderRadius: '20px', border: `2.5px solid ${COLORS.border}` }}>
                 <MascotSprite src={MASCOT.ticketWait} size={64} style={{ margin: '0 auto 8px auto', display: 'block' }} />
@@ -781,9 +940,10 @@ export default function StaffReservationsPage() {
                 {allFiltered.map(r => {
                   const { prod, stage, tk } = getProdAndStage(r);
                   const isA = prod.title?.includes('あなたとコンビ');
+                  const assignedName = parseAssignedStaff(r.memo);
                   return (
-                    <div key={r.id} style={{ backgroundColor: '#fff', border: `1.5px solid ${COLORS.border}`, borderRadius: '14px', padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                    <div key={r.id} style={{ backgroundColor: '#fff', border: `1.5px solid ${COLORS.border}`, borderRadius: '14px', padding: '12px 14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, marginBottom: '6px' }}>
                         <StickerBadge bg={isA ? COLORS.yellowDeep : COLORS.blue} rotate={-2}>{isA ? 'A' : 'B'}</StickerBadge>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: '13px', fontWeight: 800, color: COLORS.pouchiDark, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -793,6 +953,15 @@ export default function StaffReservationsPage() {
                             {stage.performance_date || stage.stage_date} {stage.start_time?.slice(0, 5)} ／ {tk.name} × {r.count}枚
                           </div>
                         </div>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', fontSize: '11px', color: COLORS.muted, paddingLeft: '2px' }}>
+                        {r.customer_email && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Mail size={12} /> {maskEmail(r.customer_email)}</span>
+                        )}
+                        {r.customer_phone && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Phone size={12} /> {maskPhone(r.customer_phone)}</span>
+                        )}
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Users size={12} /> 担当：{maskStaffName(assignedName)}</span>
                       </div>
                     </div>
                   );
@@ -857,6 +1026,88 @@ export default function StaffReservationsPage() {
                 {isCancelling ? 'キャンセル中...' : 'キャンセル確定'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🐾 AI宣伝文章モーダル */}
+      {promoModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(10,9,20,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
+          <div style={{ width: '100%', maxWidth: '480px', backgroundColor: '#fff', borderRadius: '24px', padding: '22px', border: `2.5px solid ${COLORS.border}`, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 className="pouchi-font" style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: COLORS.pouchiDark, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Sparkles size={16} color={COLORS.blue} /> AIに宣伝文章を考えてもらう
+              </h3>
+              <button onClick={() => { setPromoModalOpen(false); setPromoPatterns([]); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.muted }}><X size={20} /></button>
+            </div>
+
+            {promoPatterns.length === 0 ? (
+              <>
+                <label style={{ fontSize: '12px', fontWeight: 800, color: COLORS.blueDeep, display: 'block', marginBottom: '6px' }}>
+                  アピールポイントなど（任意・空欄でもOK）
+                </label>
+                <textarea
+                  rows={3}
+                  value={appealPoints}
+                  onChange={(e) => setAppealPoints(e.target.value)}
+                  placeholder="例：今回は初共演のキャストが多い、ラストの展開が必見、など"
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: '12px', border: `2px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '13px', marginBottom: '12px' }}
+                />
+
+                {promoError && (
+                  <div style={{ padding: '10px 12px', backgroundColor: 'rgba(232,90,69,0.1)', color: COLORS.danger, borderRadius: '12px', fontSize: '12px', marginBottom: '12px' }}>
+                    {promoError}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleGeneratePromo}
+                  disabled={isGeneratingPromo}
+                  className="btn-bounce"
+                  style={{ width: '100%', padding: '14px', borderRadius: '999px', border: 'none', backgroundColor: COLORS.blue, color: '#fff', fontWeight: 900, cursor: isGeneratingPromo ? 'not-allowed' : 'pointer', opacity: isGeneratingPromo ? 0.7 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '14px' }}
+                >
+                  {isGeneratingPromo ? (
+                    <><MascotSprite src={MASCOT.checking} size={20} /> チケポチが考え中...</>
+                  ) : (
+                    <><Sparkles size={16} /> 文章を作ってもらう</>
+                  )}
+                </button>
+              </>
+            ) : (
+              <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '12px' }}>
+                  {promoPatterns.map((text, idx) => (
+                    <div key={idx} style={{ border: `2px solid ${COLORS.border}`, borderRadius: '16px', padding: '12px', backgroundColor: COLORS.surfaceAlt }}>
+                      <div style={{ fontSize: '11px', fontWeight: 800, color: COLORS.blueDeep, marginBottom: '6px' }}>パターン{idx + 1}</div>
+                      <textarea
+                        rows={4}
+                        value={text}
+                        onChange={(e) => handleUpdatePromoPattern(idx, e.target.value)}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: '10px', border: `1.5px solid ${COLORS.border}`, boxSizing: 'border-box', fontSize: '13px', lineHeight: '1.6', resize: 'vertical', backgroundColor: '#fff', marginBottom: '8px' }}
+                      />
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <button onClick={() => handlePostToX(text)} className="btn-bounce" style={{ flex: 1, padding: '8px', borderRadius: '999px', border: 'none', backgroundColor: '#000', color: '#fff', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
+                          𝕏 に投稿
+                        </button>
+                        <button onClick={() => handlePostToLine(text)} className="btn-bounce" style={{ flex: 1, padding: '8px', borderRadius: '999px', border: 'none', backgroundColor: '#06c755', color: '#fff', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
+                          🟢 LINEで送る
+                        </button>
+                        <button onClick={() => handleCopyPromo(text)} className="btn-bounce" style={{ padding: '8px 12px', borderRadius: '999px', border: `2px solid ${COLORS.border}`, backgroundColor: '#fff', color: COLORS.text, fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
+                          <Copy size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setPromoPatterns([])}
+                  className="btn-bounce"
+                  style={{ width: '100%', padding: '10px', borderRadius: '999px', border: `2px solid ${COLORS.border}`, background: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '12px', color: COLORS.muted }}
+                >
+                  条件を変えてもう一度作る
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
