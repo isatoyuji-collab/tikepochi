@@ -173,30 +173,6 @@ function getPaymentInfo(r) {
   return { Icon: m.icon, methodLabel: m.label, statusLabel: s.label, statusColor: s.color, statusBg: s.bg };
 }
 
-function maskEmail(email) {
-  if (!email) return '';
-  const [local, domain] = email.split('@');
-  if (!domain) return '****';
-  const maskedLocal = local.length <= 1 ? '*' : local[0] + '*'.repeat(Math.max(local.length - 1, 1));
-  const domainParts = domain.split('.');
-  const maskedDomain = (domainParts[0]?.[0] || '*') + '***';
-  const ext = domainParts.slice(1).join('.') || '';
-  return `${maskedLocal}@${maskedDomain}${ext ? '.' + ext : ''}`;
-}
-
-function maskPhone(phone) {
-  if (!phone) return '';
-  const digits = phone.replace(/[^0-9]/g, '');
-  if (digits.length < 4) return '****';
-  return `***-****-${digits.slice(-4)}`;
-}
-
-function maskStaffName(name) {
-  if (!name) return '未設定';
-  if (name.length <= 1) return '＊';
-  return name[0] + '＊'.repeat(name.length - 1);
-}
-
 export default function StaffReservationsPage() {
   const [staffName, setStaffName] = useState('');
 
@@ -366,7 +342,6 @@ export default function StaffReservationsPage() {
     return `${window.location.origin}/r/${shortId}?staff=${encodeURIComponent(staffName)}&proxy=1`;
   }, [productions, staffName]);
 
-  // 日本語のままのすっきりしたURL（エンコードなし）
   const myPlainBookingUrl = useMemo(() => {
     if (!productions[0] || !staffName) return '';
     const shortId = productions[0].id.slice(0, 8);
@@ -924,10 +899,9 @@ export default function StaffReservationsPage() {
                 {allFiltered.map(r => {
                   const { prod, stage, tk } = getProdAndStage(r);
                   const isA = prod.title?.includes('あなたとコンビ');
-                  const assignedName = parseAssignedStaff(r.memo);
                   return (
                     <div key={r.id} style={{ backgroundColor: '#fff', border: `1.5px solid ${COLORS.border}`, borderRadius: '14px', padding: '12px 14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, marginBottom: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
                         <StickerBadge bg={isA ? COLORS.yellowDeep : COLORS.blue} rotate={-2}>{isA ? 'A' : 'B'}</StickerBadge>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: '13px', fontWeight: 800, color: COLORS.pouchiDark, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -937,15 +911,6 @@ export default function StaffReservationsPage() {
                             {stage.performance_date || stage.stage_date} {stage.start_time?.slice(0, 5)} ／ {tk.name} × {r.count}枚
                           </div>
                         </div>
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', fontSize: '11px', color: COLORS.muted, paddingLeft: '2px' }}>
-                        {r.customer_email && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Mail size={12} /> {maskEmail(r.customer_email)}</span>
-                        )}
-                        {r.customer_phone && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Phone size={12} /> {maskPhone(r.customer_phone)}</span>
-                        )}
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Users size={12} /> 担当：{maskStaffName(assignedName)}</span>
                       </div>
                     </div>
                   );
